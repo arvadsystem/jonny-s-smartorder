@@ -1,4 +1,4 @@
-// Definimos la URL de tu Backend Node.js
-
-// Leemos la variable de entorno de Vite
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+﻿// API base URL — vacio para usar el proxy de Vite en desarrollo.
+// En produccion, setear VITE_API_URL a la URL real del backend.
+const normalizeBaseUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
+export const API_URL = normalizeBaseUrl(import.meta.env.VITE_API_URL || '');

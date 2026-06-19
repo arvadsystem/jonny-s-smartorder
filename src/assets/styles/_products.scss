@@ -1,0 +1,3437 @@
+.inv-prod-card {
+  border: 1px solid rgba(237, 235, 179, 0.46) !important;
+  background: #fff !important;
+  box-shadow: 0 10px 24px rgba(var(--c-shadow-rgb), 0.12) !important;
+  overflow: hidden;
+}
+
+.inv-prod-header {
+  background: linear-gradient(180deg, rgba(247, 247, 247, 0.95), rgba(243, 241, 216, 0.68));
+  border-bottom: 1px solid rgba(237, 235, 179, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px !important;
+}
+
+// NEW: soporte de header sticky en Inventario (Categorías/Insumos/Productos) usando una clase helper local.
+// WHY: `position: sticky` no funciona correctamente si el card padre mantiene `overflow: hidden`.
+// IMPACT: solo afecta los cards que declaran `inv-has-sticky-header`; no modifica otros contenedores.
+.inv-has-sticky-header {
+  overflow: visible;
+}
+
+.inv-has-sticky-header > .inv-prod-header {
+  position: sticky;
+  top: 0;
+  z-index: 14;
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  box-shadow: 0 10px 18px rgba(var(--c-shadow-rgb), 0.08);
+}
+
+.inv-prod-title-wrap {
+  min-width: 0;
+}
+
+.inv-prod-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inv-prod-title-icon {
+  color: #b22d30;
+  font-size: 1rem;
+}
+
+.inv-prod-title {
+  color: #17080a;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.1px;
+}
+
+.inv-prod-subtitle {
+  margin-top: 2px;
+  color: rgba(82, 44, 34, 0.84);
+  font-size: 0.82rem;
+}
+
+// NEW: tipografia de titulos principales mas grande para los 3 submodulos de Inventario (comparten `inv-prod-*`).
+// WHY: reforzar jerarquia visual en encabezados de pantalla sin cambiar layout ni componentes.
+// IMPACT: solo tipografia de titulo/subtitulo en cards de Inventario; sin impacto funcional.
+.inv-prod-card .inv-prod-title {
+  font-size: 1.16rem;
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: 0.12px;
+}
+
+.inv-prod-card .inv-prod-subtitle {
+  font-size: 0.88rem;
+  line-height: 1.28;
+}
+
+.inv-prod-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+// NEW: evita salto de linea en desktop para alinear buscador + Filtros + Nuevo como en otros submodulos.
+// WHY: el buscador estaba ocupando demasiado ancho y empujaba el boton "Nuevo" a una segunda fila.
+// IMPACT: solo layout del header de Productos en desktop; mobile mantiene su comportamiento responsive.
+@media (min-width: 768px) {
+  .inv-prod-header-actions {
+    flex-wrap: nowrap;
+  }
+}
+
+// NEW: buscador local de Productos en header usando el patrón visual de Insumos.
+// WHY: mover búsqueda fuera del modal de filtros y mantener acceso directo en desktop/mobile.
+// IMPACT: solo layout/estilo del header de Productos; la lógica sigue usando `search`.
+.inv-prod-header-search {
+  flex: 0 1 clamp(240px, 24vw, 340px);
+  min-width: 240px;
+  max-width: 340px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.inv-prod-header-search:focus-within {
+  border-color: rgba(178, 45, 48, 0.42);
+  box-shadow:
+    0 0 0 0.16rem rgba(178, 45, 48, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+.inv-prod-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(157, 150, 112, 0.42) !important;
+  border-radius: 999px !important;
+  background: #f7f7f7 !important;
+  color: #522c22 !important;
+  padding: 0.34rem 0.72rem !important;
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+  transition: border-color 180ms ease, box-shadow 180ms ease, color 180ms ease, background 180ms ease;
+}
+
+.inv-prod-toolbar-btn:hover {
+  border-color: rgba(122, 30, 36, 0.5) !important;
+  color: #7a1e24 !important;
+  box-shadow: 0 2px 8px rgba(var(--c-shadow-rgb), 0.18) !important;
+}
+
+.inv-prod-toolbar-btn.is-on {
+  background: linear-gradient(145deg, #7a1e24, #b22d30) !important;
+  border-color: rgba(122, 30, 36, 0.72) !important;
+  color: #f7f7f7 !important;
+}
+
+.inv-prod-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 16px 4px;
+}
+
+.inv-prod-kpi {
+  border: 1px solid rgba(157, 150, 112, 0.38);
+  border-radius: 12px;
+  background: rgba(243, 241, 216, 0.6);
+  padding: 0.5rem 0.65rem;
+  color: #17080a;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.inv-prod-kpi-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+// AJUSTE: jerarquia visual de KPI con etiqueta secundaria en 14px.
+.inv-prod-kpi span {
+  color: rgba(82, 44, 34, 0.8);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+// AJUSTE: jerarquia visual de KPI con valor principal en 24px.
+.inv-prod-kpi strong {
+  color: #17080a;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+// NUEVO: sparkline de fondo en KPI sin interferir con contenido ni eventos.
+.inv-prod-kpi-spark {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.inv-prod-kpi-spark polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.inv-prod-kpi.is-ok {
+  border-color: rgba(45, 107, 102, 0.35);
+}
+
+.inv-prod-kpi.is-ok strong {
+  color: #2d6b66;
+}
+
+.inv-prod-kpi.is-ok {
+  color: #2d6b66;
+}
+
+.inv-prod-kpi.is-low {
+  border-color: rgba(197, 111, 67, 0.35);
+}
+
+.inv-prod-kpi.is-low strong {
+  color: #c56f43;
+}
+
+.inv-prod-kpi.is-low {
+  color: #c56f43;
+}
+
+.inv-prod-kpi.is-empty {
+  border-color: rgba(178, 45, 48, 0.35);
+}
+
+.inv-prod-kpi.is-empty strong {
+  color: #b22d30;
+}
+
+.inv-prod-kpi.is-empty {
+  color: #b22d30;
+}
+
+.inv-prod-body {
+  padding-top: 12px !important;
+}
+
+.inv-prod-alert {
+  margin-bottom: 0.85rem !important;
+}
+
+.inv-prod-create-wrap {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition: max-height 300ms ease, opacity 240ms ease, transform 240ms ease;
+  border: 1px solid rgba(237, 235, 179, 0);
+  border-radius: 18px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.94), rgba(250, 249, 239, 0.88));
+}
+
+.inv-prod-create-wrap.open {
+  max-height: 1900px;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  margin-bottom: 0.95rem;
+  border-color: rgba(237, 235, 179, 0.68);
+  box-shadow: 0 14px 28px rgba(var(--c-shadow-rgb), 0.14);
+  padding: 0.9rem;
+}
+
+// NEW: adapta los paneles legacy de Productos (Nuevo/Filtros) para reutilizar el shell lateral compartido de Inventario.
+// WHY: estandarizar el formato visual (drawer derecho glass + overlay + animacion) sin reescribir el contenido interno.
+// IMPACT: solo aplica cuando los paneles usan clases `inv-prod-drawer inv-cat-v2__drawer`; el layout legacy normal no cambia.
+.inv-prod-create-wrap.inv-prod-drawer,
+.inv-prod-filters.inv-prod-drawer {
+  max-height: none !important;
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.inv-prod-create-wrap.inv-prod-drawer.open,
+.inv-prod-filters.inv-prod-drawer.open {
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.inv-prod-create-wrap.inv-prod-drawer .inv-prod-drawer-body,
+.inv-prod-filters.inv-prod-drawer .inv-prod-drawer-body {
+  align-content: start;
+}
+
+.inv-prod-filters.inv-prod-drawer .inv-prod-filters-grid {
+  margin-top: 0;
+}
+
+@media (min-width: 992px) {
+  // NEW: oculta el overlay de paneles auxiliares en desktop para recuperar el comportamiento inline previo.
+  // WHY: el estilo anterior de Productos en desktop no usaba oscurecido global para Filtros/Nuevo.
+  // IMPACT: solo afecta el backdrop con hook `inv-prod-aux-backdrop`; responsive y drawer de detalle quedan intactos.
+  .inv-prod-aux-backdrop {
+    display: none !important;
+  }
+
+  // NEW: revierte el shell lateral de Filtros/Nuevo a panel inline ligero solo en desktop.
+  // WHY: mantener el diseño actual en mobile/tablet y recuperar el look compacto previo en pantalla normal.
+  // IMPACT: solo cambia presentacion de `inv-prod-aux-panel`; no toca contenido, handlers ni validaciones.
+  .inv-prod-aux-panel {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    z-index: auto !important;
+    display: block !important;
+    border-left: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    overflow: hidden;
+  }
+
+  // NEW: cuando el panel auxiliar (Nuevo/Filtros) esta cerrado en desktop, se saca totalmente del flujo.
+  // WHY: eliminar por completo el espacio en blanco residual si el navegador conserva altura al colapsar.
+  // IMPACT: solo desktop en Productos; responsive permanece intacto y la logica de apertura/cierre no cambia.
+  .inv-prod-aux-panel:not(.open) {
+    display: none !important;
+  }
+
+  .inv-prod-aux-panel.open {
+    display: block !important;
+  }
+
+  .inv-prod-aux-panel .inv-prod-drawer-head {
+    display: none !important;
+  }
+
+  .inv-prod-aux-panel .inv-prod-drawer-body {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    overflow: visible !important;
+  }
+
+  // NEW: restaura transiciones/compactacion previas del panel Nuevo en desktop.
+  // WHY: evitar el look de drawer cargado y volver al contenedor expandible anterior.
+  // IMPACT: solo `#inv-prod-create-panel` desktop; mobile/tablet sigue usando drawer actual.
+  #inv-prod-create-panel.inv-prod-aux-panel {
+    transform: translateY(-8px) !important;
+    opacity: 0;
+    border-radius: 18px !important;
+    background: linear-gradient(165deg, rgba(255, 255, 255, 0.94), rgba(250, 249, 239, 0.88)) !important;
+    pointer-events: none;
+  }
+
+  #inv-prod-create-panel.inv-prod-aux-panel.open {
+    max-height: 1900px !important;
+    transform: translateY(0) !important;
+    opacity: 1;
+    pointer-events: auto;
+    margin-bottom: 0.95rem !important;
+    border: 1px solid rgba(237, 235, 179, 0.68) !important;
+    box-shadow: 0 14px 28px rgba(var(--c-shadow-rgb), 0.14) !important;
+  }
+
+  #inv-prod-create-panel.inv-prod-aux-panel > .inv-prod-drawer-body {
+    padding: 0.9rem !important;
+    display: block !important;
+  }
+
+  // NEW: restaura el panel de filtros inline y compacto en desktop.
+  // WHY: el panel de filtros previo era mas ligero y legible para escritorio.
+  // IMPACT: solo `#inv-prod-filters` desktop; comportamiento responsive se mantiene sin cambios.
+  #inv-prod-filters.inv-prod-aux-panel {
+    transform: translateY(-8px) !important;
+    opacity: 0;
+    border-radius: 16px !important;
+    background: linear-gradient(165deg, rgba(255, 255, 255, 0.94), rgba(250, 249, 239, 0.88)) !important;
+    pointer-events: none;
+  }
+
+  #inv-prod-filters.inv-prod-aux-panel.open {
+    max-height: 760px !important;
+    transform: translateY(0) !important;
+    opacity: 1;
+    pointer-events: auto;
+    margin-bottom: 0.85rem !important;
+    border: 1px solid rgba(237, 235, 179, 0.68) !important;
+    box-shadow: 0 14px 28px rgba(var(--c-shadow-rgb), 0.12) !important;
+  }
+
+  #inv-prod-filters.inv-prod-aux-panel > .inv-prod-drawer-body {
+    padding: 0.82rem !important;
+    display: block !important;
+  }
+
+  #inv-prod-filters.inv-prod-aux-panel > .inv-prod-drawer-body .inv-prod-filters-grid {
+    margin-top: 0.75rem !important;
+  }
+}
+
+// NEW: shell portal de Productos ajustado como drawer lateral derecho, igual al patron de Insumos.
+// WHY: el usuario pidio que Nuevo/Filtros usen salida lateral desde la derecha en lugar de modal centrado.
+// IMPACT: solo cambia el contenedor visual `inv-prod-pmodal*`; handlers y contenido permanecen iguales.
+.inv-prod-pmodal {
+  position: fixed;
+  inset: 0;
+  z-index: 2480;
+  pointer-events: none;
+}
+
+.inv-prod-pmodal.show {
+  pointer-events: auto;
+}
+
+.inv-prod-pmodal__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(23, 8, 10, 0.24);
+  opacity: 0;
+  transition: opacity 220ms ease, backdrop-filter 220ms ease, -webkit-backdrop-filter 220ms ease;
+  backdrop-filter: blur(4px) saturate(118%);
+  -webkit-backdrop-filter: blur(4px) saturate(118%);
+}
+
+.inv-prod-pmodal.show .inv-prod-pmodal__overlay {
+  opacity: 1;
+}
+
+.inv-prod-pmodal__viewport {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+  // NEW: delega el click-away al overlay para evitar cierres por eventos nativos de selects/datepickers.
+  pointer-events: none;
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__viewport {
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+.inv-prod-pmodal__panel {
+  position: relative;
+  width: min(460px, 90vw);
+  max-height: none;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: -14px 0 28px rgba(var(--c-shadow-rgb), 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transform-origin: right center;
+  overflow: hidden;
+  opacity: 0;
+  transform: translate3d(110%, 0, 0) scale(0.992);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+.inv-prod-pmodal.show .inv-prod-pmodal__panel {
+  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
+}
+
+.inv-prod-pmodal__panel--filters {
+  width: min(460px, 90vw);
+}
+
+.inv-prod-pmodal__panel--create {
+  width: min(460px, 90vw);
+}
+
+.inv-prod-pmodal__header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.85rem 0.95rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.34);
+  backdrop-filter: blur(10px) saturate(135%);
+  -webkit-backdrop-filter: blur(10px) saturate(135%);
+  overflow: hidden;
+}
+
+.inv-prod-pmodal__header-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.inv-prod-pmodal__header-copy .inv-prod-drawer-title,
+.inv-prod-pmodal__header-copy .inv-prod-drawer-sub {
+  max-width: 100%;
+}
+
+.inv-prod-pmodal__header .inv-cat-v2__drawer-mark {
+  right: 62px;
+  top: 10px;
+}
+
+.inv-prod-pmodal__counter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.18rem 0.56rem;
+  border-radius: 999px;
+  border: 1px solid rgba(178, 45, 48, 0.18);
+  background: rgba(178, 45, 48, 0.08);
+  color: #7a1e24;
+  font-size: 0.73rem;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.inv-prod-modal-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px 16px;
+  padding: 1.08rem 1.1rem 1rem;
+  border-radius: 24px;
+  border: 1px solid rgba(208, 168, 117, 0.22);
+  background: linear-gradient(145deg, rgba(255, 250, 246, 0.98), rgba(245, 239, 229, 0.9));
+  box-shadow:
+    0 18px 34px rgba(var(--c-shadow-rgb), 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+  overflow: hidden;
+}
+
+.inv-prod-modal-hero::after {
+  content: '';
+  position: absolute;
+  right: -42px;
+  top: -34px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232, 205, 167, 0.34), rgba(232, 205, 167, 0));
+  pointer-events: none;
+}
+
+.inv-prod-modal-hero--filters {
+  background: linear-gradient(145deg, rgba(255, 250, 246, 0.98), rgba(244, 236, 226, 0.92));
+}
+
+.inv-prod-modal-hero--create {
+  background: linear-gradient(145deg, rgba(254, 248, 243, 0.98), rgba(244, 236, 220, 0.94));
+}
+
+.inv-prod-modal-hero__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+}
+
+.inv-prod-modal-hero__icon {
+  position: relative;
+  z-index: 1;
+  width: 88px;
+  height: 88px;
+  border-radius: 28px;
+  display: grid;
+  place-items: center;
+  color: #fff7f3;
+  background: linear-gradient(160deg, #942b2d, #c96d3a);
+  box-shadow: 0 18px 28px rgba(148, 43, 45, 0.18);
+}
+
+.inv-prod-modal-hero__icon i {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.inv-prod-modal-hero__copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding-right: 44px;
+}
+
+.inv-prod-modal-hero__kicker {
+  color: rgba(138, 52, 54, 0.9);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.26em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.inv-prod-modal-hero__title {
+  color: #17080a;
+  font-size: clamp(1.36rem, 2vw, 2rem);
+  font-weight: 900;
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+  max-width: 16ch;
+}
+
+.inv-prod-modal-hero__chips {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.inv-prod-modal-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0.52rem 0.94rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 255, 255, 0.76);
+  color: #6a4338;
+  box-shadow:
+    0 10px 18px rgba(var(--c-shadow-rgb), 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.inv-prod-modal-hero__chip i {
+  color: rgba(106, 67, 56, 0.74);
+  font-size: 0.92rem;
+}
+
+.inv-prod-pmodal__form-shell {
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.inv-prod-pmodal__body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.95rem;
+  align-content: start;
+  background: transparent;
+}
+
+.inv-prod-pmodal__lead {
+  margin-bottom: 0;
+}
+
+.inv-prod-pmodal__sections {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.inv-prod-pmodal__sections--filters {
+  grid-template-columns: 1fr;
+}
+
+.inv-prod-pmodal__section {
+  display: grid;
+  gap: 10px;
+  padding: 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.inv-prod-pmodal__section-head {
+  display: grid;
+  gap: 2px;
+}
+
+.inv-prod-pmodal__section-title {
+  color: #17080a;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.inv-prod-pmodal__section-sub {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.inv-prod-pmodal__panel .form-control,
+.inv-prod-pmodal__panel .form-select {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 8px 16px rgba(var(--c-shadow-rgb), 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.inv-prod-pmodal__panel .form-control:hover:not(:disabled),
+.inv-prod-pmodal__panel .form-select:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.52);
+}
+
+.inv-prod-pmodal__panel .form-control:focus,
+.inv-prod-pmodal__panel .form-select:focus {
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.inv-prod-pmodal__footer {
+  position: relative;
+  bottom: 0;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0.9rem;
+  border-top: 1px solid rgba(237, 235, 179, 0.7);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(251, 250, 243, 0.98));
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__footer {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inv-prod-pmodal__footer .btn {
+  min-height: 36px;
+  width: 100%;
+}
+
+.inv-prod-pmodal__footer--create .inv-prod-btn-primary {
+  min-width: 0;
+}
+
+.inv-prod-pmodal__panel--create .inv-prod-create-form,
+.inv-prod-pmodal__panel--filters .inv-prod-filters-grid {
+  margin-top: 0;
+}
+
+.inv-prod-pmodal__panel--create .inv-prod-create-form > [class*='col-'],
+.inv-prod-pmodal__panel--filters .inv-prod-filters-grid > [class*='col-'] {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  // NEW: fallback de opacidad para navegadores sin blur en el modal de Productos.
+  // WHY: mantener contraste legible en overlay/panel sin depender de `backdrop-filter`.
+  // IMPACT: solo cambia opacidades del shell `inv-prod-pmodal*`; no toca layout ni animación.
+  .inv-prod-pmodal__overlay {
+    background: rgba(23, 8, 10, 0.3);
+  }
+
+  .inv-prod-pmodal__panel {
+    background: rgba(255, 255, 255, 0.95);
+  }
+
+  .inv-prod-pmodal__header,
+  .inv-prod-pmodal__footer {
+    background: rgba(255, 255, 255, 0.92);
+  }
+}
+
+@media (max-width: 991.98px) {
+  .inv-prod-pmodal__panel--filters,
+  .inv-prod-pmodal__panel--create {
+    width: min(460px, 90vw);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-prod-pmodal__viewport {
+    padding: 0;
+  }
+
+  .inv-prod-pmodal__panel {
+    width: 100%;
+    max-width: none;
+  }
+
+  .inv-prod-pmodal__footer .btn {
+    width: 100%;
+  }
+
+  .inv-prod-header-search {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+}
+
+.inv-prod-section-head {
+  margin-bottom: 0.75rem;
+}
+
+.inv-prod-panel-head {
+  padding: 0.76rem 0.82rem;
+  border-radius: 14px;
+  border: 1px solid rgba(157, 150, 112, 0.25);
+  background: linear-gradient(152deg, rgba(247, 247, 247, 0.97), rgba(243, 241, 216, 0.82));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.inv-prod-panel-eyebrow {
+  color: #7a1e24;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.55px;
+  margin-bottom: 0.14rem;
+}
+
+.inv-prod-section-title {
+  font-weight: 800;
+  color: #17080a;
+  font-size: 0.95rem;
+}
+
+.inv-prod-section-sub {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+}
+
+.inv-prod-create-form .form-control,
+.inv-prod-create-form .form-select,
+.inv-prod-filters-grid .form-control,
+.inv-prod-filters-grid .form-select {
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  min-height: 40px;
+}
+
+.inv-prod-create-form .form-control:focus,
+.inv-prod-create-form .form-select:focus,
+.inv-prod-filters-grid .form-control:focus,
+.inv-prod-filters-grid .form-select:focus {
+  border-color: rgba(178, 45, 48, 0.62);
+  box-shadow: 0 0 0 0.18rem rgba(178, 45, 48, 0.12);
+}
+
+// AM: unifica ritmo vertical y compactacion en create (panel y modal) para que todos los campos queden alineados.
+.inv-prod-create-form .form-control,
+.inv-prod-create-form .form-select {
+  padding: 0.38rem 0.6rem;
+  font-size: 0.88rem;
+  line-height: 1.25;
+}
+
+.inv-prod-create-form .form-label {
+  margin-bottom: 0.3rem !important;
+  min-height: 1rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.inv-prod-create-form .invalid-feedback {
+  margin-top: 0.18rem;
+  font-size: 0.72rem;
+}
+
+// AM: asegura consistencia del modal legacy de alta con el mismo patron compacto del formulario principal.
+.inv-prod-create-form--modal {
+  align-items: flex-start;
+}
+
+.inv-prod-create-form--modal .btn {
+  min-height: 38px;
+}
+
+// NEW: unificacion visual de dropdowns/selects de Productos con efecto glass/agua.
+// WHY: alinear todos los selects del submodulo (filtros, nuevo, edicion y modales) con el estilo de Inventario.
+// IMPACT: solo estilos en wrappers de Productos (`inv-prod-card`, `inv-prod-modal-content`, `inv-prod-drawer`).
+.inv-prod-card .form-select,
+.inv-prod-modal-content .form-select,
+.inv-prod-drawer .form-select {
+  background-color: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow:
+    0 8px 16px rgba(var(--c-shadow-rgb), 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  color: #17080a;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+  scrollbar-color: rgba(157, 150, 112, 0.45) rgba(255, 255, 255, 0.14);
+}
+
+.inv-prod-card .form-select:hover:not(:disabled),
+.inv-prod-modal-content .form-select:hover:not(:disabled),
+.inv-prod-drawer .form-select:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.52);
+  background-color: rgba(255, 255, 255, 0.64);
+}
+
+.inv-prod-card .form-select:focus,
+.inv-prod-modal-content .form-select:focus,
+.inv-prod-drawer .form-select:focus {
+  border-color: rgba(178, 45, 48, 0.36);
+  box-shadow:
+    0 0 0 0.18rem rgba(178, 45, 48, 0.12),
+    0 10px 18px rgba(var(--c-shadow-rgb), 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  background-color: rgba(255, 255, 255, 0.66);
+}
+
+.inv-prod-card .form-select:disabled,
+.inv-prod-modal-content .form-select:disabled,
+.inv-prod-drawer .form-select:disabled {
+  background-color: rgba(255, 255, 255, 0.4);
+  color: rgba(82, 44, 34, 0.58);
+  border-color: rgba(255, 255, 255, 0.22);
+  opacity: 1;
+}
+
+// NEW: estilo progresivo de opciones para navegadores que permiten personalizacion de menus nativos.
+// WHY: dar coherencia al panel de opciones sin interferir con el comportamiento nativo del SO.
+// IMPACT: progresivo; si no es soportado, el navegador usa su menu nativo intacto.
+.inv-prod-card .form-select option,
+.inv-prod-modal-content .form-select option,
+.inv-prod-drawer .form-select option,
+.inv-prod-card .form-select optgroup,
+.inv-prod-modal-content .form-select optgroup,
+.inv-prod-drawer .form-select optgroup {
+  background: rgba(255, 255, 255, 0.94);
+  color: #17080a;
+}
+
+.inv-prod-card .form-select option:checked,
+.inv-prod-modal-content .form-select option:checked,
+.inv-prod-drawer .form-select option:checked {
+  background: rgba(178, 45, 48, 0.14);
+  color: #17080a;
+}
+
+// AM: contenedor visual para "Almacenes asignados" con checkboxes en create/edit de Productos.
+.inv-prod-card .inv-almacenes-checkboxes,
+.inv-prod-modal-content .inv-almacenes-checkboxes,
+.inv-prod-drawer .inv-almacenes-checkboxes {
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
+  background: rgba(255, 255, 255, 0.55);
+  max-height: 188px;
+  overflow-y: auto;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes .form-check,
+.inv-prod-modal-content .inv-almacenes-checkboxes .form-check,
+.inv-prod-drawer .inv-almacenes-checkboxes .form-check {
+  margin-bottom: 0.36rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.46rem;
+  padding-left: 0;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes .form-check-input,
+.inv-prod-modal-content .inv-almacenes-checkboxes .form-check-input,
+.inv-prod-drawer .inv-almacenes-checkboxes .form-check-input {
+  // AM: fija la geometria real del checkbox para impedir cajas expandidas por herencia de estilos.
+  margin: 0.16rem 0 0;
+  float: none;
+  position: static;
+  flex: 0 0 auto;
+  width: 1rem;
+  min-width: 1rem;
+  height: 1rem;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes .form-check-label,
+.inv-prod-modal-content .inv-almacenes-checkboxes .form-check-label,
+.inv-prod-drawer .inv-almacenes-checkboxes .form-check-label {
+  line-height: 1.24;
+  font-size: 0.81rem;
+  margin-bottom: 0;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes .form-check:last-child,
+.inv-prod-modal-content .inv-almacenes-checkboxes .form-check:last-child,
+.inv-prod-drawer .inv-almacenes-checkboxes .form-check:last-child {
+  margin-bottom: 0;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes--compact,
+.inv-prod-modal-content .inv-almacenes-checkboxes--compact,
+.inv-prod-drawer .inv-almacenes-checkboxes--compact {
+  max-height: 152px;
+  padding: 0.5rem 0.65rem;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes.is-invalid,
+.inv-prod-modal-content .inv-almacenes-checkboxes.is-invalid,
+.inv-prod-drawer .inv-almacenes-checkboxes.is-invalid {
+  border-color: #dc3545;
+}
+
+.inv-prod-warehouse-picker {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.inv-prod-warehouse-counter {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(72, 116, 219, 0.18);
+  background: rgba(236, 243, 255, 0.92);
+  color: #365fb5;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.inv-prod-warehouse-search {
+  position: relative;
+}
+
+.inv-prod-warehouse-search i {
+  position: absolute;
+  top: 50%;
+  left: 0.9rem;
+  transform: translateY(-50%);
+  color: #9b7b68;
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.inv-prod-warehouse-search .form-control {
+  min-height: 44px;
+  padding-left: 2.4rem;
+  border-radius: 14px;
+}
+
+.inv-prod-warehouse-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.inv-prod-warehouse-chip,
+.inv-prod-warehouse-chip-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 34px;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(72, 116, 219, 0.18);
+  background: rgba(244, 247, 255, 0.96);
+  color: #4b5e8f;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.inv-prod-warehouse-chip {
+  cursor: pointer;
+}
+
+.inv-prod-warehouse-chip i {
+  font-size: 0.68rem;
+}
+
+.inv-prod-warehouse-chip-more {
+  border-style: dashed;
+}
+
+.inv-prod-warehouse-list {
+  display: grid;
+  gap: 0;
+  max-height: 290px;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.inv-prod-warehouse-list.is-compact {
+  max-height: 260px;
+}
+
+.inv-prod-warehouse-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.8rem 0.9rem;
+  margin: 0;
+  border-bottom: 1px solid rgba(121, 75, 42, 0.08);
+  cursor: pointer;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.inv-prod-warehouse-row:last-child {
+  border-bottom: 0;
+}
+
+.inv-prod-warehouse-row:hover {
+  background: rgba(178, 45, 48, 0.04);
+}
+
+.inv-prod-warehouse-row.is-selected {
+  background: rgba(72, 116, 219, 0.08);
+  box-shadow: inset 3px 0 0 #4f77d9;
+}
+
+.inv-prod-warehouse-checkbox {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #4f77d9;
+}
+
+.inv-prod-warehouse-copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.inv-prod-warehouse-copy strong {
+  color: #17080a;
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.inv-prod-warehouse-copy small {
+  color: rgba(72, 43, 47, 0.72);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.inv-prod-warehouse-empty {
+  padding: 1rem;
+  color: rgba(72, 43, 47, 0.72);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.inv-prod-warehouse-empty.is-danger {
+  color: #c14b52;
+}
+
+// NEW: soporte visual para dropdowns custom dentro de Productos (si existen en futuros ajustes).
+// WHY: mantener consistencia visual sin tocar otros modulos.
+// IMPACT: limitado al scope de Productos.
+.inv-prod-card .dropdown-menu,
+.inv-prod-modal-content .dropdown-menu,
+.inv-prod-drawer .dropdown-menu {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  box-shadow: 0 14px 26px rgba(var(--c-shadow-rgb), 0.14);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  z-index: 2330;
+}
+
+.inv-prod-card .dropdown-item,
+.inv-prod-modal-content .dropdown-item,
+.inv-prod-drawer .dropdown-item {
+  color: #17080a;
+  border-radius: 8px;
+}
+
+.inv-prod-card .dropdown-item:hover,
+.inv-prod-card .dropdown-item:focus,
+.inv-prod-modal-content .dropdown-item:hover,
+.inv-prod-modal-content .dropdown-item:focus,
+.inv-prod-drawer .dropdown-item:hover,
+.inv-prod-drawer .dropdown-item:focus {
+  background: rgba(178, 45, 48, 0.08);
+  color: #17080a;
+}
+
+.inv-prod-card .dropdown-menu::-webkit-scrollbar,
+.inv-prod-modal-content .dropdown-menu::-webkit-scrollbar,
+.inv-prod-drawer .dropdown-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.inv-prod-card .dropdown-menu::-webkit-scrollbar-thumb,
+.inv-prod-modal-content .dropdown-menu::-webkit-scrollbar-thumb,
+.inv-prod-drawer .dropdown-menu::-webkit-scrollbar-thumb {
+  background: rgba(157, 150, 112, 0.38);
+  border-radius: 999px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  // NEW: fallback para dropdowns glass de Productos en navegadores sin blur.
+  // WHY: asegurar legibilidad y contraste sin cambiar funcionalidad.
+  // IMPACT: solo opacidad de fondo; sin tocar eventos ni validaciones.
+  .inv-prod-card .form-select,
+  .inv-prod-modal-content .form-select,
+  .inv-prod-drawer .form-select,
+  .inv-prod-card .dropdown-menu,
+  .inv-prod-modal-content .dropdown-menu,
+  .inv-prod-drawer .dropdown-menu {
+    background-color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.9);
+  }
+}
+
+.inv-prod-create-form .form-label,
+.inv-prod-filters-grid .form-label {
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+// NEW: labels de formularios/modales de Productos con mayor diferenciacion visual.
+// WHY: separar mejor label vs input/valor manteniendo consistencia con Categorias e Insumos.
+// IMPACT: solo tipografia local en formularios de Productos; validaciones y campos no cambian.
+.inv-prod-create-form .form-label,
+.inv-prod-filters-grid .form-label,
+.inv-prod-modal-body .form-label {
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
+}
+
+// AJUSTE: layout premium del formulario para distribuir campos y media en desktop.
+.inv-prod-create-form-premium {
+  align-items: stretch;
+}
+
+// NUEVO: bloque premium para carga de imagen dentro del formulario de alta.
+.inv-prod-create-premium-media {
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.94), rgba(250, 249, 239, 0.84));
+  padding: 10px;
+  min-height: 100%;
+}
+
+.inv-prod-create-premium-media-title {
+  color: #17080a;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.inv-prod-create-premium-media .inv-prod-image-preview {
+  min-height: 228px;
+}
+
+.inv-prod-create-premium-media .inv-prod-image-preview img {
+  min-height: 228px;
+}
+
+.inv-prod-create-actions-col {
+  display: flex;
+  align-items: center;
+}
+
+.inv-prod-create-actions {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 0.24rem;
+}
+
+.inv-prod-create-actions .btn {
+  min-width: 132px;
+}
+
+@media (min-width: 768px) {
+  .inv-prod-create-actions {
+    justify-content: flex-end;
+    padding-right: 8px;
+  }
+}
+
+.inv-prod-results-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 0.7rem;
+  color: rgba(82, 44, 34, 0.88);
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+
+// NEW: layout de 3 zonas para el header de resultados en Inventario (resultados / total / toggle).
+// WHY: mantener "Total" centrado y el toggle a la derecha como el patrón de Categorías, sin afectar otros módulos.
+// IMPACT: solo aplica a barras que agregan la clase `inv-inventory-results-meta`.
+.inv-inventory-results-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 8px;
+}
+
+.inv-inventory-results-meta > span:nth-child(1) {
+  justify-self: start;
+  min-width: 0;
+}
+
+.inv-inventory-results-meta > span:nth-child(2) {
+  justify-self: center;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.inv-inventory-results-meta > .inv-catpro-inline-toggle {
+  justify-self: end;
+}
+
+.inv-inventory-results-meta > .inv-prod-active-filter-pill {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.inv-prod-active-filter-pill {
+  // NEW: soporte de layout para texto + botón X de limpiar filtros.
+  // WHY: integrar el atajo dentro del pill sin crear estilos globales adicionales.
+  // IMPACT: solo presentación del pill compartido en Inventario; no afecta lógica.
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(178, 45, 48, 0.38);
+  border-radius: 999px;
+  background: rgba(178, 45, 48, 0.08);
+  color: #7a1e24;
+  padding: 0.16rem 0.58rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.inv-prod-active-filter-pill__clear {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(122, 30, 36, 0.08);
+  color: inherit;
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.inv-prod-active-filter-pill__clear i {
+  font-size: 0.65rem;
+}
+
+.inv-prod-active-filter-pill__clear:hover {
+  background: rgba(122, 30, 36, 0.16);
+  color: #5e161c;
+}
+
+.inv-prod-active-filter-pill__clear:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.13rem rgba(178, 45, 48, 0.18);
+}
+
+.inv-prod-filters {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  border: 1px solid rgba(237, 235, 179, 0);
+  border-radius: 16px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.94), rgba(250, 249, 239, 0.88));
+  margin-bottom: 0;
+  transition: max-height 300ms ease, opacity 240ms ease, transform 240ms ease, margin-bottom 220ms ease;
+}
+
+.inv-prod-filters.open {
+  max-height: 760px;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  border-color: rgba(237, 235, 179, 0.68);
+  box-shadow: 0 14px 28px rgba(var(--c-shadow-rgb), 0.12);
+  padding: 0.82rem;
+  margin-bottom: 0.85rem;
+}
+
+.inv-prod-filters-grid {
+  margin-top: 0.75rem;
+}
+
+.inv-prod-filters-head {
+  margin-bottom: 1.1rem;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.26);
+}
+
+.inv-prod-loading {
+  color: rgba(82, 44, 34, 0.86);
+  font-weight: 700;
+  padding: 0.8rem 0;
+}
+
+.inv-prod-empty {
+  border: 1px dashed rgba(157, 150, 112, 0.42);
+  border-radius: 12px;
+  background: rgba(243, 241, 216, 0.44);
+  color: rgba(82, 44, 34, 0.86);
+  text-align: center;
+  padding: 1rem;
+  font-weight: 600;
+}
+
+.inv-prod-mobile-card,
+.inv-prod-table tbody tr {
+  transition: background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.inv-prod-mobile-card.is-editing {
+  border-color: rgba(178, 45, 48, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(var(--c-shadow-rgb), 0.2);
+}
+
+.inv-prod-stock-badge {
+  border: 1px solid rgba(157, 150, 112, 0.34);
+  border-radius: 999px;
+  background: rgba(243, 241, 216, 0.64);
+  color: #522c22;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+}
+
+.inv-prod-stock-badge.is-ok,
+.inv-prod-stock-inline.is-ok {
+  color: #2d6b66;
+}
+
+.inv-prod-stock-badge.is-low,
+.inv-prod-stock-inline.is-low {
+  color: #c56f43;
+}
+
+.inv-prod-stock-badge.is-empty,
+.inv-prod-stock-inline.is-empty {
+  color: #b22d30;
+}
+
+.inv-prod-table-wrap {
+  border: 1px solid rgba(237, 235, 179, 0.6);
+  border-radius: 14px;
+  overflow: auto;
+  background: #fff;
+}
+
+.inv-prod-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(243, 241, 216, 0.82);
+  color: #17080a;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.72);
+  font-size: 0.8rem;
+  letter-spacing: 0.2px;
+}
+
+.inv-prod-table tbody tr:hover {
+  background: rgba(243, 241, 216, 0.34);
+}
+
+.inv-prod-table tbody tr.is-editing {
+  background: rgba(243, 241, 216, 0.52);
+}
+
+.inv-prod-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inv-prod-btn-primary {
+  background: #b22d30 !important;
+  border-color: #b22d30 !important;
+  color: #f7f7f7 !important;
+  box-shadow: none !important;
+}
+
+.inv-prod-btn-primary:hover:not(:disabled) {
+  background: #7a1e24 !important;
+  border-color: #7a1e24 !important;
+}
+
+.inv-prod-btn-subtle {
+  border-color: rgba(157, 150, 112, 0.46) !important;
+  color: #522c22 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.inv-prod-btn-subtle:hover:not(:disabled) {
+  border-color: rgba(122, 30, 36, 0.45) !important;
+  color: #7a1e24 !important;
+  background: rgba(243, 241, 216, 0.54) !important;
+}
+
+.inv-prod-btn-outline {
+  border-color: rgba(178, 45, 48, 0.42) !important;
+  color: #7a1e24 !important;
+  background: #fff !important;
+}
+
+.inv-prod-btn-outline:hover:not(:disabled) {
+  background: rgba(178, 45, 48, 0.08) !important;
+}
+
+.inv-prod-btn-danger-lite {
+  border-color: rgba(178, 45, 48, 0.45) !important;
+  color: #b22d30 !important;
+  background: #fff !important;
+}
+
+.inv-prod-btn-danger-lite:hover:not(:disabled) {
+  background: rgba(178, 45, 48, 0.12) !important;
+}
+
+// NEW: variante visual "Inactivar" alineada al estilo state-off de Categorías.
+// WHY: unificar la acción de inactivación en Productos e Insumos sin tocar estilos globales de otros módulos.
+// IMPACT: solo afecta botones que usen la clase `inv-prod-btn-inactivate`.
+.inv-prod-btn-inactivate {
+  border-color: rgba(197, 111, 67, 0.34) !important;
+  color: #c56f43 !important;
+  background: rgba(197, 111, 67, 0.06) !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.inv-prod-btn-inactivate:hover:not(:disabled) {
+  background: rgba(197, 111, 67, 0.12) !important;
+  border-color: rgba(197, 111, 67, 0.48) !important;
+  color: #c56f43 !important;
+}
+
+.inv-prod-btn-inactivate:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.17rem rgba(197, 111, 67, 0.16) !important;
+}
+
+.inv-prod-btn-success-lite {
+  border-color: rgba(45, 107, 102, 0.42) !important;
+  color: #2d6b66 !important;
+  background: #fff !important;
+}
+
+.inv-prod-btn-success-lite:hover:not(:disabled) {
+  background: rgba(45, 107, 102, 0.1) !important;
+}
+
+.inv-prod-toolbar-btn:focus-visible,
+.inv-prod-create-form .btn:focus-visible,
+.inv-prod-filters-grid .btn:focus-visible,
+.inv-prod-drawer-actions .btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.18rem rgba(178, 45, 48, 0.2) !important;
+}
+
+.inv-prod-image-field {
+  border: 1px solid rgba(157, 150, 112, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 0.58rem;
+}
+
+.inv-prod-image-preview {
+  min-height: 118px;
+  max-height: 220px;
+  aspect-ratio: 16 / 9;
+  border: 1px dashed rgba(157, 150, 112, 0.45);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(247, 247, 247, 0.95), rgba(243, 241, 216, 0.76));
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.inv-prod-image-preview.has-image {
+  border-style: solid;
+}
+
+.inv-prod-image-preview img {
+  width: 100%;
+  height: 100%;
+  min-height: 118px;
+  max-height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.inv-prod-pmodal__panel--create .inv-prod-image-field {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 0.6rem 0.72rem;
+  align-items: start;
+}
+
+.inv-prod-pmodal__panel--create .inv-prod-image-preview {
+  width: 92px;
+  height: 92px;
+  min-height: 92px;
+  max-height: 92px;
+  aspect-ratio: 1 / 1;
+  grid-row: 1 / 4;
+}
+
+.inv-prod-pmodal__panel--create .inv-prod-image-preview img {
+  min-height: 0;
+}
+
+.inv-prod-pmodal__panel--create .inv-prod-image-actions {
+  margin-top: 0;
+}
+
+.inv-prod-pmodal__panel--create .inv-prod-image-feedback {
+  margin-top: 0;
+}
+
+.inv-prod-image-placeholder {
+  color: rgba(82, 44, 34, 0.68);
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.inv-prod-image-placeholder i {
+  font-size: 1.35rem;
+  color: rgba(122, 30, 36, 0.75);
+}
+
+.inv-prod-image-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(82, 44, 34, 0.8);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.inv-prod-image-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inv-prod-image-picker {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 7px;
+}
+
+.inv-prod-image-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.inv-prod-image-feedback {
+  margin-top: 0.38rem;
+  color: rgba(82, 44, 34, 0.75);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.inv-prod-image-feedback.is-error {
+  color: #b22d30;
+}
+
+.inv-prod-pagination {
+  margin-top: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.inv-prod-pagination-info {
+  color: rgba(82, 44, 34, 0.84);
+  font-weight: 700;
+  font-size: 0.84rem;
+}
+
+.inv-prod-pagination-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.inv-prod-modal-backdrop {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.inv-prod-modal-dialog {
+  max-width: min(520px, 94vw);
+}
+
+.inv-prod-modal-content {
+  border: 1px solid rgba(237, 235, 179, 0.62) !important;
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+
+.inv-prod-modal-header {
+  background: #f7f7f7;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.62) !important;
+}
+
+// NEW: titulos de modales de Productos con mayor jerarquia visual.
+// WHY: mejorar legibilidad de encabezados sin alterar estructura del modal.
+// IMPACT: solo tipografia de header en modales de Productos (crear/eliminar).
+.inv-prod-modal-header .fw-semibold {
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.inv-prod-modal-header .small {
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.inv-prod-modal-header.danger {
+  background: linear-gradient(145deg, rgba(122, 30, 36, 0.96), rgba(178, 45, 48, 0.94));
+  color: #f7f7f7;
+}
+
+.inv-prod-modal-close {
+  box-shadow: none !important;
+}
+
+.inv-master-assign-modal-dialog {
+  width: min(760px, calc(100vw - 2rem));
+  max-width: min(760px, calc(100vw - 2rem));
+  margin: 1rem auto;
+}
+
+.inv-master-assign-modal {
+  border-radius: 18px !important;
+}
+
+.inv-master-assign-modal__header {
+  padding: 0.9rem 1rem 0.8rem !important;
+  gap: 0.8rem;
+  background: #fffdfa;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.24) !important;
+}
+
+.inv-master-assign-modal__body {
+  max-height: min(72vh, 680px);
+  padding: 0.85rem 1rem 1rem !important;
+  overflow-y: auto;
+}
+
+.inv-master-assign-modal__intro {
+  display: grid;
+  gap: 0.32rem;
+  margin-bottom: 0.75rem;
+  color: rgba(23, 8, 10, 0.9);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.inv-master-assign-modal__alert {
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.86rem;
+}
+
+.inv-master-assign-modal__section {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  padding: 0.78rem 0.85rem;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.inv-master-assign-modal__section + .inv-master-assign-modal__section {
+  margin-top: 0.8rem;
+}
+
+.inv-master-assign-modal__section h6 {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #17080a;
+}
+
+.inv-master-assign-modal__table {
+  margin-bottom: 0;
+  font-size: 0.84rem;
+  vertical-align: middle;
+}
+
+.inv-master-assign-modal__table th {
+  padding: 0.48rem 0.36rem;
+  color: #17080a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+  border-bottom-color: rgba(157, 150, 112, 0.3);
+}
+
+.inv-master-assign-modal__table td {
+  padding: 0.48rem 0.36rem;
+  border-bottom-color: rgba(157, 150, 112, 0.16);
+}
+
+.inv-master-assign-modal__table .btn {
+  min-height: 30px;
+  padding: 0.28rem 0.58rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.inv-master-assign-modal__table .badge {
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+@media (max-width: 767.98px) {
+  .inv-master-assign-modal-dialog {
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+    margin: 0.5rem auto;
+  }
+
+  .inv-master-assign-modal {
+    border-radius: 16px !important;
+  }
+
+  .inv-master-assign-modal__header {
+    padding: 0.78rem 0.82rem !important;
+  }
+
+  .inv-master-assign-modal__body {
+    max-height: calc(100dvh - 6rem);
+    padding: 0.72rem !important;
+  }
+
+  .inv-master-assign-modal__intro {
+    font-size: 0.82rem;
+  }
+
+  .inv-master-assign-modal__section {
+    padding: 0.68rem;
+  }
+
+  .inv-master-assign-modal__section .table-responsive {
+    overflow-x: visible;
+  }
+
+  .inv-master-assign-modal__table,
+  .inv-master-assign-modal__table thead,
+  .inv-master-assign-modal__table tbody,
+  .inv-master-assign-modal__table tr,
+  .inv-master-assign-modal__table th,
+  .inv-master-assign-modal__table td {
+    display: block;
+    width: 100%;
+  }
+
+  .inv-master-assign-modal__table thead {
+    display: none;
+  }
+
+  .inv-master-assign-modal__table tr {
+    padding: 0.58rem 0;
+    border-bottom: 1px solid rgba(157, 150, 112, 0.2);
+  }
+
+  .inv-master-assign-modal__table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .inv-master-assign-modal__table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem;
+    padding: 0.26rem 0;
+    border-bottom: 0;
+    text-align: right !important;
+  }
+
+  .inv-master-assign-modal__table td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: rgba(82, 44, 34, 0.72);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-align: left;
+  }
+
+  .inv-master-assign-modal__table td[colspan] {
+    display: block;
+    text-align: center !important;
+  }
+
+  .inv-master-assign-modal__table td[colspan]::before {
+    content: none;
+  }
+
+  .inv-master-assign-modal__table .btn {
+    width: auto;
+    max-width: 100%;
+  }
+}
+
+.inv-prod-modal-footer {
+  border-top: 1px solid rgba(237, 235, 179, 0.58) !important;
+}
+
+.inv-prod-delete-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.inv-prod-btn-danger {
+  background: #b22d30 !important;
+  border-color: #b22d30 !important;
+}
+
+.inv-prod-btn-danger:hover:not(:disabled) {
+  background: #7a1e24 !important;
+  border-color: #7a1e24 !important;
+}
+
+@media (max-width: 1199.98px) {
+  .inv-prod-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 991.98px) {
+  .inv-prod-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-prod-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .inv-prod-header-actions {
+    width: 100%;
+  }
+
+  .inv-prod-toolbar-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .inv-prod-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px 12px 4px;
+  }
+
+  // VALIDACION: en mobile el valor KPI baja a 20px y mantiene prioridad visual.
+  .inv-prod-kpi strong {
+    font-size: 20px;
+  }
+
+  .inv-prod-pagination {
+    justify-content: center;
+  }
+
+  .inv-prod-panel-head {
+    padding: 0.66rem 0.68rem;
+  }
+
+  .inv-prod-filters.open {
+    max-height: 980px;
+  }
+
+  .inv-prod-create-wrap.open {
+    max-height: 2200px;
+  }
+
+  .inv-prod-image-preview {
+    min-height: 104px;
+    max-height: 180px;
+  }
+
+  .inv-prod-image-preview img {
+    min-height: 104px;
+  }
+
+  .inv-prod-image-actions {
+    flex-direction: column;
+  }
+
+  .inv-prod-image-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .inv-prod-create-premium-media {
+    padding: 8px;
+  }
+
+  .inv-prod-create-premium-media .inv-prod-image-preview,
+  .inv-prod-create-premium-media .inv-prod-image-preview img {
+    min-height: 120px;
+  }
+}
+
+.inv-prod-catalog-zone {
+  margin-bottom: 0.6rem;
+}
+
+.inv-prod-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.inv-prod-skeleton-card {
+  height: 250px;
+  border-radius: 16px;
+  background: linear-gradient(110deg, rgba(243, 241, 216, 0.8) 25%, rgba(247, 247, 247, 0.92) 45%, rgba(243, 241, 216, 0.8) 65%);
+  background-size: 220% 100%;
+  animation: inv-prod-skeleton 1.2s linear infinite;
+}
+
+@keyframes inv-prod-skeleton {
+  to {
+    background-position-x: -200%;
+  }
+}
+
+.inv-prod-empty-rich {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 180px;
+}
+
+.inv-prod-empty-rich i {
+  font-size: 1.45rem;
+  color: rgba(122, 30, 36, 0.8);
+}
+
+.inv-prod-empty-title {
+  max-width: 560px;
+}
+
+.inv-prod-catalog-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.inv-prod-carousel-caption {
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.inv-prod-carousel-meta {
+  // NEW: resumen superior del carrusel paginado de Productos.
+  // WHY: replicar el mismo contexto visual del carrusel de Insumos sin tocar la data de productos.
+  // IMPACT: solo añade informacion de pagina y total visible.
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inv-prod-carousel-stage {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 2px 0 10px;
+}
+
+.inv-prod-carousel-stage--paged {
+  // NEW: stage paginado del carrusel principal.
+  // WHY: alojar flechas flotantes y dejar visible la reticula 4x2 como en Insumos.
+  // IMPACT: solo afecta el carrusel principal de Productos.
+  padding: 0.35rem 1.75rem;
+}
+
+.inv-prod-carousel-float {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%) scale(0.96);
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.45) !important;
+  background: rgba(23, 8, 10, 0.2) !important;
+  color: #fff !important;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 10px 18px rgba(var(--c-shadow-rgb), 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease, background 220ms ease, box-shadow 220ms ease;
+}
+
+.inv-prod-carousel-float.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  animation: inv-prod-float-in 220ms ease-out;
+}
+
+.inv-prod-carousel-float.is-prev {
+  left: 8px;
+}
+
+.inv-prod-carousel-float.is-next {
+  right: 8px;
+}
+
+.inv-prod-carousel-float:hover:not(:disabled) {
+  transform: translateY(-50%) scale(1);
+  background: rgba(122, 30, 36, 0.42) !important;
+  box-shadow: 0 12px 24px rgba(var(--c-shadow-rgb), 0.26);
+}
+
+.inv-prod-carousel-float:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes inv-prod-float-in {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(0.96);
+  }
+}
+
+.inv-prod-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  // AJUSTE: fuerza estiramiento uniforme de items en listados de productos.
+  align-items: stretch;
+}
+
+.inv-prod-catalog-carousel {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(220px, 24vw, 294px);
+  gap: 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding: 2px 16px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(157, 150, 112, 0.52) transparent;
+  // AJUSTE: mantiene altura consistente entre cards del carrusel.
+  align-items: stretch;
+}
+
+.inv-prod-catalog-carousel::-webkit-scrollbar {
+  height: 8px;
+}
+
+.inv-prod-catalog-carousel::-webkit-scrollbar-thumb {
+  background: rgba(157, 150, 112, 0.48);
+  border-radius: 999px;
+}
+
+.inv-prod-catalog-carousel .inv-prod-catalog-card {
+  scroll-snap-align: start;
+}
+
+.inv-prod-carousel-page {
+  // NEW: pagina visible del carrusel principal.
+  // WHY: reemplazar el scroll libre por paginas fijas 4x2/2x2/1x2.
+  // IMPACT: la grilla actual de cards conserva sus componentes y acciones.
+  display: grid;
+  // NEW: se reduce el gutter para ganar ancho util por card sin cambiar el 4x2.
+  // WHY: el usuario pidio cards mas anchas hacia los lados, no mas altas.
+  // IMPACT: solo crece el ancho util de cada columna del carrusel principal.
+  gap: 9px;
+  align-items: stretch;
+  animation: inv-prod-carousel-page-in 180ms ease;
+}
+
+.inv-prod-carousel-page.cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.inv-prod-carousel-page.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inv-prod-carousel-page.cols-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@keyframes inv-prod-carousel-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.inv-prod-catalog-card {
+  border: 1px solid rgba(237, 235, 179, 0.65);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #fcfbf4);
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(var(--c-shadow-rgb), 0.12);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease, opacity 180ms ease;
+  // NUEVO: layout interno flex para igualar altura y anclar acciones al fondo.
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  // NEW: se restaura la altura base para que el crecimiento del card sea horizontal, no vertical.
+  // WHY: el usuario pidio cards mas anchas hacia los lados y no mas largas.
+  // IMPACT: solo vuelve a la altura original del card.
+  min-height: 292px;
+  position: relative;
+}
+
+.inv-prod-catalog-card::before {
+  // NEW: linea lateral fina tipo Insumos para identificar estado de stock en Productos.
+  // WHY: el usuario pidio el mismo patron visual lateral para stock normal, bajo y sin stock.
+  // IMPACT: solo agrega un acento visual al card; contenido y acciones no cambian.
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: rgba(45, 107, 102, 0.74);
+}
+
+.inv-prod-catalog-card.is-low::before {
+  background: rgba(197, 111, 67, 0.82);
+}
+
+.inv-prod-catalog-card.is-empty::before {
+  background: rgba(178, 45, 48, 0.86);
+}
+
+.inv-prod-catalog-card.is-inactive::before {
+  background: rgba(82, 44, 34, 0.48);
+}
+
+.inv-prod-catalog-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(var(--c-shadow-rgb), 0.22);
+  border-color: rgba(157, 150, 112, 0.62);
+}
+
+.inv-prod-catalog-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.2rem rgba(178, 45, 48, 0.16);
+}
+
+.inv-prod-catalog-card.is-selected {
+  border-color: rgba(178, 45, 48, 0.55);
+}
+
+// NEW: estado visual de salida para eliminar una card sin refrescar toda la grilla.
+// WHY: suavizar la remoción local tras delete exitoso manteniendo estable el carrusel.
+// IMPACT: solo presentación temporal con clase `is-removing`; no altera datos.
+.inv-prod-catalog-card.is-removing {
+  opacity: 0;
+  transform: translateY(6px) scale(0.985);
+  pointer-events: none;
+}
+
+.inv-prod-thumb-wrap {
+  position: relative;
+  height: 138px;
+  background: rgba(243, 241, 216, 0.64);
+}
+
+.inv-prod-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.inv-prod-thumb.placeholder {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  color: rgba(82, 44, 34, 0.5);
+}
+
+.inv-prod-thumb.placeholder i {
+  font-size: 1.5rem;
+}
+
+.inv-prod-thumb.placeholder span {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.inv-prod-card-state {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  border-radius: 999px;
+  padding: 0.2rem 0.58rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.84);
+  // VALIDACION: evita wrap del badge para mantener lectura y densidad visual consistente.
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.inv-prod-card-state.is-ok {
+  border-color: rgba(45, 107, 102, 0.32);
+  color: #2d6b66;
+}
+
+.inv-prod-card-state.is-low {
+  border-color: rgba(197, 111, 67, 0.35);
+  color: #c56f43;
+}
+
+.inv-prod-card-state.is-empty {
+  border-color: rgba(178, 45, 48, 0.35);
+  color: #b22d30;
+}
+
+.inv-prod-card-state.is-inactive {
+  border-color: rgba(157, 150, 112, 0.42);
+  color: #522c22;
+}
+
+.inv-prod-card-body {
+  padding: 0.72rem;
+  // AJUSTE: permite que el bloque de acciones se apoye al final en cards de altura uniforme.
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  // NEW: contexto relativo para el icono decorativo centrado del card.
+  // WHY: el usuario pidio un icono de producto en medio del card como en Insumos.
+  // IMPACT: solo agrega una capa visual de fondo; contenido y eventos siguen igual.
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+// NEW: mantiene el contenido util por encima del icono decorativo.
+// WHY: evitar que el acento visual tape nombre, metricas o CTA del card.
+// IMPACT: solo cambia el stacking visual interno del body del card.
+.inv-prod-card-body > *:not(.inv-prod-card-bg-icon) {
+  position: relative;
+  z-index: 1;
+}
+
+// NEW: acento visual centrado para reforzar la identidad de Productos sin recargar el card.
+// WHY: replicar el patron decorativo de Insumos con una version mas sobria compatible con cards que sí tienen thumbnail.
+// IMPACT: solo decoracion; no altera layout funcional, handlers ni responsive.
+.inv-prod-card-bg-icon {
+  position: absolute;
+  top: 51%;
+  left: 50%;
+  width: 126px;
+  height: 126px;
+  border-radius: 34px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 0;
+  color: rgba(122, 30, 36, 0.055);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.44), rgba(157, 150, 112, 0.05) 58%, rgba(157, 150, 112, 0.014) 100%);
+  transform: translate(-50%, -50%) scale(0.94) rotate(8deg);
+  transition: transform 220ms ease, color 220ms ease, background 220ms ease;
+}
+
+.inv-prod-card-bg-icon i {
+  font-size: 3.1rem;
+}
+
+.inv-prod-catalog-card:hover .inv-prod-card-bg-icon,
+.inv-prod-catalog-card:focus-visible .inv-prod-card-bg-icon {
+  transform: translate(-50%, -50%) scale(1.12) rotate(4deg);
+  color: rgba(122, 30, 36, 0.095);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.54), rgba(197, 111, 67, 0.05) 58%, rgba(157, 150, 112, 0.018) 100%);
+}
+
+.inv-prod-card-name {
+  color: #17080a;
+  font-weight: 800;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  // AJUSTE: se compacta a una linea para mantener altura visual uniforme del card.
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 1.2em;
+}
+
+.inv-prod-card-category {
+  color: rgba(82, 44, 34, 0.8);
+  font-size: 0.78rem;
+  margin-top: 2px;
+  // VALIDACION: se limita a una línea para conservar alineación entre cards.
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 1.15em;
+}
+
+.inv-prod-card-metrics {
+  // NEW: separador visual fino entre identidad del producto y metricas operativas.
+  // WHY: el usuario pidio una linea profesional entre nombre y el bloque de Precio/Existencias.
+  // IMPACT: solo agrega jerarquia visual en cards de Productos.
+  margin-top: 0.72rem;
+  padding-top: 0.62rem;
+  border-top: 1px solid rgba(157, 150, 112, 0.24);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.inv-prod-card-metrics > div {
+  // NEW: centra el contenido de Precio y Existencias dentro del card.
+  // WHY: el usuario pidio ambas metricas centradas visualmente.
+  // IMPACT: solo afecta las dos celdas del bloque de metricas en cards de Productos.
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+.inv-prod-card-label {
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.72rem;
+}
+
+.inv-prod-card-value {
+  color: #17080a;
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.inv-prod-stock-line {
+  // AJUSTE: ancla acciones y estado al fondo de la card para altura uniforme.
+  margin-top: auto;
+  padding-top: 0.62rem;
+  // AJUSTE: altura fija del bloque inferior para evitar estiramiento por contenido variable.
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+}
+
+.inv-prod-stock-meta {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  // VALIDACION: estabiliza el alto del contenido de estado/item para que no cambie entre cards.
+  min-height: 34px;
+}
+
+// NUEVO: contenedor con alto controlado para texto de stock e item sin generar cards mas altos.
+.inv-prod-stock-copy {
+  min-width: 0;
+  // NEW: se compacta la caja de stock al remover el texto `Item #`.
+  // WHY: aprovechar mejor el ancho disponible y mejorar la lectura del estado.
+  // IMPACT: solo ajusta el layout del bloque inferior del card de Productos.
+  min-height: 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  row-gap: 2px;
+}
+
+.inv-prod-stock-ring {
+  --_ratio: clamp(0, var(--stock-ratio, 0), 1);
+  flex: 0 0 30px;
+  min-width: 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: conic-gradient(#2d6b66 calc(var(--_ratio) * 1turn), rgba(157, 150, 112, 0.22) 0);
+  position: relative;
+  animation: inv-prod-ring-in 520ms cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+.inv-prod-stock-ring::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+@keyframes inv-prod-ring-in {
+  from {
+    transform: scale(0.65);
+    opacity: 0.2;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.inv-prod-stock-copy span {
+  display: block;
+  // NEW: se refuerza la leyenda principal de stock para lectura rapida.
+  // WHY: el usuario pidio que el estado de stock se lea mejor dentro del card.
+  // IMPACT: solo estiliza el texto visible del estado.
+  color: #2b1208;
+  font-size: 0.81rem;
+  font-weight: 800;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.18;
+}
+
+.inv-prod-card-action {
+  background: rgba(255, 255, 255, 0.52) !important;
+  border: 1px solid rgba(157, 150, 112, 0.42) !important;
+  color: #522c22 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  gap: 0;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  transition: padding 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.inv-prod-card-action i {
+  font-size: 0.84rem;
+  transition: transform 180ms ease;
+}
+
+.inv-prod-card-action-compact {
+  // NEW: se reduce el CTA de estado para que no domine visualmente el footer del card.
+  // WHY: el usuario pidio un boton de Inactivar menos grande.
+  // IMPACT: el flujo sigue igual; solo cambia el tamano visible del boton.
+  width: 38px;
+  min-width: 38px;
+  height: 32px;
+  border-radius: 10px;
+  padding: 0 !important;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.inv-prod-card-action-label {
+  display: inline-block !important;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  margin-left: 0;
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 800;
+  transition: max-width 180ms ease, opacity 160ms ease, margin-left 160ms ease;
+}
+
+.inv-prod-card-action.danger {
+  color: #b22d30 !important;
+  border-color: rgba(178, 45, 48, 0.38) !important;
+}
+
+// NEW: variante de card action para el botón "Inactivar" en Productos.
+// WHY: replicar el lenguaje visual de Categorías (`state-off`) en la acción que reemplaza "Eliminar".
+// IMPACT: solo afecta botones `inv-prod-card-action` que agregan la clase `inactivate`.
+.inv-prod-card-action.inactivate {
+  color: #c56f43 !important;
+  border-color: rgba(197, 111, 67, 0.34) !important;
+  background: rgba(197, 111, 67, 0.06) !important;
+}
+
+// NEW: velo animado para dar feedback fino al CTA de inactivar.
+// WHY: el usuario pidio que el boton de inactivar tenga una animacion clara al pasar el mouse.
+// IMPACT: solo afecta el hover/focus del CTA de inactivar dentro del card de Productos.
+.inv-prod-card-action.inactivate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.48) 42%, transparent 74%);
+  transform: translateX(-135%);
+  transition: transform 260ms ease;
+}
+
+.inv-prod-card-action:hover {
+  background: rgba(255, 255, 255, 0.78) !important;
+  border-color: rgba(178, 45, 48, 0.5) !important;
+  box-shadow: 0 2px 6px rgba(var(--c-shadow-rgb), 0.16) !important;
+}
+
+.inv-prod-card-action.inactivate:hover {
+  border-color: rgba(197, 111, 67, 0.48) !important;
+  background: rgba(197, 111, 67, 0.12) !important;
+  transform: translateY(-1px) !important;
+}
+
+.inv-prod-card-action.inactivate:hover::after,
+.inv-prod-card-action.inactivate:focus-visible::after {
+  transform: translateX(135%);
+}
+
+.inv-prod-card-action.inactivate:hover i,
+.inv-prod-card-action.inactivate:focus-visible i {
+  transform: scale(1.14) rotate(-8deg);
+}
+
+.inv-prod-card-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.17rem rgba(178, 45, 48, 0.16) !important;
+}
+
+.inv-prod-card-action.inactivate:focus-visible {
+  box-shadow: 0 0 0 0.17rem rgba(197, 111, 67, 0.16) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .inv-prod-card-action-compact:hover {
+    padding: 0 !important;
+    justify-content: center;
+  }
+}
+
+.inv-prod-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 8, 10, 0.24);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+  z-index: 2310;
+}
+
+.inv-prod-drawer-backdrop.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.inv-prod-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(420px, 92vw);
+  height: 100vh;
+  height: 100dvh;
+  background: linear-gradient(180deg, #ffffff, #fbfaf3);
+  border-left: 1px solid rgba(237, 235, 179, 0.75);
+  box-shadow: -10px 0 26px rgba(var(--c-shadow-rgb), 0.22);
+  transform: translateX(110%);
+  transition: transform 260ms ease;
+  z-index: 2312;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.inv-prod-drawer.show {
+  transform: translateX(0);
+}
+
+.inv-prod-drawer-head {
+  padding: 0.85rem 0.9rem;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inv-prod-drawer-title {
+  color: #17080a;
+  font-weight: 800;
+  // NEW: titulos de drawers mas notorios para Inventario.
+  // WHY: homogeneizar jerarquia visual en headers de drawers de Productos/Insumos/Categorias.
+  // IMPACT: solo tipografia; no cambia layout funcional del drawer.
+  font-size: 1.08rem;
+  line-height: 1.18;
+  letter-spacing: 0.12px;
+}
+
+.inv-prod-drawer-sub {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.8rem;
+  line-height: 1.25;
+}
+
+.inv-prod-drawer-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(157, 150, 112, 0.38);
+  background: #fff;
+  color: #522c22;
+}
+
+.inv-prod-drawer-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0.9rem;
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .inv-prod-pmodal__footer,
+  .inv-prod-pmodal--filters .inv-prod-pmodal__footer {
+    grid-template-columns: 1fr;
+  }
+}
+
+.inv-prod-edit-hero {
+  position: relative;
+  display: grid;
+  gap: 12px 14px;
+  padding: 1.02rem;
+  border-radius: 24px;
+  border: 1px solid rgba(208, 168, 117, 0.22);
+  background: linear-gradient(145deg, rgba(255, 250, 246, 0.98), rgba(244, 236, 226, 0.92));
+  box-shadow:
+    0 16px 30px rgba(var(--c-shadow-rgb), 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  overflow: hidden;
+}
+
+.inv-prod-edit-hero::after {
+  content: '';
+  position: absolute;
+  right: -54px;
+  top: -44px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232, 205, 167, 0.34), rgba(232, 205, 167, 0));
+  pointer-events: none;
+}
+
+.inv-prod-edit-hero__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+}
+
+.inv-prod-edit-hero__icon {
+  position: relative;
+  z-index: 1;
+  width: 76px;
+  height: 76px;
+  border-radius: 24px;
+  display: grid;
+  place-items: center;
+  color: #fff7f3;
+  background: linear-gradient(160deg, #8f2428, #c06e42);
+  box-shadow: 0 16px 24px rgba(143, 36, 40, 0.18);
+}
+
+.inv-prod-edit-hero__icon i {
+  font-size: 1.74rem;
+  line-height: 1;
+}
+
+.inv-prod-edit-hero__copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-right: 40px;
+}
+
+.inv-prod-edit-hero__kicker {
+  color: rgba(138, 52, 54, 0.9);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.inv-prod-edit-hero__title {
+  color: #17080a;
+  font-size: 1.5rem;
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  max-width: 14ch;
+}
+
+.inv-prod-edit-hero__text {
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.inv-prod-edit-hero__chips {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.inv-prod-edit-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0.48rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 255, 255, 0.76);
+  color: #6a4338;
+  box-shadow:
+    0 10px 18px rgba(var(--c-shadow-rgb), 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.inv-prod-edit-hero__chip i {
+  color: rgba(106, 67, 56, 0.74);
+  font-size: 0.9rem;
+}
+
+.inv-prod-edit-hero__chip.is-active {
+  border-color: rgba(45, 107, 102, 0.3);
+  color: #2d6b66;
+  background: rgba(239, 250, 248, 0.84);
+}
+
+.inv-prod-edit-hero__chip.is-active i {
+  color: rgba(45, 107, 102, 0.74);
+}
+
+.inv-prod-edit-hero__chip.is-inactive {
+  border-color: rgba(178, 45, 48, 0.24);
+  color: #8e2528;
+  background: rgba(253, 242, 242, 0.9);
+}
+
+.inv-prod-edit-hero__chip.is-inactive i {
+  color: rgba(178, 45, 48, 0.72);
+}
+
+.inv-prod-drawer-hero {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  padding: 0.9rem;
+  border-radius: 18px;
+  border: 1px solid rgba(226, 208, 168, 0.38);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(247, 242, 233, 0.88));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  align-items: start;
+}
+
+.inv-prod-drawer-meta {
+  // NEW: panel lateral minimo del drawer de edicion.
+  // WHY: reemplazar resumenes redundantes por un bloque simple de estado e imagen.
+  // IMPACT: solo presentacion del drawer de Productos.
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.inv-prod-drawer-image {
+  width: 84px;
+  min-width: 84px;
+  height: 84px;
+  min-height: 84px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  background: rgba(243, 241, 216, 0.55);
+  display: grid;
+  place-items: center;
+  color: rgba(82, 44, 34, 0.56);
+}
+
+.inv-prod-drawer-image img {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.inv-prod-drawer-image.placeholder {
+  border-style: dashed;
+}
+
+.inv-prod-drawer-image-empty {
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  color: rgba(82, 44, 34, 0.62);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.inv-prod-drawer-image-empty i {
+  font-size: 1.18rem;
+}
+
+.inv-prod-drawer-price-main {
+  color: #17080a;
+  font-size: 1.14rem;
+  font-weight: 800;
+}
+
+.inv-prod-drawer-price-sub {
+  color: rgba(82, 44, 34, 0.76);
+  font-size: 0.8rem;
+}
+
+.inv-prod-drawer-status-pill {
+  margin-top: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.12rem 0.52rem;
+  font-size: 0.71rem;
+  font-weight: 800;
+}
+
+.inv-prod-drawer-status-pill.is-active {
+  border-color: rgba(45, 107, 102, 0.36);
+  color: #2d6b66;
+  background: rgba(45, 107, 102, 0.08);
+}
+
+.inv-prod-drawer-status-pill.is-inactive {
+  border-color: rgba(178, 45, 48, 0.36);
+  color: #b22d30;
+  background: rgba(178, 45, 48, 0.08);
+}
+
+.inv-prod-drawer-image-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inv-prod-drawer-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.inv-prod-drawer-form-grid {
+  // NEW: reticula de edicion completa para mostrar todos los campos del producto sin amontonarlos.
+  // WHY: el usuario pidio ver todos los campos modificables y quitar informacion sobrante.
+  // IMPACT: solo ordena el formulario del drawer; validaciones y payloads no cambian.
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+// AM: variante compacta del formulario de edicion para dejar columnas parejas y lectura estable en desktop.
+.inv-prod-drawer-form--compact {
+  gap: 0.65rem;
+}
+
+.inv-prod-drawer-form--compact > div {
+  min-width: 0;
+}
+
+.inv-prod-drawer-field--span-2 {
+  grid-column: 1 / -1;
+}
+
+.inv-prod-drawer-form label {
+  display: block;
+  margin-bottom: 2px;
+  color: rgba(82, 44, 34, 0.78);
+  // NEW: labels de campos en drawer de Productos con mayor jerarquia tipografica.
+  // WHY: mejorar lectura de formularios y consistencia con otros submodulos de Inventario.
+  // IMPACT: solo tipografia; inputs/validaciones sin cambios.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
+}
+
+// AM: evita que los checkboxes de "Almacenes asignados" hereden estilo de input textual en el drawer de edicion.
+.inv-prod-drawer-form input:not([type='checkbox']):not([type='radio']) {
+  width: 100%;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  padding: 0.42rem 0.58rem;
+  min-height: 38px;
+}
+
+.inv-prod-drawer-form .form-select {
+  width: 100%;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  padding: 0.42rem 0.58rem;
+  min-height: 38px;
+}
+
+.inv-prod-drawer-form textarea {
+  width: 100%;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  padding: 0.52rem 0.58rem;
+  resize: vertical;
+  min-height: 104px;
+}
+
+.inv-prod-drawer-form input:not([type='checkbox']):not([type='radio']).is-invalid {
+  border-color: rgba(178, 45, 48, 0.58);
+  box-shadow: 0 0 0 0.16rem rgba(178, 45, 48, 0.12);
+}
+
+.inv-prod-drawer-form textarea.is-invalid {
+  border-color: rgba(178, 45, 48, 0.58);
+  box-shadow: 0 0 0 0.16rem rgba(178, 45, 48, 0.12);
+}
+
+.inv-prod-drawer-form .invalid-feedback {
+  font-size: 0.73rem;
+  font-weight: 700;
+  margin-top: 0.18rem;
+}
+
+.inv-prod-drawer-form input:not([type='checkbox']):not([type='radio']):disabled {
+  background: rgba(243, 241, 216, 0.42);
+}
+
+.inv-prod-drawer-form textarea:disabled {
+  background: rgba(243, 241, 216, 0.42);
+}
+
+.inv-prod-drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.inv-prod-drawer-grid > div {
+  border: 1px solid rgba(237, 235, 179, 0.78);
+  border-radius: 10px;
+  background: rgba(243, 241, 216, 0.46);
+  padding: 0.46rem 0.56rem;
+}
+
+.inv-prod-drawer-grid span {
+  display: block;
+  color: rgba(82, 44, 34, 0.75);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.inv-prod-drawer-grid strong {
+  color: #17080a;
+  font-size: 0.82rem;
+}
+
+.inv-prod-drawer-section {
+  border-top: 1px solid rgba(237, 235, 179, 0.72);
+  padding-top: 9px;
+}
+
+.inv-prod-drawer-section-title {
+  color: #17080a;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.12px;
+  margin-bottom: 8px;
+}
+
+.inv-prod-stepper {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  gap: 8px;
+}
+
+.inv-prod-stepper button {
+  border: 1px solid rgba(157, 150, 112, 0.45);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.inv-prod-stepper input {
+  width: 100%;
+  border: 1px solid rgba(157, 150, 112, 0.45);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  text-align: center;
+  font-weight: 700;
+}
+
+.inv-prod-drawer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.inv-prod-drawer-actions--edit {
+  // NEW: tres acciones utiles del drawer de edicion.
+  // WHY: mantener Duplicar, estado y guardar sin volver a cargar informacion redundante.
+  // IMPACT: solo layout del footer de acciones.
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.inv-prod-drawer-feedback {
+  border: 1px solid rgba(45, 107, 102, 0.35);
+  border-radius: 10px;
+  background: rgba(45, 107, 102, 0.08);
+  color: #2d6b66;
+  font-size: 0.8rem;
+  padding: 0.45rem 0.58rem;
+  font-weight: 700;
+}
+
+.inv-prod-history-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 4px;
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 991.98px) {
+  .inv-prod-catalog-carousel {
+    grid-auto-columns: clamp(214px, 35vw, 274px);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-prod-create-actions-col {
+    justify-content: center;
+  }
+
+  .inv-prod-create-actions {
+    justify-content: center;
+  }
+
+  .inv-prod-create-actions .btn {
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .inv-prod-carousel-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inv-prod-carousel-stage {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .inv-prod-carousel-float {
+    width: 36px;
+    height: 36px;
+  }
+
+  .inv-prod-carousel-float.is-prev {
+    left: 4px;
+  }
+
+  .inv-prod-carousel-float.is-next {
+    right: 4px;
+  }
+
+  .inv-prod-carousel-stage--paged {
+    padding-inline: 0.25rem;
+  }
+
+  .inv-prod-carousel-stage--paged .inv-prod-carousel-float {
+    top: auto;
+    bottom: -0.35rem;
+    transform: none;
+  }
+
+  .inv-prod-carousel-stage--paged .inv-prod-carousel-float.is-prev {
+    left: 0;
+  }
+
+  .inv-prod-carousel-stage--paged .inv-prod-carousel-float.is-next {
+    right: 0;
+  }
+
+  .inv-prod-carousel-page {
+    padding-bottom: 2.25rem;
+  }
+
+  .inv-prod-catalog-carousel {
+    grid-auto-columns: min(76vw, 288px);
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .inv-prod-card-action-compact {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0 !important;
+    justify-content: center;
+  }
+
+  .inv-prod-card-action-label {
+    max-width: 0 !important;
+    opacity: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  .inv-prod-drawer {
+    width: 100%;
+    max-width: none;
+  }
+
+  .inv-prod-modal-hero,
+  .inv-prod-edit-hero {
+    border-radius: 20px;
+    padding: 0.92rem;
+  }
+
+  .inv-prod-modal-hero__icon,
+  .inv-prod-edit-hero__icon {
+    width: 70px;
+    height: 70px;
+    border-radius: 22px;
+  }
+
+  .inv-prod-modal-hero__icon i,
+  .inv-prod-edit-hero__icon i {
+    font-size: 1.56rem;
+  }
+
+  .inv-prod-modal-hero__copy,
+  .inv-prod-edit-hero__copy {
+    padding-right: 40px;
+  }
+
+  .inv-prod-modal-hero__title,
+  .inv-prod-edit-hero__title {
+    max-width: none;
+    font-size: 1.28rem;
+  }
+
+  .inv-prod-drawer-hero {
+    grid-template-columns: 78px minmax(0, 1fr);
+    padding: 0.82rem;
+  }
+
+  // AM: compactacion responsive de los 2 modales de Productos (crear + editar) para evitar columnas disparejas.
+  .inv-prod-create-form .form-label {
+    margin-bottom: 0.24rem !important;
+  }
+
+  .inv-prod-create-form .form-control,
+  .inv-prod-create-form .form-select,
+  .inv-prod-drawer-form--compact input,
+  .inv-prod-drawer-form--compact .form-select {
+    min-height: 36px;
+  }
+
+  .inv-prod-create-form .inv-almacenes-checkboxes,
+  .inv-prod-drawer-form--compact .inv-almacenes-checkboxes {
+    max-height: 146px;
+    padding: 0.5rem 0.62rem;
+  }
+
+  .inv-prod-drawer-form-grid,
+  .inv-prod-drawer-actions--edit {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1279.98px) {
+  .inv-prod-carousel-stage--paged {
+    padding-inline: 2.1rem;
+  }
+}
+
+@media (max-width: 520px) {
+  // NEW: apila la barra de resultados de Inventario en mobile manteniendo legibilidad.
+  // WHY: preservar alineacion y espacio en 375px sin perder el orden visual de resultados/total/toggle.
+  // IMPACT: solo afecta `.inv-inventory-results-meta` en pantallas pequenas.
+  .inv-inventory-results-meta {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .inv-inventory-results-meta > span:nth-child(2),
+  .inv-inventory-results-meta > .inv-catpro-inline-toggle {
+    justify-self: start;
+    text-align: left;
+  }
+
+  .inv-prod-catalog-carousel {
+    grid-auto-columns: 82vw;
+    gap: 10px;
+  }
+
+  .inv-prod-modal-hero,
+  .inv-prod-edit-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-prod-modal-hero__copy,
+  .inv-prod-edit-hero__copy {
+    padding-right: 0;
+  }
+
+  .inv-prod-modal-hero__chips,
+  .inv-prod-edit-hero__chips {
+    gap: 8px;
+  }
+
+  .inv-prod-modal-hero__chip,
+  .inv-prod-edit-hero__chip {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .inv-prod-drawer-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-prod-drawer-image {
+    width: 92px;
+    height: 92px;
+  }
+
+  .inv-prod-drawer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-prod-drawer-form-grid,
+  .inv-prod-drawer-actions--edit {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inv-prod-catalog-card,
+  .inv-prod-toolbar-btn,
+  .inv-prod-pmodal__overlay,
+  .inv-prod-pmodal__panel,
+  .inv-prod-drawer,
+  .inv-prod-drawer-backdrop,
+  .inv-prod-skeleton-card,
+  .inv-prod-stock-ring {
+    transition: none !important;
+    animation: none !important;
+  }
+}

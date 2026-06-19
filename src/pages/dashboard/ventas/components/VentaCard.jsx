@@ -1,0 +1,119 @@
+import { formatCurrency } from '../utils/ventasHelpers';
+
+const getMetodoPagoLabel = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (normalized === 'tarjeta') return 'Tarjeta';
+  if (normalized.startsWith('trans')) return 'Transferencia';
+  return 'Efectivo';
+};
+
+export default function VentaCard({ venta, view = 'grid', index = 0, onOpenDetail }) {
+  const isCompleted = venta?.displayStatusKey === 'completed';
+  const isReversed = ['reversed', 'partially_reversed'].includes(String(venta?.displayStatusKey || ''));
+  const badgeClass = isCompleted ? 'is-ok' : 'is-low';
+  const dotClass = isCompleted ? 'ok' : 'off';
+  const metodoPagoLabel = getMetodoPagoLabel(venta?.metodo_pago);
+  const hasReversiones = Number(venta?.reversiones_count || 0) > 0 || Number(venta?.monto_reversado_total || 0) > 0;
+  const hasCuentaDividida = Boolean(venta?.cuenta_dividida_activa || Number(venta?.cuenta_dividida_divisiones || 0) > 0);
+
+  return (
+    <article
+      className={`inv-catpro-item inv-cat-card inv-anim-in ventas-page__sale-card ${view === 'list' ? 'is-list' : ''} ${hasCuentaDividida ? 'is-split-account' : ''}`}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenDetail(venta)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpenDetail(venta);
+        }
+      }}
+      style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
+    >
+      <div className="inv-cat-card__halo" aria-hidden="true">
+        <i className="bi bi-receipt-cutoff" />
+      </div>
+
+      <div className="inv-catpro-item-top">
+        <div className="inv-cat-card__title-wrap">
+          <span className="inv-cat-card__icon" aria-hidden="true">
+            <i className="bi bi-cart-check" />
+          </span>
+          <div>
+            <div className="fw-bold">{venta?.numero_venta}</div>
+            <div className="text-muted small">{venta?.cliente_nombre}</div>
+          </div>
+        </div>
+
+        <div className="ventas-page__sale-badges">
+          {hasCuentaDividida ? (
+            <span className="ventas-page__sale-badge is-split">Cuenta dividida</span>
+          ) : null}
+          {hasReversiones && venta?.reversionStatusLabel ? (
+            <span className="ventas-page__sale-badge is-reversed">Con reversión</span>
+          ) : null}
+          <span className={`inv-ins-card__badge ${isReversed ? 'is-low' : badgeClass}`}>
+            {venta?.displayStatusLabel || venta?.statusLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className="ventas-page__card-details">
+        <div className="ventas-page__card-row ventas-page__card-row--total">
+          <div className="ventas-page__card-row-copy">
+            <i className="bi bi-cash-stack" />
+            <span>Total</span>
+          </div>
+          <strong>{formatCurrency(venta?.total)}</strong>
+        </div>
+
+        <div className="ventas-page__card-row">
+          <i className="bi bi-shop-window" />
+          <span>{venta?.nombre_sucursal}</span>
+        </div>
+        <div className="ventas-page__card-row">
+          <i className="bi bi-calendar-event" />
+          <span>{venta?.fecha_hora_label}</span>
+        </div>
+        <div className="ventas-page__card-row">
+          <i className="bi bi-box-seam" />
+          <span>{venta?.total_items} items</span>
+        </div>
+        <div className="ventas-page__card-row">
+          <i className="bi bi-person-badge" />
+          <span>{venta?.nombre_usuario}</span>
+        </div>
+        {hasReversiones ? (
+          <div className="ventas-page__card-row ventas-page__card-row--reversed">
+            <i className="bi bi-arrow-counterclockwise" />
+            <span>{venta?.reversiones_count || 1} reversión(es) · -{formatCurrency(venta?.monto_reversado_total)}</span>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="inv-catpro-meta inv-catpro-item-footer">
+        <div className="inv-catpro-code-wrap">
+          <span className={`inv-catpro-state-dot ${dotClass}`} />
+          <span className="inv-catpro-code">{metodoPagoLabel}</span>
+        </div>
+
+        <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions">
+          <button
+            type="button"
+            className="inv-catpro-action edit inv-catpro-action-compact"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenDetail(venta);
+            }}
+            onKeyDown={(event) => event.stopPropagation()}
+            title="Ver detalle"
+          >
+            <i className="bi bi-eye" />
+            <span className="inv-catpro-action-label">Detalle</span>
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}

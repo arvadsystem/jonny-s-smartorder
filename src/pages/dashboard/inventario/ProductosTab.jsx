@@ -1,13 +1,146 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
+import { useAuth } from '../../../hooks/useAuth';
+import { PERMISSIONS } from '../../../utils/permissions';
+import { normalizeVisualText } from '../../../utils/normalizeVisualText';
+import MaestroAsignacionesModal from './components/MaestroAsignacionesModal.jsx';
+import {
+  buildInventarioImageUploadPayload,
+  getInventarioImageFileError,
+  INVENTARIO_IMAGE_CONTEXT,
+  optimizeInventarioImageForUpload,
+  resolveInventarioImageUrl
+} from '../../../utils/inventarioImagenes';
+
+const getStockMeta = (cantidad, stockMinimo = 0) => {
+  const qty = Number.parseInt(String(cantidad ?? '0'), 10);
+  const minQty = Math.max(0, Number.parseInt(String(stockMinimo ?? '0'), 10) || 0);
+  if (Number.isNaN(qty) || qty <= 0) return { qty: 0, label: 'Sin stock', className: 'is-empty' };
+  if (minQty > 0 && qty <= minQty) return { qty, label: 'Stock bajo', className: 'is-low' };
+  return { qty, label: 'Con stock', className: 'is-ok' };
+};
+
+// NEW: configuracion responsive del carrusel principal de Productos.
+// WHY: el usuario pidio el mismo patron paginado de Insumos pero con 4x2 en desktop.
+// IMPACT: solo reorganiza la presentacion del carrusel; filtros, cards y handlers se mantienen.
+const getProductosCarouselConfig = (viewportWidth) => {
+  if (viewportWidth >= 1280) return { perPage: 8, columns: 4 };
+  if (viewportWidth >= 768) return { perPage: 4, columns: 2 };
+  return { perPage: 2, columns: 1 };
+};
+
+// NEW: helper local para agrupar productos visibles en paginas del carrusel.
+// WHY: reemplazar el scroll horizontal libre por paginas fijas del mismo estilo de Insumos.
+// IMPACT: mantiene el dataset actual intacto y solo lo divide para render.
+const chunkProductosCarouselPages = (items, pageSize) => {
+  const safeItems = Array.isArray(items) ? items : [];
+  const safePageSize = Math.max(1, Number(pageSize) || 1);
+  const pages = [];
+
+  for (let index = 0; index < safeItems.length; index += safePageSize) {
+    pages.push(safeItems.slice(index, index + safePageSize));
+  }
+
+  return pages;
+};
+
+// NEW: copy e iconografia unificados para todas las confirmaciones de inactivacion en Inventario.
+// WHY: el usuario pidio el mismo mensaje y el mismo icono en todos los modulos al confirmar la inactivacion.
+// IMPACT: solo estandariza el modal de confirmacion; no cambia handlers, endpoints ni estados locales.
+const INACTIVATE_CONFIRM_COPY = Object.freeze({
+  title: 'Confirmar inactivación',
+  subtitle: 'Este registro quedará marcado como inactivo',
+  question: '¿Deseas inactivar este registro',
+  fallbackName: 'Registro seleccionado',
+  iconClass: 'bi bi-slash-circle'
+});
+
+const buildCreateImageState = () => ({
+  file: null,
+  previewUrl: '',
+  loading: false,
+  error: ''
+});
+
+const buildCreateProductoInitialForm = () => ({
+  nombre_producto: '',
+  precio: '',
+  costo_compra: '',
+  stock_minimo: '0',
+  descripcion_producto: '',
+  fecha_ingreso_producto: '',
+  fecha_caducidad: '',
+  id_categoria_producto: '',
+  id_almacen: '',
+  id_almacenes: [],
+  id_tipo_departamento: ''
+});
+
+const normalizePositiveIdList = (ids) => [...new Set(
+  (Array.isArray(ids) ? ids : [])
+    .map((id) => Number.parseInt(String(id ?? '').trim(), 10))
+    .filter((id) => Number.isInteger(id) && id > 0)
+)];
+
+const areSamePositiveIdList = (left, right) => {
+  const leftIds = normalizePositiveIdList(left).sort((a, b) => a - b);
+  const rightIds = normalizePositiveIdList(right).sort((a, b) => a - b);
+  return leftIds.length === rightIds.length && leftIds.every((id, index) => id === rightIds[index]);
+};
+
+const buildDrawerImageActionState = () => ({
+  loading: false,
+  error: ''
+});
+
+// NEW: limite superior de INT32 usado por la BD/SPs para IDs de productos.
+// WHY: prevenir que un timestamp en ms (Date.now()) se use como `id_producto` en mutaciones.
+// IMPACT: validacion frontend local; no cambia endpoints ni payloads validos.
+const PRODUCTO_DB_INT32_MAX = 2147483647;
+const PRODUCTOS_FETCH_PAGE_SIZE = 100;
+const PRODUCTO_DUPLICATE_CONFLICT_MESSAGE = 'Ya existe un producto activo con el mismo nombre y categoría en este almacén.';
+const PRODUCTO_DATE_ORDER_MESSAGE = 'La fecha de caducidad no puede ser menor que la fecha de ingreso del producto.';
+// NEW: se oculta `tipo_departamento` en el modulo de Productos.
+// WHY: el usuario indico que Departamentos ya no se necesitara en Productos.
+// IMPACT: solo frontend de Productos; backend y otros modulos siguen intactos.
+const SHOW_PRODUCTO_DEPARTAMENTOS = false;
+const PRODUCTO_FILTER_SORT_LABELS = Object.freeze({
+  recientes: 'Más recientes',
+  nombre_asc: 'Nombre A-Z',
+  nombre_desc: 'Nombre Z-A',
+  precio_desc: 'Precio mayor',
+  precio_asc: 'Precio menor',
+  stock_desc: 'Stock mayor',
+  stock_asc: 'Stock menor'
+});
 
 const ProductosTab = ({ categorias = [], openToast }) => {
+  // NUEVO: toma contexto de sesion existente para segmentar historial KPI por usuario/empresa/sucursal.
+  const { user } = useAuth();
+  const { can, canAny, loading: permisosLoading } = usePermisos();
+  const canVer = canAny([
+    PERMISSIONS.INVENTARIO_PRODUCTOS_VER,
+    PERMISSIONS.INVENTARIO_PRODUCTOS_DETALLE_VER
+  ]);
+  const canCrear = can(PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR);
+  const canEditar = can(PERMISSIONS.INVENTARIO_PRODUCTOS_EDITAR);
+  const canSubirImagenProducto = can(PERMISSIONS.INVENTARIO_PRODUCTOS_IMAGEN_SUBIR);
+  const canEliminarImagenProducto = can(PERMISSIONS.INVENTARIO_PRODUCTOS_IMAGEN_ELIMINAR);
+  const canInactivar = canAny([
+    PERMISSIONS.INVENTARIO_PRODUCTOS_ELIMINAR,
+    PERMISSIONS.INVENTARIO_PRODUCTOS_ESTADO_CAMBIAR
+  ]);
+  const canGestionarSucursales = canVer;
   // ==============================
   // TOAST (SI NO VIENE DEL PADRE)
   // ==============================
-  const safeToast = (title, message, variant = 'success') => {
+  // AJUSTE: memoizado para evitar recreacion y mantener estables los hooks dependientes.
+  const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
-  };
+  }, [openToast]);
 
   // ==============================
   // ESTADOS PRINCIPALES
@@ -30,9 +163,63 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   const [search, setSearch] = useState('');
   const [stockFiltro, setStockFiltro] = useState('todos'); // todos | con_stock | sin_stock
+  const [estadoFiltro, setEstadoFiltro] = useState('todos'); // todos | activo | inactivo
   const [categoriaFiltro, setCategoriaFiltro] = useState('todos'); // todos | id_categoria
+  // AM: filtro por un unico almacen para mantener coherencia con el modelo operativo actual.
   const [almacenFiltro, setAlmacenFiltro] = useState('todos'); // todos | id_almacen
   const [deptoFiltro, setDeptoFiltro] = useState('todos'); // todos | id_tipo_departamento
+  const [sortBy, setSortBy] = useState('recientes');
+  // NEW: toggle admin para incluir productos inactivos en el listado del tab.
+  // WHY: backend devuelve activos por defecto despues del cambio a soft delete.
+  // IMPACT: solo afecta la carga del listado de Productos; filtros locales se mantienen.
+  const [showInactiveProductos, setShowInactiveProductos] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [createPanelOpen, setCreatePanelOpen] = useState(false);
+  const [almacenPickerSearch, setAlmacenPickerSearch] = useState('');
+  // NUEVO: feature flag para mantener fallback del formulario legacy sin eliminar código funcional.
+  const USE_PREMIUM_NEW_FORM = true;
+  // NUEVO: historial local para micro-gráficos de KPI sin requerir backend adicional.
+  // NUEVO: key legacy para compatibilidad con historico guardado antes del contexto dinamico.
+  const KPI_HISTORY_LEGACY_KEY = 'inv_productos_kpi_history_v1';
+  // NUEVO: historial local segmentado por contexto para evitar mezcla entre cuentas/sucursales.
+  const KPI_HISTORY_KEY = useMemo(() => {
+    const normalizePart = (value) => {
+      if (value === null || value === undefined) return '';
+      const s = String(value).trim().toLowerCase();
+      if (!s) return '';
+      return s.replace(/[^a-z0-9_-]/g, '');
+    };
+
+    // AJUSTE: se usan datos de sesion existentes; si no hay contexto suficiente, cae a global.
+    const userEntries = user && typeof user === 'object' ? Object.entries(user) : [];
+    const usuarioCtx = normalizePart(user.nombre_usuario);
+    const empresaCtx = normalizePart(
+      userEntries.find(([key, value]) =>
+        String(key).toLowerCase().includes('empresa') && value !== null && value !== undefined && String(value).trim() !== ''
+      )?.[1]
+    );
+    const sucursalCtx = normalizePart(
+      user.id_sucursal ||
+      userEntries.find(([key, value]) =>
+        String(key).toLowerCase().includes('sucursal') && value !== null && value !== undefined && String(value).trim() !== ''
+      )?.[1]
+    );
+
+    if (!usuarioCtx && !empresaCtx && !sucursalCtx) return 'inv_productos_kpi_history_global';
+    return `inv_productos_kpi_history_${empresaCtx || 'na'}_${sucursalCtx || 'na'}_${usuarioCtx || 'na'}`;
+  }, [user]);
+  // AJUSTE: limita snapshots para controlar tamano de almacenamiento local.
+  const KPI_HISTORY_LIMIT = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(8);
+  const [totalProductos, setTotalProductos] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const renderLegacyLayouts = false;
+  // NEW: flag runtime local para conservar el código legacy de shells sin renderizarlo por defecto.
+  // WHY: evitar errores de lint por `false && (...)` mientras se mantiene un fallback visual para depuración.
+  // IMPACT: desactivado por defecto; no afecta la lógica funcional de Productos.
+  const enableLegacyProductosModalShellFallback =
+    typeof window !== 'undefined' && window.__INV_PRODUCTS_LEGACY_MODAL_SHELL__ === true;
 
   // ==============================
   // MODAL CREAR (RESPONSIVE)
@@ -42,26 +229,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   // FORM CREAR
   // ==============================
-  const [form, setForm] = useState({
-    nombre_producto: '',
-    precio: '',
-    cantidad: '',
-    descripcion_producto: '',
-    fecha_ingreso_producto: '',
-    fecha_caducidad: '',
-    id_categoria_producto: '',
-    id_almacen: '',
-    id_tipo_departamento: '' // OPCIONAL
-  });
+  const [form, setForm] = useState(buildCreateProductoInitialForm);
 
   const [createErrors, setCreateErrors] = useState({});
+  const [creating, setCreating] = useState(false);
+  const [createImage, setCreateImage] = useState(buildCreateImageState);
 
   // ==============================
   // EDITAR
   // ==============================
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [editFormSnapshot, setEditFormSnapshot] = useState(null);
   const [editErrors, setEditErrors] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // ==============================
   // MODAL CONFIRMAR ELIMINAR
@@ -71,14 +252,153 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     idToDelete: null,
     nombre: ''
   });
+  const [discardConfirm, setDiscardConfirm] = useState({ show: false, target: null });
+  const [deleting, setDeleting] = useState(false);
+  // NEW: error local del modal de confirmación de eliminar para mantenerlo abierto en fallos.
+  // WHY: mostrar feedback en el propio modal sin cerrarlo cuando la API responde con error.
+  // IMPACT: solo UX del confirm modal; no cambia la lógica de eliminación.
+  const [confirmDeleteError, setConfirmDeleteError] = useState('');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerEditMode, setDrawerEditMode] = useState(false);
+  const [selectedProductoId, setSelectedProductoId] = useState(null);
+  const [localEstadoMap, setLocalEstadoMap] = useState({});
+  // NEW: marcas temporales para animar salida de cards eliminadas localmente.
+  // WHY: suavizar la desaparición del item sin refetch global de la lista.
+  // IMPACT: solo controla una clase CSS de transición en cards de Productos.
+  const [removingProductoIds, setRemovingProductoIds] = useState({});
+  const [imageErrorMap, setImageErrorMap] = useState({});
+  const [drawerMessage, setDrawerMessage] = useState('');
+  const [assignmentsModalProducto, setAssignmentsModalProducto] = useState(null);
+  const [togglingEstado, setTogglingEstado] = useState(false);
+  const [drawerImageAction, setDrawerImageAction] = useState(buildDrawerImageActionState);
+  // NUEVO: refs para desplazar viewport a paneles cuando el usuario abre Nuevo/Filtros.
+  const filtersSectionRef = useRef(null);
+  const createSectionRef = useRef(null);
+  const filtersBodyRef = useRef(null);
+  const createBodyRef = useRef(null);
+  const drawerBodyRef = useRef(null);
+  const [carouselPageIndex, setCarouselPageIndex] = useState(0);
+  const [carouselViewportWidth, setCarouselViewportWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
+  const [kpiHistory, setKpiHistory] = useState([]);
+  // NEW: target de portal local para modales de Productos.
+  // WHY: sacar Filtros/Nuevo del card para evitar recortes por `overflow: hidden`.
+  // IMPACT: solo define el nodo de render del shell visual; no cambia datos ni handlers.
+  const productsModalPortalTarget = typeof document !== 'undefined' ? document.body : null;
+  // NEW: registro de timeouts para remoción visual suave de cards sin fugas en unmount.
+  // WHY: permitir transición de salida al eliminar sin refrescar toda la lista.
+  // IMPACT: solo afecta la UX de remoción local; no toca backend ni filtros.
+  const removeCardTimeoutsRef = useRef(new Map());
+  const drawerImageInputRef = useRef(null);
+  // NEW: referencia explicita del input de imagen en create.
+  // WHY: al quitar imagen se debe vaciar tambien el valor del `<input type="file">` para evitar estados colgados.
+  // IMPACT: solo sincroniza UI local del formulario de alta; el flujo de upload no cambia.
+  const createImageInputRef = useRef(null);
+  const createModalFocusReturnRef = useRef(null);
+  const filtersFocusReturnRef = useRef(null);
+  const editDrawerFocusReturnRef = useRef(null);
+  const prevCreateModalOpenRef = useRef(false);
+  const prevFiltersOpenRef = useRef(false);
+  const prevDrawerOpenRef = useRef(false);
+
+  const captureActiveElement = useCallback(() => {
+    if (typeof document === 'undefined') return null;
+    const active = document.activeElement;
+    return active instanceof HTMLElement ? active : null;
+  }, []);
+
+  const restoreFocusToElement = useCallback((element) => {
+    if (!(element instanceof HTMLElement) || typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!document.contains(element) || element.hasAttribute('disabled') || element.getAttribute('aria-hidden') === 'true') return;
+    window.requestAnimationFrame(() => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    });
+  }, []);
+
+  const pickVisibleContainer = useCallback((selectors) => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return null;
+    const list = Array.isArray(selectors) ? selectors : [selectors];
+    for (const selector of list) {
+      const candidate = document.querySelector(selector);
+      if (!(candidate instanceof HTMLElement)) continue;
+      const styles = window.getComputedStyle(candidate);
+      const rect = candidate.getBoundingClientRect();
+      if (styles.display === 'none' || styles.visibility === 'hidden') continue;
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      return candidate;
+    }
+    return null;
+  }, []);
+
+  const focusFirstEditableField = useCallback((container) => {
+    if (!(container instanceof HTMLElement) || typeof window === 'undefined') return;
+    const firstField = container.querySelector(
+      'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'
+    );
+    if (!(firstField instanceof HTMLElement)) return;
+    window.requestAnimationFrame(() => {
+      try {
+        firstField.focus({ preventScroll: true });
+      } catch {
+        firstField.focus();
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    // NEW: escucha el ancho del viewport para recalcular paginas 4x2/2x2/1x2 sin remount del modulo.
+    // WHY: mantener el carrusel de Productos alineado con el patron responsive de Insumos.
+    // IMPACT: solo actualiza la agrupacion visual del carrusel.
+    const onResize = () => setCarouselViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const openConfirmDelete = (id, nombre) => {
+    if (!canInactivar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para inactivar productos.', 'warning');
+      return;
+    }
+    setConfirmDeleteError('');
     setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' });
   };
 
   const closeConfirmDelete = () => {
+    setConfirmDeleteError('');
     setConfirmModal({ show: false, idToDelete: null, nombre: '' });
+    setDeleting(false);
   };
+
+  // NEW: cierre unificado del modal de Nuevo producto (desktop y flujo mobile legacy).
+  // WHY: reutilizar un solo shell centrado sin tocar `onCrear`, validaciones ni payloads.
+  // IMPACT: solo centraliza el cierre visual del modal de alta en Productos.
+  const hasCreateProductoUnsavedChanges = useMemo(() => {
+    const initialForm = buildCreateProductoInitialForm();
+    const formHasChanges = Object.keys(initialForm).some(
+      (field) => String(form?.[field] ?? '') !== String(initialForm[field] ?? '')
+    );
+    return formHasChanges || Boolean(createImage?.file);
+  }, [createImage?.file, form]);
+
+  const hasEditProductoUnsavedChanges = useMemo(() => {
+    if (!editForm || !editFormSnapshot) return false;
+    return Object.keys(editFormSnapshot).some(
+      (field) => String(editForm?.[field] ?? '') !== String(editFormSnapshot?.[field] ?? '')
+    );
+  }, [editForm, editFormSnapshot]);
+
+  const closeCreateProductoModal = useCallback((force = false) => {
+    if (creating && !force) return;
+    if (!force && hasCreateProductoUnsavedChanges) {
+      setDiscardConfirm({ show: true, target: 'create' });
+      return;
+    }
+    setCreatePanelOpen(false);
+    setShowCreateProductoSheet(false);
+  }, [creating, hasCreateProductoUnsavedChanges]);
 
   // ==============================
   // HELPERS
@@ -90,6 +410,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return s;
   };
 
+  // NUEVO: normaliza estado para compatibilidad backend (boolean/string/number).
+  const productoActivo = useCallback((estado) => {
+    return estado === true || estado === 'true' || estado === 1 || estado === '1';
+  }, []);
+
   // ==============================
   // SOLO ENTEROS EN INPUT (BLOQUEAR DECIMALES)
   // ==============================
@@ -100,21 +425,483 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const sanitizeInteger = (value) => String(value ?? '').replace(/[^\d]/g, '');
 
+  const updateCreateAlmacenes = useCallback((ids) => {
+    const normalized = normalizePositiveIdList(ids);
+    setForm((state) => ({
+      ...state,
+      id_almacenes: normalized,
+      id_almacen: normalized.length > 0 ? String(normalized[0]) : ''
+    }));
+  }, []);
+
+  const updateEditAlmacenes = useCallback((ids) => {
+    const normalized = normalizePositiveIdList(ids);
+    setDrawerEditMode(true);
+    setEditForm((state) => ({
+      ...state,
+      id_almacenes: normalized,
+      id_almacen: normalized.length > 0 ? String(normalized[0]) : ''
+    }));
+  }, []);
+
+  // AM: renderer compartido de selector multi-almacen para create.
+  const renderAlmacenSelectField = useCallback(({
+    scope,
+    selectedValue,
+    selectedValues,
+    error,
+    onChange,
+    onChangeMulti,
+    compact = false,
+    feedbackClassName = 'invalid-feedback'
+  }) => {
+    const safeScope = String(scope || 'default');
+    const selectedIds = new Set(
+      (Array.isArray(selectedValues) && selectedValues.length > 0 ? selectedValues : [selectedValue])
+        .map((id) => Number.parseInt(String(id ?? '').trim(), 10))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    );
+    const activeAlmacenes = (Array.isArray(almacenes) ? almacenes : []).filter((almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      const estado = almacen?.estado;
+      const active = estado === undefined || estado === null || estado === '' || estado === true || estado === 'true' || estado === 1 || estado === '1';
+      return Number.isInteger(idAlmacen) && idAlmacen > 0 && active;
+    });
+    const grouped = activeAlmacenes.reduce((acc, almacen) => {
+      const idSucursal = String(almacen?.id_sucursal ?? almacen?.sucursal_id ?? 'sin-sucursal');
+      const nombreSucursal = String(almacen?.sucursal || almacen?.nombre_sucursal || (idSucursal === 'sin-sucursal' ? 'Sucursal sin asignar' : `Sucursal #${idSucursal}`));
+      if (!acc.has(idSucursal)) acc.set(idSucursal, { idSucursal, nombreSucursal, items: [] });
+      acc.get(idSucursal).items.push(almacen);
+      return acc;
+    }, new Map());
+    const allGroups = [...grouped.values()]
+      .map((group) => ({
+        ...group,
+        items: [...group.items].sort((left, right) => String(left?.nombre || left?.nombre_almacen || '').localeCompare(String(right?.nombre || right?.nombre_almacen || ''), 'es'))
+      }))
+      .sort((a, b) => a.nombreSucursal.localeCompare(b.nombreSucursal, 'es'));
+    const term = String(almacenPickerSearch || '').trim().toLowerCase();
+    const groups = !term
+      ? allGroups
+      : allGroups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((almacen) => (
+            String(group.nombreSucursal || '').toLowerCase().includes(term)
+            || String(almacen?.nombre || almacen?.nombre_almacen || '').toLowerCase().includes(term)
+          ))
+        }))
+        .filter((group) => group.items.length > 0);
+    const canSelectAll = allGroups.length > 0 && allGroups.every((group) => group.items.length === 1);
+    const emitChange = (ids) => {
+      const normalized = [...new Set(ids)];
+      if (onChangeMulti) {
+        onChangeMulti(normalized);
+      } else if (onChange) {
+        onChange(normalized.length > 0 ? String(normalized[0]) : '');
+      }
+    };
+    const toggleWarehouse = (almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return;
+      const idSucursal = String(almacen?.id_sucursal ?? almacen?.sucursal_id ?? 'sin-sucursal');
+      const current = activeAlmacenes
+        .filter((item) => {
+          const itemId = Number.parseInt(String(item?.id_almacen ?? ''), 10);
+          if (!selectedIds.has(itemId)) return false;
+          if (itemId === idAlmacen) return false;
+          return String(item?.id_sucursal ?? item?.sucursal_id ?? 'sin-sucursal') !== idSucursal;
+        })
+        .map((item) => Number.parseInt(String(item.id_almacen), 10));
+      if (!selectedIds.has(idAlmacen)) current.push(idAlmacen);
+      emitChange(current);
+    };
+    const selectAllBranches = () => {
+      if (!canSelectAll) return;
+      emitChange(allGroups.map((group) => Number.parseInt(String(group.items[0].id_almacen), 10)));
+    };
+    const clearAll = () => emitChange([]);
+    const selectedRows = activeAlmacenes.filter((almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      return selectedIds.has(idAlmacen);
+    });
+    const visibleChips = selectedRows.slice(0, 3);
+    const hiddenChipCount = Math.max(0, selectedRows.length - visibleChips.length);
+
+    return (
+      <div className={`inv-prod-warehouse-picker ${error ? 'is-invalid' : ''}`} id={`inv-prod-alm-${safeScope}`}>
+        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+          <div className="form-text m-0">Selecciona las sucursales donde se venderá. Cada sucursal usa su almacén activo.</div>
+          <span className="inv-prod-warehouse-counter">{selectedIds.size} {selectedIds.size === 1 ? 'seleccionado' : 'seleccionados'}</span>
+        </div>
+        <div className="inv-prod-warehouse-search mb-2">
+          <i className="bi bi-search" />
+          <input
+            type="search"
+            className="form-control"
+            value={almacenPickerSearch}
+            onChange={(event) => setAlmacenPickerSearch(event.target.value)}
+            placeholder="Buscar sucursal o almacén..."
+            disabled={loadingAlmacenes || activeAlmacenes.length === 0}
+          />
+        </div>
+        {selectedRows.length > 0 ? (
+          <div className="inv-prod-warehouse-chips mb-2">
+            {visibleChips.map((almacen) => {
+              const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+              return (
+                <button
+                  key={idAlmacen}
+                  type="button"
+                  className="inv-prod-warehouse-chip"
+                  onClick={() => emitChange([...selectedIds].filter((id) => id !== idAlmacen))}
+                >
+                  <span>{String(almacen?.sucursal || almacen?.nombre_sucursal || `Sucursal #${almacen?.id_sucursal || ''}`)}</span>
+                  <i className="bi bi-x-lg" />
+                </button>
+              );
+            })}
+            {hiddenChipCount > 0 ? <span className="inv-prod-warehouse-chip-more">+{hiddenChipCount} más</span> : null}
+          </div>
+        ) : null}
+        <div className="d-flex flex-wrap gap-2 mb-2">
+          <button
+            type="button"
+            className={`btn btn-sm ${canSelectAll ? 'btn-outline-primary' : 'btn-outline-secondary'}`}
+            onClick={selectAllBranches}
+            disabled={loadingAlmacenes || !canSelectAll}
+          >
+            Todas las sucursales
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            onClick={clearAll}
+            disabled={loadingAlmacenes || selectedIds.size === 0}
+          >
+            Limpiar
+          </button>
+        </div>
+        {!canSelectAll && groups.length > 0 ? (
+          <div className="form-text text-muted mb-2">Hay sucursales con varios almacenes. Selecciona manualmente un almacén para esas sucursales.</div>
+        ) : null}
+        <div className={`inv-prod-warehouse-list ${compact ? 'is-compact' : ''}`}>
+          {loadingAlmacenes ? <div className="inv-prod-warehouse-empty">Cargando almacenes...</div> : null}
+          {!loadingAlmacenes && activeAlmacenes.length > 0 && groups.length === 0 ? (
+            <div className="inv-prod-warehouse-empty">No se encontraron sucursales o almacenes.</div>
+          ) : null}
+          {!loadingAlmacenes && groups.map((group) => (
+            group.items.map((almacen) => {
+              const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+              const checked = selectedIds.has(idAlmacen);
+              const almacenName = String(almacen?.nombre || almacen?.nombre_almacen || `Almacén #${idAlmacen}`);
+              return (
+                <label key={idAlmacen} className={`inv-prod-warehouse-row ${checked ? 'is-selected' : ''}`}>
+                  <input
+                    className="inv-prod-warehouse-checkbox"
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleWarehouse(almacen)}
+                  />
+                  <span className="inv-prod-warehouse-copy">
+                    <strong>{group.nombreSucursal}</strong>
+                    <small>{almacenName}</small>
+                  </span>
+                </label>
+              );
+            })
+          ))}
+        </div>
+        {!loadingAlmacenes && activeAlmacenes.length === 0 ? (
+          <div className="inv-prod-warehouse-empty is-danger">No hay almacenes activos disponibles para asignar.</div>
+        ) : null}
+        {error ? <div className={feedbackClassName}>{error}</div> : null}
+      </div>
+    );
+  }, [almacenes, almacenPickerSearch, loadingAlmacenes]);
+
+  // NEW: normalizador local para campos de texto elegibles del formulario de Productos.
+  // WHY: aplicar mayúsculas de forma segura solo en nombre/descripcion sin afectar números, fechas o selects.
+  // IMPACT: se reutiliza en create/edit; handlers, validaciones y submit permanecen iguales.
+  const normalizeProductoTextInput = useCallback((field, value) => {
+    if (field !== 'nombre_producto' && field !== 'descripcion_producto') return value;
+    return String(value ?? '').replace(/\s+/g, ' ');
+  }, []);
+
+  const normalizeProductoFieldOnBlur = useCallback((field, value) => {
+    if (field === 'nombre_producto') return normalizeVisualText(value, { mode: 'title' });
+    if (field === 'descripcion_producto') return normalizeVisualText(value, { mode: 'sentence' });
+    return value;
+  }, []);
+
+  // NEW: valida IDs de productos persistidos contra el rango INT32 usado por la BD.
+  // WHY: cortar mutaciones con IDs temporales/corruptos antes de llegar a `pa_update` / `pa_delete`.
+  // IMPACT: solo prevencion en frontend; IDs validos siguen enviandose igual.
+  const parseProductoPersistedId = useCallback((rawId) => {
+    const parsed = Number.parseInt(String(rawId ?? ''), 10);
+    if (!Number.isSafeInteger(parsed)) return null;
+    if (parsed <= 0) return null;
+    if (parsed > PRODUCTO_DB_INT32_MAX) return null;
+    return parsed;
+  }, []);
+
+  const formatMoney = (value) => {
+    const n = Number.parseFloat(String(value ?? '0'));
+    if (Number.isNaN(n)) return 'L. 0.00';
+    return `L. ${n.toFixed(2)}`;
+  };
+
+  // AM: resumen visual de margen (solo frontend) para no tocar payload ni reglas de guardado.
+  const buildMarginSummary = useCallback((precioInput, costoInput) => {
+    const parseNullableNumber = (raw) => {
+      if (raw === null || raw === undefined) return null;
+      const text = String(raw).trim();
+      if (!text) return null;
+      const number = Number(text);
+      return Number.isFinite(number) ? number : null;
+    };
+
+    const precio = parseNullableNumber(precioInput);
+    const costo = parseNullableNumber(costoInput);
+    const costoDefinido = costo !== null;
+
+    if (!costoDefinido) {
+      return { costoDefinido: false, margenValor: null, margenPorcentaje: null, text: 'Costo no definido', tone: 'muted' };
+    }
+
+    if (precio === null || precio < 0) {
+      return { costoDefinido: true, margenValor: null, margenPorcentaje: null, text: 'Ingrese precio de venta para calcular margen', tone: 'muted' };
+    }
+
+    if (precio === 0) {
+      return { costoDefinido: true, margenValor: null, margenPorcentaje: null, text: 'Precio de venta no definido', tone: 'muted' };
+    }
+
+    const margenValor = precio - costo;
+    const margenPorcentaje = (margenValor / precio) * 100;
+    return {
+      costoDefinido: true,
+      margenValor,
+      margenPorcentaje,
+      text: `Margen estimado: ${formatMoney(margenValor)} · ${margenPorcentaje.toFixed(2)}%`,
+      tone: margenValor < 0 ? 'danger' : 'ok'
+    };
+  }, []);
+
+  // NUEVO: extrae errores de campo del backend cuando vienen en e.data.errors.
+  const mapApiFieldErrors = useCallback((apiData) => {
+    const errors = apiData?.errors;
+    if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return {};
+
+    return Object.entries(errors).reduce((acc, [field, rawValue]) => {
+      if (typeof rawValue === 'string' && rawValue.trim()) {
+        acc[field] = rawValue.trim();
+      } else if (Array.isArray(rawValue) && rawValue.length > 0) {
+        acc[field] = String(rawValue[0]);
+      } else if (rawValue !== null && rawValue !== undefined) {
+        acc[field] = String(rawValue);
+      }
+      return acc;
+    }, {});
+  }, []);
+
+  // NEW: sanitiza mensajes crudos de BD/SQL para no exponerlos en la UI de Productos.
+  // WHY: ocultar errores internos como `out of range for type integer` y mostrar feedback util al usuario.
+  // IMPACT: los detalles se pueden seguir ver en consola en desarrollo; la UI recibe mensaje seguro.
+  const toSafeProductoUiErrorMessage = useCallback((status, rawMessage, fallbackMessage) => {
+    const candidate = String(rawMessage || fallbackMessage || 'Error inesperado').trim();
+    const lower = candidate.toLowerCase();
+    const leaksDbDetail =
+      lower.includes('out of range') ||
+      lower.includes('for type integer') ||
+      lower.includes('numeric value out of range') ||
+      lower.includes('sqlstate') ||
+      lower.includes('postgres');
+
+    if (leaksDbDetail || status >= 500) {
+      return 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+    }
+
+    return candidate;
+  }, []);
+
+  // AM: genera detalle humano para PRODUCT_IN_USE usando dependency_summary sin rediseñar UI.
+  const buildProductInUseDetail = useCallback((dependencySummary) => {
+    const modules = Array.isArray(dependencySummary?.blocking_modules) ? dependencySummary.blocking_modules : [];
+    if (!modules.length) return '';
+
+    const lines = [];
+    for (const moduleEntry of modules) {
+      const modulo = String(moduleEntry?.modulo || '').trim();
+      const items = Array.isArray(moduleEntry?.items) ? moduleEntry.items.slice(0, 10) : [];
+      const remainingRaw = Number(moduleEntry?.remaining ?? 0);
+      const remaining = Number.isFinite(remainingRaw) && remainingRaw > 0 ? remainingRaw : 0;
+
+      if (modulo === 'menu_publicado') {
+        lines.push('Menú activo/publicado:');
+        if (items.length) {
+          items.forEach((item) => lines.push(`- ${String(item?.nombre || `Menu #${item?.id_menu ?? ''}`).trim()}`));
+        } else if (Number(moduleEntry?.total ?? 0) > 0) {
+          lines.push(`- ${Number(moduleEntry.total)} registro(s) relacionado(s).`);
+        }
+        if (remaining > 0) lines.push(`- Y ${remaining} registros mas.`);
+      } else if (modulo === 'ordenes_compra_en_proceso') {
+        lines.push('Órdenes de compra en proceso:');
+        if (items.length) {
+          items.forEach((item) => {
+            const code = String(item?.codigo || `OC #${item?.id_orden_compra ?? ''}`).trim();
+            const estado = String(item?.estado || '').trim();
+            lines.push(estado ? `- ${code} - ${estado}` : `- ${code}`);
+          });
+        } else if (Number(moduleEntry?.total ?? 0) > 0) {
+          lines.push(`- ${Number(moduleEntry.total)} registro(s) relacionado(s).`);
+        }
+        if (remaining > 0) lines.push(`- Y ${remaining} registros mas.`);
+      } else if (modulo === 'stock_disponible') {
+        lines.push('Stock disponible:');
+        if (items.length) {
+          items.forEach((item) => {
+            const sucursal = String(item?.sucursal || (item?.id_sucursal ? `Sucursal #${item.id_sucursal}` : 'Sucursal sin asignar')).trim();
+            const almacen = String(item?.almacen || (item?.id_almacen ? `Almacen #${item.id_almacen}` : 'Almacen sin asignar')).trim();
+            const stock = Number(item?.stock ?? 0);
+            lines.push(`- ${sucursal} / ${almacen}: ${stock} unidades`);
+          });
+        } else if (Number(moduleEntry?.total ?? 0) > 0) {
+          lines.push(`- ${Number(moduleEntry.total)} ubicaciones con existencia.`);
+        }
+        if (remaining > 0) lines.push(`- Y ${remaining} ubicaciones mas.`);
+      }
+    }
+
+    return lines.join('\n').trim();
+  }, []);
+
+  // NUEVO: centraliza lectura de mensaje y estado para toasts consistentes.
+  const handleApiStatusError = useCallback((apiError, fallbackMessage, setFieldErrors) => {
+    const status = Number(apiError.status || 0);
+    const backendData = apiError.data;
+    const backendMessage = backendData && typeof backendData === 'object'
+        ? backendData.message || backendData.mensaje
+      : '';
+    // AJUSTE: fallback especifico para auth/permisos manteniendo el flujo actual sin redirecciones.
+    const fallbackByStatus =
+      status === 401
+          ? 'Vuelve a iniciar sesi\u00F3n para continuar.'
+        : status === 403
+          ? 'No tienes autorizaci\u00F3n para realizar esta acci\u00F3n.'
+        : fallbackMessage;
+    const rawMessage = String(backendMessage || apiError.message || fallbackByStatus || 'Error inesperado');
+    let message = toSafeProductoUiErrorMessage(status, rawMessage, fallbackByStatus);
+    const backendCode = String(backendData?.code || '').trim().toUpperCase();
+    if (status === 409 && backendCode === 'CATALOGO_MAESTRO_EXISTENTE') {
+      message = 'Este producto ya existe. Edita sus sucursales desde la lista de almacenes.';
+    } else if (status === 409 && backendCode === 'CATALOGO_LEGACY_READ_ONLY') {
+      message = 'Este registro pertenece al modelo anterior. Modifica el maestro correspondiente.';
+    }
+    if (status === 409 && backendCode === 'PRODUCT_IN_USE') {
+      const detailText = buildProductInUseDetail(backendData?.dependency_summary);
+      if (detailText) {
+        message = `${message}\n\n${detailText}`;
+      }
+    }
+
+    // NEW: conserva el detalle interno de error solo en desarrollo cuando se oculta en UI.
+    // WHY: facilitar diagnóstico sin exponer mensajes de BD al usuario final.
+    // IMPACT: solo logs en consola DEV; producción permanece sin cambios visuales.
+    
+    if (typeof setFieldErrors === 'function') {
+      const fieldErrors = mapApiFieldErrors(backendData);
+      if (Object.keys(fieldErrors).length > 0) {
+        setFieldErrors((prev) => ({ ...prev, ...fieldErrors }));
+      }
+    }
+
+    // VALIDACION: se respeta feedback por código HTTP acordado con backend.
+    // AJUSTE: se agrega manejo explicito para 401/403 con toasts claros y consistentes.
+    if (status === 401) safeToast('SESI\u00D3N EXPIRADA', message, 'warning');
+    else if (status === 403) safeToast('SIN PERMISOS', message, 'warning');
+    else if (status === 400) safeToast('VALIDACION', message, 'warning');
+    else if (status === 404) safeToast('NO ENCONTRADO', message, 'warning');
+    else if (status === 409) safeToast('CONFLICTO', message, 'warning');
+    else if (status >= 500) safeToast('ERROR', message, 'danger');
+    else safeToast('ERROR', message, 'danger');
+
+    return message;
+  }, [buildProductInUseDetail, mapApiFieldErrors, safeToast, toSafeProductoUiErrorMessage]);
+
+  // NUEVO: genera puntos SVG normalizados para sparkline de KPI.
+  const buildSparklinePoints = useCallback((series, width = 120, height = 44, padding = 4) => {
+    if (!Array.isArray(series) || series.length < 2) return '';
+
+    const values = series.map((value) => Number(value ?? 0));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const safeWidth = Math.max(width - padding * 2, 1);
+    const safeHeight = Math.max(height - padding * 2, 1);
+
+    return values
+      .map((value, index) => {
+        const x = padding + (safeWidth * index) / (values.length - 1);
+        const y = padding + safeHeight - ((value - min) / range) * safeHeight;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(' ');
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (createImage.previewUrl && createImage.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(createImage.previewUrl);
+      }
+    };
+  }, [createImage.previewUrl]);
+
+  useEffect(() => {
+    setDrawerImageAction(buildDrawerImageActionState());
+  }, [drawerOpen, selectedProductoId]);
+
+  useEffect(() => {
+    // NEW: limpia timeouts pendientes de remoción de cards al desmontar el tab.
+    // WHY: evitar callbacks tardíos sobre estado desmontado al cerrar/cambiar de vista.
+    // IMPACT: solo housekeeping de UX local; sin impacto en datos ni API.
+    const timeouts = removeCardTimeoutsRef.current;
+    return () => {
+      if (!timeouts || typeof timeouts.forEach !== 'function') return;
+      timeouts.forEach((timeoutId) => {
+        if (typeof window !== 'undefined') window.clearTimeout(timeoutId);
+      });
+      timeouts.clear();
+    };
+  }, []);
+
   // ==============================
   // MAPS PARA LABELS (NO MOSTRAR IDS)
   // ==============================
   const categoriasMap = useMemo(() => {
     const m = new Map();
     for (const c of categorias) {
-      m.set(String(c?.id_categoria_producto), c);
+      m.set(String(c.id_categoria_producto), c);
     }
     return m;
+  }, [categorias]);
+
+  // NEW: opciones de categorias activas para selects/listados de asignacion en Productos.
+  // WHY: evitar mostrar categorias inactivas al crear/editar/filtrar por categoria en otros submodulos.
+  // IMPACT: no cambia endpoints; el mapa de labels sigue usando todas las categorias para leer historicos.
+  const categoriasActivas = useMemo(() => {
+    const isActive = (categoria) => {
+      const raw = categoria.estado;
+      if (raw === undefined || raw === null || raw === '') return true;
+      return raw === true || raw === 'true' || raw === 1 || raw === '1';
+    };
+    return (Array.isArray(categorias) ? categorias : []).filter(isActive);
   }, [categorias]);
 
   const almacenesMap = useMemo(() => {
     const m = new Map();
     for (const a of almacenes) {
-      m.set(String(a?.id_almacen), a);
+      m.set(String(a.id_almacen), a);
     }
     return m;
   }, [almacenes]);
@@ -122,75 +909,507 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const tipoDeptoMap = useMemo(() => {
     const m = new Map();
     for (const d of tipoDepartamentos) {
-      m.set(String(d?.id_tipo_departamento), d);
+      m.set(String(d.id_tipo_departamento), d);
     }
     return m;
   }, [tipoDepartamentos]);
 
-  const getCategoriaLabel = (id) => {
+  const almacenFiltroId = useMemo(() => {
+    const parsed = Number.parseInt(String(almacenFiltro ?? '').trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [almacenFiltro]);
+
+  const getCategoriaLabel = useCallback((id) => {
     const c = categoriasMap.get(String(id));
     if (!c) return String(id || '-');
     return `${c.nombre_categoria}`;
-  };
+  }, [categoriasMap]);
 
-  const getAlmacenLabel = (id) => {
+  const getAlmacenLabel = useCallback((id) => {
     const a = almacenesMap.get(String(id));
     if (!a) return String(id || '-');
-    return `${a.nombre} (Sucursal ${a.id_sucursal})`;
-  };
+    // AM: el usuario pidio mostrar solo el nombre del almacen.
+    return `${a.nombre}`;
+  }, [almacenesMap]);
 
-  const getDeptoLabel = (id) => {
+  const getDeptoLabel = useCallback((id) => {
     if (!id && id !== 0) return '-';
     const d = tipoDeptoMap.get(String(id));
     if (!d) return String(id || '-');
     return `${d.nombre_departamento}${d.estado === false ? ' (Inactivo)' : ''}`;
-  };
+  }, [tipoDeptoMap]);
+
+  const selectedProducto = useMemo(() => {
+    if (!selectedProductoId) return null;
+    return productos.find((p) => Number(p.id_producto) === Number(selectedProductoId)) || null;
+  }, [productos, selectedProductoId]);
+
+  const openAssignmentsModal = useCallback((producto) => {
+    if (!canGestionarSucursales) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para consultar sucursales de productos.', 'warning');
+      return;
+    }
+    setAssignmentsModalProducto(producto || null);
+  }, [canGestionarSucursales, safeToast]);
+
+  const closeAssignmentsModal = useCallback(() => {
+    setAssignmentsModalProducto(null);
+  }, []);
+
+  const createMarginSummary = useMemo(
+    () => buildMarginSummary(form?.precio, form?.costo_compra),
+    [buildMarginSummary, form?.precio, form?.costo_compra]
+  );
+
+  const editMarginSummary = useMemo(
+    () => buildMarginSummary(editForm?.precio ?? selectedProducto?.precio, editForm?.costo_compra ?? selectedProducto?.costo_compra),
+    [buildMarginSummary, editForm?.precio, editForm?.costo_compra, selectedProducto?.precio, selectedProducto?.costo_compra]
+  );
+
+  const renderCompactMarginSummary = useCallback((summary) => {
+    if (!summary) return null;
+    const toneClass = summary.tone === 'danger' ? 'text-danger' : 'text-muted';
+    const hasNumbers = Number.isFinite(summary.margenValor) && Number.isFinite(summary.margenPorcentaje);
+
+    if (!hasNumbers) {
+      return (
+        <div className={`small d-flex align-items-center flex-wrap gap-1 lh-sm ${toneClass}`}>
+          <span className="fw-semibold">Margen estimado:</span>
+          <span>{summary.text}</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`small d-flex align-items-center flex-wrap gap-1 lh-sm ${toneClass}`}>
+        <span className="fw-semibold">Margen estimado:</span>
+        <span className="px-2 py-0 rounded border bg-light">{formatMoney(summary.margenValor)}</span>
+        <span className="px-2 py-0 rounded border bg-light">{summary.margenPorcentaje.toFixed(2)}%</span>
+      </div>
+    );
+  }, [formatMoney]);
+
+  // NEW: normalización local para detectar productos duplicados sin depender del backend.
+  // WHY: prevenir registros repetidos en create/edit usando los campos reales disponibles en el formulario.
+  // IMPACT: validación UX en frontend; backend y contratos permanecen intactos.
+  const normalizeProductoDuplicateText = useCallback(
+    (value) => String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase(),
+    []
+  );
+
+  const normalizeProductoDuplicateId = useCallback((value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isNaN(parsed)) return String(parsed);
+    return raw.toLowerCase();
+  }, []);
+
+  const buildProductoDuplicateKey = useCallback((data) => {
+    const nombre = normalizeProductoDuplicateText(data.nombre_producto);
+    const categoria = normalizeProductoDuplicateId(data.id_categoria_producto);
+    const almacen = normalizeProductoDuplicateId(data.id_almacen);
+
+    if (!nombre || !categoria || !almacen) return '';
+    return `${nombre}__cat:${categoria}__alm:${almacen}`;
+  }, [normalizeProductoDuplicateId, normalizeProductoDuplicateText]);
+
+  const findDuplicateProducto = useCallback((data, { excludeId = null } = {}) => {
+    const candidateAlmacenes = Array.isArray(data?.id_almacenes) && data.id_almacenes.length > 0
+      ? data.id_almacenes
+      : [data?.id_almacen];
+    const candidateKeys = candidateAlmacenes
+      .map((idAlmacen) => buildProductoDuplicateKey({ ...data, id_almacen: idAlmacen }))
+      .filter(Boolean);
+    if (candidateKeys.length === 0) return null;
+    const candidateKeySet = new Set(candidateKeys);
+
+    return productos.find((item) => {
+      const sameRecord = excludeId !== null && Number(item.id_producto) === Number(excludeId);
+      if (sameRecord) return false;
+      if (item?.estado === false) return false;
+      return candidateKeySet.has(buildProductoDuplicateKey(item));
+    }) || null;
+  }, [buildProductoDuplicateKey, productos]);
+
+  const patchProductoLocalById = useCallback((id, patch) => {
+    if (!id || !patch || typeof patch !== 'object') return;
+    setProductos((prev) =>
+      prev.map((item) => (
+        Number(item.id_producto) === Number(id)
+            ? { ...item, ...patch }
+          : item
+      ))
+    );
+  }, []);
+
+  const upsertProductoLocal = useCallback((producto) => {
+    if (!producto || typeof producto !== 'object') return;
+    const productId = Number(producto.id_producto);
+    setProductos((prev) => {
+      const idx = prev.findIndex((item) => Number(item.id_producto) === productId);
+      if (idx === -1) return [producto, ...prev];
+      const next = [...prev];
+      next[idx] = { ...prev[idx], ...producto };
+      return next;
+    });
+  }, []);
+
+  const buildProductosQueryOptions = useCallback((overrides = {}) => {
+    const nextPageRaw = overrides.page ?? 1;
+    const nextPage = Math.max(1, Number(nextPageRaw) || 1);
+    const nextPageSizeRaw = overrides.pageSize ?? PRODUCTOS_FETCH_PAGE_SIZE;
+    const nextPageSize = Math.max(1, Number(nextPageSizeRaw) || PRODUCTOS_FETCH_PAGE_SIZE);
+    const normalizedSearch = String(search ?? '').trim();
+
+    let normalizedEstado = 'activo';
+    if (estadoFiltro === 'activo' || estadoFiltro === 'inactivo' || estadoFiltro === 'todos') {
+      normalizedEstado = estadoFiltro;
+    }
+    if (normalizedEstado === 'todos') {
+      normalizedEstado = showInactiveProductos ? 'inactivo' : 'activo';
+    }
+
+    const options = {
+      q: normalizedSearch || undefined,
+      estado: normalizedEstado,
+      stock: stockFiltro !== 'todos' ? stockFiltro : undefined,
+      id_categoria_producto: categoriaFiltro !== 'todos' ? categoriaFiltro : undefined,
+      id_almacen: almacenFiltroId ?? undefined,
+      id_tipo_departamento:
+        SHOW_PRODUCTO_DEPARTAMENTOS && deptoFiltro !== 'todos'
+            ? deptoFiltro
+          : undefined,
+      page: nextPage,
+      pageSize: nextPageSize,
+      sort: sortBy
+    };
+
+    return options;
+  }, [
+    almacenFiltroId,
+    categoriaFiltro,
+    currentPage,
+    deptoFiltro,
+    estadoFiltro,
+    pageSize,
+    search,
+    showInactiveProductos,
+    sortBy,
+    stockFiltro
+  ]);
+
+  const fetchProductosDataset = useCallback(async (overrides = {}) => {
+    const baseOptions = buildProductosQueryOptions({
+      ...overrides,
+      page: 1,
+      pageSize: overrides.pageSize ?? PRODUCTOS_FETCH_PAGE_SIZE
+    });
+
+    const firstPayload = await inventarioService.getProductos(baseOptions);
+    if (Array.isArray(firstPayload)) {
+      return {
+        items: firstPayload,
+        total: firstPayload.length
+      };
+    }
+
+    let items = Array.isArray(firstPayload?.items) ? [...firstPayload.items] : [];
+    const totalRaw = Number(firstPayload?.total);
+    const total = Number.isFinite(totalRaw) ? Math.max(0, totalRaw) : items.length;
+    const totalPagesRaw = Number(firstPayload?.totalPages);
+    const totalPagesApi = Number.isFinite(totalPagesRaw) ? Math.max(1, totalPagesRaw) : 1;
+
+    for (let page = 2; page <= totalPagesApi; page += 1) {
+      const nextPayload = await inventarioService.getProductos({ ...baseOptions, page });
+      if (Array.isArray(nextPayload)) {
+        items = items.concat(nextPayload);
+        continue;
+      }
+      const nextItems = Array.isArray(nextPayload?.items) ? nextPayload.items : [];
+      if (nextItems.length > 0) items = items.concat(nextItems);
+    }
+
+    return {
+      items,
+      total: Number.isFinite(total) ? total : items.length
+    };
+  }, [buildProductosQueryOptions]);
+
+  // NEW: sincronizacion silenciosa de productos sin vaciar lista ni activar loader global.
+  // WHY: obtener IDs reales despues de crear cuando el backend responde solo con mensaje (sin `id_producto`).
+  // IMPACT: refresca estado local de `productos` sin cambiar contratos API ni UX de loaders.
+  const syncProductosSilently = useCallback(async () => {
+    try {
+      const dataset = await fetchProductosDataset();
+      setProductos(dataset.items);
+      setTotalProductos(dataset.total);
+      setTotalPages(1);
+      if (currentPage !== 1) setCurrentPage(1);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [currentPage, fetchProductosDataset]);
+
+  const removeProductoLocalById = useCallback((id, { animate = false } = {}) => {
+    if (!id) return;
+    const numericId = Number(id);
+    const commitRemove = () => {
+      setProductos((prev) => prev.filter((item) => Number(item.id_producto) !== numericId));
+      setRemovingProductoIds((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, numericId)) return prev;
+        const next = { ...prev };
+        delete next[numericId];
+        return next;
+      });
+    };
+
+    if (!animate || typeof window === 'undefined') {
+      commitRemove();
+      return;
+    }
+
+    setRemovingProductoIds((prev) => ({ ...prev, [numericId]: true }));
+
+    const previousTimeout = removeCardTimeoutsRef.current.get(numericId);
+    if (previousTimeout) window.clearTimeout(previousTimeout);
+
+    const timeoutId = window.setTimeout(() => {
+      removeCardTimeoutsRef.current.delete(numericId);
+      commitRemove();
+    }, 180);
+
+    removeCardTimeoutsRef.current.set(numericId, timeoutId);
+  }, []);
+
+  // AJUSTE: usa normalización estricta para mostrar estado activo/inactivo de forma consistente.
+  const resolveEstadoActivo = useCallback((producto) => {
+    if (!producto) return false;
+    const localEstado = localEstadoMap[producto.id_producto];
+    if (localEstado !== null && localEstado !== undefined) return productoActivo(localEstado);
+    return productoActivo(producto.estado);
+  }, [localEstadoMap, productoActivo]);
+
+  const resolveEstadoProducto = useCallback((producto) => {
+    if (!resolveEstadoActivo(producto)) return { label: 'Inactivo', className: 'is-inactive' };
+
+    const stockMeta = getStockMeta(producto.cantidad, producto.stock_minimo);
+    if (stockMeta.qty <= 0) return { label: 'Sin existencias', className: 'is-empty' };
+    if (stockMeta.className === 'is-low') return { label: 'Stock bajo', className: 'is-low' };
+    return { label: 'En existencia', className: 'is-ok' };
+  }, [resolveEstadoActivo]);
+
+  const clearCreateImage = useCallback(() => {
+    // NEW: limpia tambien el valor del input file de alta.
+    // WHY: permite volver a seleccionar el mismo archivo despues de "Quitar imagen" sin quedar pegado al valor previo.
+    // IMPACT: solo UX/estado local del formulario de create.
+    if (createImageInputRef.current) createImageInputRef.current.value = '';
+    setCreateImage(buildCreateImageState());
+  }, []);
+
+  const setCreateImageError = useCallback((message) => {
+    setCreateImage({
+      ...buildCreateImageState(),
+      error: message
+    });
+  }, []);
+
+  const resetCreateModalScroll = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const reset = () => {
+      if (createBodyRef.current) createBodyRef.current.scrollTop = 0;
+    };
+    window.requestAnimationFrame(() => {
+      reset();
+      window.requestAnimationFrame(reset);
+    });
+  }, []);
+
+  const resetDrawerScroll = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const reset = () => {
+      if (drawerBodyRef.current) drawerBodyRef.current.scrollTop = 0;
+    };
+    window.requestAnimationFrame(() => {
+      reset();
+      window.requestAnimationFrame(reset);
+    });
+  }, []);
+
+  const onCreateImageChange = useCallback((event) => {
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!canSubirImagenProducto) {
+      if (input) input.value = '';
+      return;
+    }
+
+    if (!file) return;
+
+    const fileError = getInventarioImageFileError(file, INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS);
+    if (fileError) {
+      setCreateImage((prev) => ({
+        ...prev,
+        loading: false,
+        error: fileError
+      }));
+      input.value = '';
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setCreateImage({
+      file,
+      previewUrl,
+      loading: true,
+      error: ''
+    });
+    resetCreateModalScroll();
+
+    const probe = new Image();
+    probe.onload = () => {
+      setCreateImage((prev) => {
+        if (prev.previewUrl !== previewUrl) return prev;
+        return {
+          ...prev,
+          loading: false,
+          error: ''
+        };
+      });
+      resetCreateModalScroll();
+    };
+    probe.onerror = () => {
+      setCreateImageError('No se pudo cargar la imagen seleccionada.');
+      input.value = '';
+      resetCreateModalScroll();
+    };
+    probe.src = previewUrl;
+  }, [canSubirImagenProducto, clearCreateImage, resetCreateModalScroll, setCreateImageError]);
+
+  const onCreatePreviewError = useCallback(() => {
+    setCreateImageError('No se pudo mostrar la vista previa de la imagen.');
+  }, [setCreateImageError]);
+
+  const markImageAsError = useCallback((productoId) => {
+    if (!productoId) return;
+    setImageErrorMap((prev) => {
+      if (prev[productoId]) return prev;
+      return { ...prev, [productoId]: true };
+    });
+  }, []);
+
+  const getProductoImageSrc = useCallback((producto) => {
+    if (!producto) return '';
+    const id = producto.id_producto;
+    if (imageErrorMap[id]) return '';
+    return resolveInventarioImageUrl(
+      producto.imagen_principal_url || producto.imagen_url || producto.imagen || producto.url_publica || ''
+    );
+  }, [imageErrorMap]);
+
+  const uploadProductoImageFile = useCallback(async (file) => {
+    const optimizedFile = await optimizeInventarioImageForUpload(
+      file,
+      INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS
+    );
+    const optimizedFileError = getInventarioImageFileError(
+      optimizedFile,
+      INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS
+    );
+    if (optimizedFileError) throw new Error(optimizedFileError);
+
+    const payload = await buildInventarioImageUploadPayload(optimizedFile);
+    return inventarioService.crearArchivoImagen({
+      ...payload,
+      bucket: 'jonnys-assets'
+    });
+  }, []);
+
+  const extractProductoFromApiResponse = useCallback((payload) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    if (payload.producto && typeof payload.producto === 'object') return payload.producto;
+    if (payload.data.producto && typeof payload.data.producto === 'object') return payload.data.producto;
+    return null;
+  }, []);
+
+  const cleanupArchivoTemporal = useCallback(async (idArchivo, reason) => {
+    const parsedId = Number.parseInt(String(idArchivo ?? ''), 10);
+    if (!Number.isInteger(parsedId) || parsedId <= 0) return true;
+    try {
+      await inventarioService.eliminarArchivo(parsedId, {
+        reason: String(reason || 'productos_cleanup')
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   // ==============================
   // VALIDACIÓN MÍNIMA (PRODUCTOS)
   // ==============================
   const validarProducto = (data) => {
     // === LIMPIEZA ===
-    const nombre = String(data?.nombre_producto ?? '').trim();
-    const descripcion = String(data?.descripcion_producto ?? '').trim();
+    const nombre = normalizeVisualText(data.nombre_producto ?? '', { mode: 'title' });
+    const descripcion = normalizeVisualText(data.descripcion_producto ?? '', { mode: 'sentence' });
 
-    const precioRaw = String(data?.precio ?? '').trim();
-    const cantidadRaw = String(data?.cantidad ?? '').trim();
+    const precioRaw = String(data.precio ?? '').trim();
+    const costoCompraRaw = String(data.costo_compra ?? '').trim();
+    // NUEVO: se valida stock_minimo para enviar valor compatible con backend.
+    const stockMinimoRaw = String(data.stock_minimo ?? '').trim();
 
-    const categoriaRaw = String(data?.id_categoria_producto ?? '').trim();
-    const almacenRaw = String(data?.id_almacen ?? '').trim();
-    const deptoRaw = String(data?.id_tipo_departamento ?? '').trim(); // OPCIONAL
+    const categoriaRaw = String(data.id_categoria_producto ?? '').trim();
+    const almacenesSeleccionados = [...new Set(
+      (Array.isArray(data.id_almacenes) && data.id_almacenes.length > 0
+        ? data.id_almacenes
+        : [data.id_almacen]
+      )
+        .map((id) => Number.parseInt(String(id ?? '').trim(), 10))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    const deptoRaw = SHOW_PRODUCTO_DEPARTAMENTOS ? String(data.id_tipo_departamento ?? '').trim() : '';
 
-    const fechaIngreso = String(data?.fecha_ingreso_producto ?? '').trim();
-    const fechaCaducidad = String(data?.fecha_caducidad ?? '').trim();
+    const fechaIngreso = String(data.fecha_ingreso_producto ?? '').trim();
+    const fechaCaducidad = String(data.fecha_caducidad ?? '').trim();
 
     const errors = {};
 
     // === NOMBRE OBLIGATORIO ===
     if (nombre.length < 2) errors.nombre_producto = 'MÍNIMO 2 CARACTERES';
-    if (nombre.length > 80) errors.nombre_producto = 'MÁXIMO 80 CARACTERES';
+    // AJUSTE: backend valida nombre_producto con maximo de 50 caracteres.
+    if (nombre.length > 50) errors.nombre_producto = 'M\u00C1XIMO 50 CARACTERES';
 
     // === PRECIO OBLIGATORIO (DECIMAL) ===
     const precio = Number.parseFloat(precioRaw);
     if (!precioRaw) errors.precio = 'EL PRECIO ES OBLIGATORIO';
     else if (Number.isNaN(precio) || precio < 0) errors.precio = 'DEBE SER UN NÚMERO >= 0';
-
-    // === CANTIDAD OBLIGATORIA (ENTERO) ===
-    const cantidad = Number.parseInt(cantidadRaw, 10);
-    if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
-    else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
-    else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
+    // AM: costo_compra es opcional; si se captura debe ser decimal no negativo (max 4 decimales).
+    let costo_compra = null;
+    if (costoCompraRaw !== '') {
+      const costoCompra = Number.parseFloat(costoCompraRaw);
+      if (!/^\d+(\.\d{1,4})?$/.test(costoCompraRaw)) errors.costo_compra = 'MÁXIMO 4 DECIMALES';
+      else if (Number.isNaN(costoCompra) || costoCompra < 0) errors.costo_compra = 'DEBE SER UN NÚMERO >= 0';
+      else costo_compra = costoCompra;
+    }
 
     // === FK CATEGORÍA OBLIGATORIA ===
+    // VALIDACION: stock_minimo debe ser entero no negativo.
+    const stock_minimo = Number.parseInt(stockMinimoRaw || '0', 10);
+    if (stockMinimoRaw === '') errors.stock_minimo = 'EL STOCK M\u00CDNIMO ES OBLIGATORIO';
+    else if (!/^\d+$/.test(stockMinimoRaw)) errors.stock_minimo = 'SOLO ENTEROS (SIN DECIMALES)';
+    else if (Number.isNaN(stock_minimo) || stock_minimo < 0) errors.stock_minimo = 'DEBE SER UN ENTERO >= 0';
+
     const id_categoria_producto = Number.parseInt(categoriaRaw, 10);
     if (!categoriaRaw) errors.id_categoria_producto = 'LA CATEGORÍA ES OBLIGATORIA';
     else if (Number.isNaN(id_categoria_producto) || id_categoria_producto <= 0)
       errors.id_categoria_producto = 'DEBE SER UN NÚMERO > 0';
 
     // === FK ALMACÉN OBLIGATORIA ===
-    const id_almacen = Number.parseInt(almacenRaw, 10);
-    if (!almacenRaw) errors.id_almacen = 'EL ALMACÉN ES OBLIGATORIO';
-    else if (Number.isNaN(id_almacen) || id_almacen <= 0) errors.id_almacen = 'DEBE SER UN NÚMERO > 0';
+    const id_almacen = almacenesSeleccionados[0] || null;
+    if (almacenesSeleccionados.length === 0) {
+      errors.id_almacen = 'SELECCIONA AL MENOS UN ALMACEN';
+    }
 
     // === FK TIPO_DEPARTAMENTO (OPCIONAL) ===
     let id_tipo_departamento = null;
@@ -201,7 +1420,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     }
 
     // === DESCRIPCIÓN OPCIONAL ===
-    if (descripcion.length > 150) errors.descripcion_producto = 'MÁXIMO 150 CARACTERES';
+
+    // AJUSTE: se permite hasta 250 caracteres para descripcion_producto.
+    if (descripcion.length > 250) errors.descripcion_producto = 'M\u00C1XIMO 250 CARACTERES';
 
     // === FECHAS OPCIONALES ===
     if (fechaIngreso && !/^\d{4}-\d{2}-\d{2}$/.test(fechaIngreso)) {
@@ -210,19 +1431,30 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (fechaCaducidad && !/^\d{4}-\d{2}-\d{2}$/.test(fechaCaducidad)) {
       errors.fecha_caducidad = 'FORMATO INVÁLIDO (YYYY-MM-DD)';
     }
-
+    if (
+      !errors.fecha_ingreso_producto &&
+      !errors.fecha_caducidad &&
+      fechaIngreso &&
+      fechaCaducidad &&
+      fechaCaducidad < fechaIngreso
+    ) {
+      errors.fecha_caducidad = PRODUCTO_DATE_ORDER_MESSAGE;
+    }
     return {
       ok: Object.keys(errors).length === 0,
       errors,
       cleaned: {
         nombre_producto: nombre,
         precio,
-        cantidad,
+        costo_compra,
+        cantidad: 0,
+        stock_minimo,
         descripcion_producto: descripcion,
         fecha_ingreso_producto: fechaIngreso,
         fecha_caducidad: fechaCaducidad,
         id_categoria_producto,
         id_almacen,
+        id_almacenes: almacenesSeleccionados,
         id_tipo_departamento // PUEDE SER null (PERO NO LO ENVIAREMOS SI ES NULL)
       }
     };
@@ -236,9 +1468,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const payload = {
       nombre_producto: cleaned.nombre_producto,
       precio: cleaned.precio,
-      cantidad: cleaned.cantidad,
+      costo_compra: cleaned.costo_compra,
+      // AJUSTE: se incluye stock_minimo como numero para alinear create con backend.
+      stock_minimo: cleaned.stock_minimo,
       id_categoria_producto: cleaned.id_categoria_producto,
-      id_almacen: cleaned.id_almacen
+      id_almacen: cleaned.id_almacen,
+      id_almacenes: cleaned.id_almacenes
     };
 
     if (cleaned.descripcion_producto) payload.descripcion_producto = cleaned.descripcion_producto;
@@ -246,7 +1481,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (cleaned.fecha_caducidad) payload.fecha_caducidad = cleaned.fecha_caducidad;
 
     // COMENTARIO EN MAYÚSCULAS: SOLO ENVIAR id_tipo_departamento SI VIENE CON VALOR (NO NULL)
-    if (cleaned.id_tipo_departamento) payload.id_tipo_departamento = cleaned.id_tipo_departamento;
+    if (SHOW_PRODUCTO_DEPARTAMENTOS && cleaned.id_tipo_departamento) payload.id_tipo_departamento = cleaned.id_tipo_departamento;
 
     return payload;
   };
@@ -254,29 +1489,40 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   // CARGAS (API)
   // ==============================
-  const cargarProductos = async () => {
-    setLoadingProductos(true);
+  const cargarProductos = useCallback(async (overrides = {}) => {
+    const silent = overrides.silent === true;
+    if (!silent) setLoadingProductos(true);
     setError('');
     try {
-      // COMENTARIO EN MAYÚSCULAS: PRODUCTOS SE CARGA DESDE EL BACKEND /productos
-      const data = await inventarioService.getProductos();
-      setProductos(Array.isArray(data) ? data : []);
+      const dataset = await fetchProductosDataset(overrides);
+      setProductos(dataset.items);
+      setTotalProductos(dataset.total);
+      setTotalPages(1);
+      if (currentPage !== 1) setCurrentPage(1);
     } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO PRODUCTOS';
+      const msg = e.message || 'ERROR CARGANDO PRODUCTOS';
       setError(msg);
       safeToast('ERROR', msg, 'danger');
     } finally {
-      setLoadingProductos(false);
+      if (!silent) setLoadingProductos(false);
     }
-  };
+  }, [currentPage, fetchProductosDataset, safeToast]);
 
   const cargarAlmacenes = async () => {
     setLoadingAlmacenes(true);
     try {
       const data = await inventarioService.getAlmacenes();
-      setAlmacenes(Array.isArray(data) ? data : []);
+      // AM: compatibilidad defensiva para respuestas array u objeto ({data|resultado}) en el catalogo de almacenes.
+      const rows = Array.isArray(data)
+          ? data
+        : Array.isArray(data.data)
+          ? data.data
+        : Array.isArray(data.resultado)
+          ? data.resultado
+        : [];
+      setAlmacenes(rows);
     } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO ALMACENES';
+      const msg = e.message || 'ERROR CARGANDO ALMACENES';
       setError(msg);
       safeToast('ERROR', msg, 'danger');
     } finally {
@@ -291,7 +1537,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       const data = await inventarioService.getTipoDepartamentos();
       setTipoDepartamentos(Array.isArray(data) ? data : []);
     } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO TIPO DEPARTAMENTO';
+      const msg = e.message || 'ERROR CARGANDO TIPO DEPARTAMENTO';
       setError(msg);
       safeToast('ERROR', msg, 'danger');
     } finally {
@@ -301,28 +1547,46 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   useEffect(() => {
     // COMENTARIO EN MAYÚSCULAS: CARGA INICIAL DEL TAB PRODUCTOS
-    cargarProductos();
     cargarAlmacenes();
-    cargarTipoDepartamentos();
+    if (SHOW_PRODUCTO_DEPARTAMENTOS) cargarTipoDepartamentos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!SHOW_PRODUCTO_DEPARTAMENTOS) setDeptoFiltro('todos');
+  }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    almacenFiltro,
+    categoriaFiltro,
+    deptoFiltro,
+    estadoFiltro,
+    search,
+    showInactiveProductos,
+    sortBy,
+    stockFiltro
+  ]);
+
+  useEffect(() => {
+    void cargarProductos();
+  }, [cargarProductos]);
+
+  useEffect(() => {
+    setCurrentPage((prev) => {
+      if (prev <= totalPages) return prev;
+      return Math.max(1, totalPages);
+    });
+  }, [totalPages]);
 
   // ==============================
   // RESET FORM CREAR
   // ==============================
   const resetForm = () => {
-    setForm({
-      nombre_producto: '',
-      precio: '',
-      cantidad: '',
-      descripcion_producto: '',
-      fecha_ingreso_producto: '',
-      fecha_caducidad: '',
-      id_categoria_producto: '',
-      id_almacen: '',
-      id_tipo_departamento: ''
-    });
+    setForm(buildCreateProductoInitialForm());
     setCreateErrors({});
+    clearCreateImage();
   };
 
   // ==============================
@@ -330,25 +1594,75 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   const onCrear = async (e) => {
     e.preventDefault();
+    if (!canCrear) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para crear productos.', 'warning');
+      return;
+    }
+    if (creating) return;
     setError('');
 
     const v = validarProducto(form);
     setCreateErrors(v.errors);
     if (!v.ok) return;
 
+    const duplicateProducto = findDuplicateProducto(v.cleaned);
+    if (duplicateProducto) {
+      setCreateErrors((prev) => ({
+        ...prev,
+        nombre_producto: PRODUCTO_DUPLICATE_CONFLICT_MESSAGE
+      }));
+      return;
+    }
+
+    setCreating(true);
+    let uploadedArchivoId = null;
     try {
       const payload = buildProductoPayload(v.cleaned);
-      await inventarioService.crearProducto(payload);
+
+      // NEW: si hay imagen seleccionada, se crea primero en `archivos` y luego se envia la FK al POST /productos.
+      // WHY: mantener el flujo actual del formulario sin introducir multipart ni romper el contrato existente.
+      // IMPACT: el create solo agrega `id_archivo_imagen_principal` cuando la imagen se subio correctamente.
+      if (createImage.file) {
+        const archivoResp = await uploadProductoImageFile(createImage.file);
+        const archivoId = Number.parseInt(String(archivoResp.id_archivo ?? ''), 10);
+        if (!Number.isInteger(archivoId) || archivoId <= 0) {
+          throw new Error('No se pudo obtener el archivo de imagen creado.');
+        }
+        uploadedArchivoId = archivoId;
+        payload.id_archivo_imagen_principal = archivoId;
+      }
+
+      const createResp = await inventarioService.crearProducto(payload);
+      const createdProductoApi = extractProductoFromApiResponse(createResp);
+      const persistedId = parseProductoPersistedId(createdProductoApi.id_producto);
+      if (!createdProductoApi || !persistedId) {
+        throw new Error('No se pudo confirmar el producto creado. Intenta nuevamente.');
+      }
+
+      const createdProductoLocal = {
+        ...createdProductoApi,
+        id_producto: persistedId
+      };
+      upsertProductoLocal(createdProductoLocal);
+      uploadedArchivoId = null;
 
       resetForm();
-      setShowCreateProductoSheet(false);
-      await cargarProductos();
+      closeCreateProductoModal(true);
 
       safeToast('CREADO', 'EL PRODUCTO SE CREÓ CORRECTAMENTE.', 'success');
     } catch (e2) {
-      const msg = e2?.message || 'ERROR CREANDO PRODUCTO';
+      const cleanupOk = await cleanupArchivoTemporal(uploadedArchivoId, 'productos_create_failed');
+      if (Number(e2?.status) === 409 && String(e2?.code || e2?.data?.code || '').toUpperCase() === 'CATALOGO_MAESTRO_EXISTENTE') {
+        await syncProductosSilently();
+      }
+      // AJUSTE: se maneja ApiError por status y errores de campo para feedback consistente.
+      const msg = handleApiStatusError(e2, 'ERROR CREANDO PRODUCTO', setCreateErrors);
       setError(msg);
-      safeToast('ERROR', msg, 'danger');
+      if (!cleanupOk) {
+        safeToast('AVISO', 'No se pudo limpiar la imagen temporal. Se reintentara posteriormente.', 'warning');
+      }
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -356,70 +1670,520 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // INICIAR / CANCELAR EDICIÓN
   // ==============================
   const iniciarEdicion = (p) => {
+    if (!canEditar) return;
     setError('');
     setEditErrors({});
     setEditId(p.id_producto);
+    const editAlmacenes = normalizePositiveIdList(
+      Array.isArray(p.id_almacenes) && p.id_almacenes.length > 0
+        ? p.id_almacenes
+        : [p.id_almacen]
+    );
 
-    setEditForm({
+    const nextEditForm = {
       nombre_producto: p.nombre_producto ?? '',
       precio: p.precio ?? '',
-      cantidad: p.cantidad ?? '',
+      costo_compra: p.costo_compra === null || p.costo_compra === undefined ? '' : String(p.costo_compra),
+      // AJUSTE: el form de edicion conserva stock_minimo para validacion homogenea.
+      stock_minimo: String(p.stock_minimo ?? '0'),
       descripcion_producto: p.descripcion_producto ?? '',
       fecha_ingreso_producto: toDateInputValue(p.fecha_ingreso_producto),
       fecha_caducidad: toDateInputValue(p.fecha_caducidad),
       id_categoria_producto: String(p.id_categoria_producto ?? ''),
-      id_almacen: String(p.id_almacen ?? ''),
-      id_tipo_departamento: p.id_tipo_departamento ? String(p.id_tipo_departamento) : ''
-    });
+      id_almacen: editAlmacenes.length > 0 ? String(editAlmacenes[0]) : String(p.id_almacen ?? ''),
+      id_almacenes: editAlmacenes,
+      id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && p.id_tipo_departamento ? String(p.id_tipo_departamento) : ''
+    };
+    setEditForm(nextEditForm);
+    setEditFormSnapshot(nextEditForm);
   };
 
   const cancelarEdicion = () => {
     setEditId(null);
     setEditForm(null);
+    setEditFormSnapshot(null);
     setEditErrors({});
+    setSavingEdit(false);
   };
+
+  const abrirDrawerProducto = (producto) => {
+    if (canEditar) iniciarEdicion(producto);
+    setSelectedProductoId(producto.id_producto ?? null);
+    // NEW: el drawer de Productos abre directamente en modo edicion.
+    // WHY: el usuario pidio ver todos los campos modificables sin una capa previa de detalle.
+    // IMPACT: solo cambia el estado inicial del drawer; el guardado y validaciones permanecen.
+    setDrawerEditMode(true);
+    setDrawerMessage('');
+    setDrawerOpen(true);
+  };
+
+  const cerrarDrawerProducto = useCallback((force = false) => {
+    if ((savingEdit || togglingEstado) && !force) return;
+    if (!force && hasEditProductoUnsavedChanges) {
+      setDiscardConfirm({ show: true, target: 'edit' });
+      return;
+    }
+    setDrawerOpen(false);
+    setDrawerEditMode(false);
+    setDrawerMessage('');
+    setSelectedProductoId(null);
+    cancelarEdicion();
+  }, [
+    cancelarEdicion,
+    hasEditProductoUnsavedChanges,
+    savingEdit,
+    togglingEstado
+  ]);
+
+  const closeDiscardConfirm = useCallback(() => {
+    setDiscardConfirm({ show: false, target: null });
+  }, []);
+
+  const confirmDiscardProductoChanges = useCallback(() => {
+    const target = discardConfirm.target;
+    setDiscardConfirm({ show: false, target: null });
+    if (target === 'create') {
+      setCreatePanelOpen(false);
+      setShowCreateProductoSheet(false);
+      return;
+    }
+    if (target === 'edit') {
+      setDrawerOpen(false);
+      setDrawerEditMode(false);
+      setDrawerMessage('');
+      setSelectedProductoId(null);
+      cancelarEdicion();
+    }
+  }, [cancelarEdicion, discardConfirm.target]);
+
+  const clearProductoImageError = useCallback((productoId) => {
+    if (!productoId) return;
+    setImageErrorMap((prev) => {
+      if (!Object.prototype.hasOwnProperty.call(prev, productoId)) return prev;
+      const next = { ...prev };
+      delete next[productoId];
+      return next;
+    });
+  }, []);
+
+  const openDrawerImagePicker = useCallback(() => {
+    if (drawerImageAction.loading || !canSubirImagenProducto) return;
+    drawerImageInputRef.current.click();
+  }, [canSubirImagenProducto, drawerImageAction.loading]);
+
+  const onDrawerImageChange = useCallback(async (event) => {
+    const input = event.target;
+    const file = input.files?.[0];
+
+    if (!canSubirImagenProducto) {
+      setDrawerImageAction({
+        loading: false,
+        error: 'No tienes permisos para subir imagenes de productos.'
+      });
+      if (input) input.value = '';
+      return;
+    }
+
+    if (!file || !selectedProducto) {
+      if (input) input.value = '';
+      return;
+    }
+
+    const fileError = getInventarioImageFileError(file, INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS);
+    if (fileError) {
+      setDrawerImageAction({ loading: false, error: fileError });
+      if (input) input.value = '';
+      return;
+    }
+
+    const persistedProductId = parseProductoPersistedId(selectedProducto.id_producto);
+    if (!persistedProductId) {
+      const safeMsg = 'No se pudo completar la accion. Verifica los datos e intenta de nuevo.';
+      setDrawerImageAction({ loading: false, error: safeMsg });
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      if (input) input.value = '';
+      return;
+    }
+
+    let uploadedArchivoId = null;
+    setDrawerImageAction({ loading: true, error: '' });
+    resetDrawerScroll();
+    try {
+      const archivoResp = await uploadProductoImageFile(file);
+      const archivoId = Number.parseInt(String(archivoResp.id_archivo ?? ''), 10);
+      if (!Number.isInteger(archivoId) || archivoId <= 0) {
+        throw new Error('No se pudo obtener el archivo de imagen creado.');
+      }
+      uploadedArchivoId = archivoId;
+
+      const updateResp = await inventarioService.actualizarProductoCampo(
+        persistedProductId,
+        'id_archivo_imagen_principal',
+        archivoId
+      );
+      const updatedProductoApi = extractProductoFromApiResponse(updateResp);
+      const updatedProductoId = parseProductoPersistedId(updatedProductoApi.id_producto);
+
+      if (updatedProductoApi && updatedProductoId) {
+        clearProductoImageError(updatedProductoId);
+        upsertProductoLocal({
+          ...updatedProductoApi,
+          id_producto: updatedProductoId
+        });
+      } else {
+        await syncProductosSilently();
+      }
+      uploadedArchivoId = null;
+      setDrawerImageAction({ loading: false, error: '' });
+      setDrawerMessage('Imagen actualizada.');
+      resetDrawerScroll();
+      safeToast('ACTUALIZADO', 'LA IMAGEN DEL PRODUCTO SE ACTUALIZO CORRECTAMENTE.', 'success');
+    } catch (errorUpload) {
+      const cleanupOk = await cleanupArchivoTemporal(uploadedArchivoId, 'productos_update_image_failed');
+      const msg = handleApiStatusError(errorUpload, 'NO SE PUDO ACTUALIZAR LA IMAGEN DEL PRODUCTO.');
+      setDrawerImageAction({ loading: false, error: msg });
+      setDrawerMessage(msg);
+      resetDrawerScroll();
+      if (!cleanupOk) {
+        safeToast('AVISO', 'No se pudo limpiar la imagen temporal. Se reintentara posteriormente.', 'warning');
+      }
+    } finally {
+      if (input) input.value = '';
+    }
+  }, [
+    cleanupArchivoTemporal,
+    clearProductoImageError,
+    extractProductoFromApiResponse,
+    handleApiStatusError,
+    parseProductoPersistedId,
+    resetDrawerScroll,
+    safeToast,
+    selectedProducto,
+    syncProductosSilently,
+    upsertProductoLocal,
+    uploadProductoImageFile,
+    canSubirImagenProducto
+  ]);
+
+  const removeDrawerImage = useCallback(async () => {
+    if (!canEliminarImagenProducto) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para eliminar imagenes de productos.', 'warning');
+      return;
+    }
+    if (drawerImageAction.loading || !selectedProducto) return;
+
+    const persistedProductId = parseProductoPersistedId(selectedProducto.id_producto);
+    if (!persistedProductId) {
+      const safeMsg = 'No se pudo completar la accion. Verifica los datos e intenta de nuevo.';
+      setDrawerImageAction({ loading: false, error: safeMsg });
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
+
+    const currentImageSrc = getProductoImageSrc(selectedProducto);
+    if (!currentImageSrc && !selectedProducto.id_archivo_imagen_principal) return;
+
+    setDrawerImageAction({ loading: true, error: '' });
+    try {
+      const updateResp = await inventarioService.actualizarProductoCampo(
+        persistedProductId,
+        'id_archivo_imagen_principal',
+        null
+      );
+      const updatedProductoApi = extractProductoFromApiResponse(updateResp);
+      const updatedProductoId = parseProductoPersistedId(updatedProductoApi.id_producto);
+
+      if (updatedProductoApi && updatedProductoId) {
+        clearProductoImageError(updatedProductoId);
+        upsertProductoLocal({
+          ...updatedProductoApi,
+          id_producto: updatedProductoId
+        });
+      } else {
+        patchProductoLocalById(persistedProductId, {
+          id_archivo_imagen_principal: null,
+          imagen_principal_url: null
+        });
+      }
+      // NEW: limpia el file input oculto del drawer al desvincular la imagen.
+      // WHY: evita reenvios accidentales o que el navegador retenga el mismo archivo seleccionado.
+      // IMPACT: solo sincroniza el estado visual del picker del drawer.
+      if (drawerImageInputRef.current) drawerImageInputRef.current.value = '';
+      setDrawerImageAction({ loading: false, error: '' });
+      setDrawerMessage('Imagen eliminada.');
+      safeToast('ACTUALIZADO', 'LA IMAGEN DEL PRODUCTO SE ELIMINO CORRECTAMENTE.', 'success');
+    } catch (errorUpload) {
+      const msg = handleApiStatusError(errorUpload, 'NO SE PUDO ELIMINAR LA IMAGEN DEL PRODUCTO.');
+      setDrawerImageAction({ loading: false, error: msg });
+      setDrawerMessage(msg);
+    }
+  }, [
+    clearProductoImageError,
+    drawerImageAction.loading,
+    extractProductoFromApiResponse,
+    getProductoImageSrc,
+    handleApiStatusError,
+    parseProductoPersistedId,
+    patchProductoLocalById,
+    safeToast,
+    selectedProducto,
+    syncProductosSilently,
+    upsertProductoLocal,
+    canEliminarImagenProducto
+  ]);
+
+  const toggleEstadoProductoDesdeDrawer = async () => {
+    if (!canEditar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para editar productos.', 'warning');
+      return;
+    }
+    if (!selectedProducto || togglingEstado) return;
+
+    const productId = selectedProducto.id_producto;
+    const persistedProductId = parseProductoPersistedId(productId);
+    if (!persistedProductId) {
+      // NEW: evita mutar backend con IDs temporales/fuera de rango y fuerza sincronizacion silenciosa.
+      // WHY: cortar el error 500 (`out of range for type integer`) antes de llamar a `/productos`.
+      // IMPACT: no cambia el flujo normal; solo protege casos de cards locales sin ID real.
+      const safeMsg = 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
+    const currentActive = resolveEstadoActivo(selectedProducto);
+    const nextActive = !currentActive;
+
+    setLocalEstadoMap((prev) => ({ ...prev, [productId]: nextActive }));
+    setDrawerMessage(nextActive ? 'Activando producto...' : 'Desactivando producto...');
+    setTogglingEstado(true);
+
+    try {
+      const estadoCandidates = [nextActive ? 1 : 0, nextActive ? '1' : '0', nextActive];
+      let estadoUpdated = false;
+      let lastError = null;
+
+      for (const estadoValue of estadoCandidates) {
+        try {
+          await inventarioService.actualizarProductoCampo(persistedProductId, 'estado', estadoValue);
+          estadoUpdated = true;
+          break;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      if (!estadoUpdated) {
+        throw lastError || new Error('No se pudo actualizar el estado.');
+      }
+
+      setProductos((prev) =>
+        prev.map((item) => (
+          Number(item.id_producto) === Number(productId)
+            ? { ...item, estado: nextActive }
+            : item
+        ))
+      );
+      setLocalEstadoMap((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, productId)) return prev;
+        const next = { ...prev };
+        delete next[productId];
+        return next;
+      });
+      setDrawerMessage(nextActive ? 'Producto activado.' : 'Producto desactivado.');
+      safeToast('EXITO', nextActive ? 'Producto activado.' : 'Producto desactivado.', 'success');
+    } catch (e) {
+      setLocalEstadoMap((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, productId)) return prev;
+        const next = { ...prev };
+        delete next[productId];
+        return next;
+      });
+      const msg = e.message || 'No se pudo actualizar el estado. Intenta de nuevo.';
+      setDrawerMessage(msg);
+      safeToast('ERROR', msg, 'danger');
+    } finally {
+      setTogglingEstado(false);
+    }
+  };
+
+  // NEW: reactivacion directa desde card cuando el listado visible es de productos inactivos.
+  // WHY: corregir la coherencia del CTA del card (ACTIVAR/INACTIVAR) sin obligar al usuario a abrir el drawer.
+  // IMPACT: reutiliza `actualizarProductoCampo` y el estado local existente; no cambia contratos ni el DELETE actual.
+  const activarProductoDesdeCard = useCallback(async (producto) => {
+    if (!canEditar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para editar productos.', 'warning');
+      return;
+    }
+    if (!producto || togglingEstado || deleting) return;
+
+    const productId = producto.id_producto;
+    const persistedProductId = parseProductoPersistedId(productId);
+    if (!persistedProductId) {
+      // NEW: evita mutar backend con IDs temporales/fuera de rango y fuerza sincronizacion silenciosa.
+      // WHY: proteger el flujo de activacion con la misma validacion de ID usada en otras mutaciones.
+      // IMPACT: no afecta productos persistidos; solo corta casos invalidos y recupera datos desde GET.
+      const safeMsg = 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      if (drawerOpen && Number(selectedProductoId) === Number(productId)) setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
+
+    setTogglingEstado(true);
+    setError('');
+    if (drawerOpen && Number(selectedProductoId) === Number(persistedProductId)) {
+      setDrawerMessage('Activando producto...');
+    }
+
+    try {
+      let done = false;
+      let lastError = null;
+      for (const candidate of [1, '1', true]) {
+        try {
+          await inventarioService.actualizarProductoCampo(persistedProductId, 'estado', candidate);
+          done = true;
+          break;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      if (!done) throw (lastError || new Error('No se pudo activar el producto.'));
+
+      patchProductoLocalById(persistedProductId, { estado: true });
+      setLocalEstadoMap((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, persistedProductId)) return prev;
+        const next = { ...prev };
+        delete next[persistedProductId];
+        return next;
+      });
+
+      if (drawerOpen && Number(selectedProductoId) === Number(persistedProductId)) {
+        setDrawerMessage('Producto activado.');
+      }
+      safeToast('EXITO', 'Producto activado.', 'success');
+    } catch (e) {
+      const msg = handleApiStatusError(e, 'No se pudo activar el producto. Intenta de nuevo.');
+      setError(msg);
+      if (drawerOpen && Number(selectedProductoId) === Number(persistedProductId)) {
+        setDrawerMessage(msg);
+      }
+    } finally {
+      setTogglingEstado(false);
+    }
+  }, [
+    deleting,
+    drawerOpen,
+    handleApiStatusError,
+    parseProductoPersistedId,
+    patchProductoLocalById,
+    safeToast,
+    selectedProductoId,
+    syncProductosSilently,
+    togglingEstado,
+    canEditar
+  ]);
 
   // ==============================
   // GUARDAR EDICIÓN (CAMPO POR CAMPO)
   // ==============================
   const guardarEdicion = async () => {
-    if (!editId || !editForm) return;
+    if (!canEditar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para editar productos.', 'warning');
+      return;
+    }
+    if (!editId || !editForm || savingEdit) return;
 
     setError('');
-    const v = validarProducto(editForm);
+    // AJUSTE: en edicion, stock_minimo vacio se normaliza a 0 para alinear con DEFAULT de BD.
+    const editData = {
+      ...editForm,
+      stock_minimo: String(editForm?.stock_minimo ?? '').trim() === '' ? '0' : editForm.stock_minimo
+    };
+    const v = validarProducto(editData);
     setEditErrors(v.errors);
     if (!v.ok) return;
 
+    // VALIDACION: bloquea guardado si stock_minimo no es entero valido >= 0.
+    const stockMinimoEdit = Number.parseInt(String(v.cleaned.stock_minimo ?? '0'), 10);
+    if (Number.isNaN(stockMinimoEdit) || stockMinimoEdit < 0) {
+      setEditErrors((prev) => ({
+        ...prev,
+        stock_minimo: 'DEBE SER UN ENTERO >= 0'
+      }));
+      return;
+    }
+
+    const actual = productos.find((x) => x.id_producto === editId);
+    if (!actual) {
+      const safeMsg = 'No se pudo completar la accion. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
+
+    const duplicateEdit = findDuplicateProducto(v.cleaned, { excludeId: editId });
+    if (duplicateEdit) {
+      const duplicateMsg = PRODUCTO_DUPLICATE_CONFLICT_MESSAGE;
+      setEditErrors((prev) => ({
+        ...prev,
+        nombre_producto: duplicateMsg
+      }));
+      setDrawerMessage(duplicateMsg);
+      return;
+    }
+
+    const persistedEditId = parseProductoPersistedId(editId);
+    if (!persistedEditId) {
+      // NEW: bloquea guardado si el item tiene ID temporal/fuera de rango y sincroniza IDs reales.
+      // WHY: evitar que `id_valor` llegue a `/productos` con un timestamp en ms y provoque 500 en BD.
+      // IMPACT: solo previene mutaciones inválidas; mantiene intacta la edición de productos persistidos.
+      const safeMsg = 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
+
+    setSavingEdit(true);
     try {
       // COMENTARIO EN MAYÚSCULAS: SOLO ACTUALIZAMOS CAMPOS QUE CAMBIARON
-      const actual = productos.find((x) => x.id_producto === editId);
-
       const cambios = [];
 
-      const nombreActual = String(actual?.nombre_producto ?? '').trim();
-      const precioActual = Number.parseFloat(String(actual?.precio ?? ''));
-      const cantidadActual = Number.parseInt(String(actual?.cantidad ?? ''), 10);
+      const nombreActual = String(actual.nombre_producto ?? '').trim();
+      const precioActual = Number.parseFloat(String(actual.precio ?? ''));
+      const costoCompraActual = actual.costo_compra === null || actual.costo_compra === undefined
+        ? null
+        : Number.parseFloat(String(actual.costo_compra ?? ''));
+      // AJUSTE: normaliza stock_minimo actual para comparar contra edicion con fallback 0.
+      const stockMinimoActualRaw = Number.parseInt(String(actual.stock_minimo ?? '0'), 10);
+      const stockMinimoActual = Number.isNaN(stockMinimoActualRaw) ? 0 : stockMinimoActualRaw;
 
-      const descActual = String(actual?.descripcion_producto ?? '').trim();
+      const descActual = String(actual.descripcion_producto ?? '').trim();
 
-      const catActual = Number.parseInt(String(actual?.id_categoria_producto ?? ''), 10);
-      const almActual = Number.parseInt(String(actual?.id_almacen ?? ''), 10);
+      const catActual = Number.parseInt(String(actual.id_categoria_producto ?? ''), 10);
+      const ingresoActual = toDateInputValue(actual.fecha_ingreso_producto);
+      const caducidadActual = toDateInputValue(actual.fecha_caducidad);
 
-      const ingresoActual = toDateInputValue(actual?.fecha_ingreso_producto);
-      const caducidadActual = toDateInputValue(actual?.fecha_caducidad);
-
-      const deptoActual = actual?.id_tipo_departamento ? Number.parseInt(String(actual.id_tipo_departamento), 10) : null;
+      const deptoActual = actual.id_tipo_departamento ? Number.parseInt(String(actual.id_tipo_departamento), 10) : null;
+      const almacenesActuales = normalizePositiveIdList(
+        Array.isArray(actual.id_almacenes) && actual.id_almacenes.length > 0
+          ? actual.id_almacenes
+          : [actual.id_almacen]
+      );
+      const almacenesChanged = !areSamePositiveIdList(v.cleaned.id_almacenes, almacenesActuales);
 
       if (v.cleaned.nombre_producto !== nombreActual) cambios.push(['nombre_producto', v.cleaned.nombre_producto]);
       if (!Number.isNaN(v.cleaned.precio) && v.cleaned.precio !== precioActual) cambios.push(['precio', v.cleaned.precio]);
-      if (!Number.isNaN(v.cleaned.cantidad) && v.cleaned.cantidad !== cantidadActual) cambios.push(['cantidad', v.cleaned.cantidad]);
+      if (v.cleaned.costo_compra !== costoCompraActual) cambios.push(['costo_compra', v.cleaned.costo_compra]);
+      // AJUSTE: se incluye stock_minimo en persistencia por campo cuando cambia en edicion.
+      if (stockMinimoEdit !== stockMinimoActual) cambios.push(['stock_minimo', stockMinimoEdit]);
 
       if (!Number.isNaN(v.cleaned.id_categoria_producto) && v.cleaned.id_categoria_producto !== catActual) {
         cambios.push(['id_categoria_producto', v.cleaned.id_categoria_producto]);
-      }
-
-      if (!Number.isNaN(v.cleaned.id_almacen) && v.cleaned.id_almacen !== almActual) {
-        cambios.push(['id_almacen', v.cleaned.id_almacen]);
       }
 
       // DESCRIPCIÓN: PERMITIMOS VACÍO (NO ES NULL)
@@ -434,28 +2198,83 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       }
 
       // TIPO_DEPARTAMENTO: SOLO ENVIAR SI EL USUARIO SELECCIONÓ UNO (NO NULL)
-      if (v.cleaned.id_tipo_departamento && v.cleaned.id_tipo_departamento !== deptoActual) {
+      if (SHOW_PRODUCTO_DEPARTAMENTOS && v.cleaned.id_tipo_departamento && v.cleaned.id_tipo_departamento !== deptoActual) {
         cambios.push(['id_tipo_departamento', v.cleaned.id_tipo_departamento]);
       }
 
-      if (cambios.length === 0) {
-        safeToast('SIN CAMBIOS', 'NO HAY CAMBIOS PARA GUARDAR.', 'info');
-        cancelarEdicion();
+      if (cambios.length === 0 && !almacenesChanged) {
+        setDrawerMessage('Cambios guardados.');
+        safeToast('INFO', 'Cambios guardados.', 'success');
         return;
       }
 
-      for (const [campo, valor] of cambios) {
-        await inventarioService.actualizarProductoCampo(editId, campo, valor);
+      let cambiosOrdenados = cambios;
+      const changeIngreso = cambios.find(([campo]) => campo === 'fecha_ingreso_producto');
+      const changeCaducidad = cambios.find(([campo]) => campo === 'fecha_caducidad');
+      if (changeIngreso && changeCaducidad) {
+        const nextIngreso = String(changeIngreso[1] ?? '').trim();
+        const nextCaducidad = String(changeCaducidad[1] ?? '').trim();
+        const canIngresoFirst = !caducidadActual || caducidadActual >= nextIngreso;
+        const canCaducidadFirst = !ingresoActual || nextCaducidad >= ingresoActual;
+        const nonDateChanges = cambios.filter(
+          ([campo]) => campo !== 'fecha_ingreso_producto' && campo !== 'fecha_caducidad'
+        );
+        if (!canIngresoFirst && canCaducidadFirst) {
+          cambiosOrdenados = [...nonDateChanges, changeCaducidad, changeIngreso];
+        } else {
+          cambiosOrdenados = [...nonDateChanges, changeIngreso, changeCaducidad];
+        }
       }
 
-      cancelarEdicion();
-      await cargarProductos();
-
-      safeToast('ACTUALIZADO', 'EL PRODUCTO SE ACTUALIZÓ CORRECTAMENTE.', 'success');
-    } catch (e2) {
-      const msg = e2?.message || 'ERROR ACTUALIZANDO PRODUCTO';
+      for (const [campo, valor] of cambiosOrdenados) {
+        await inventarioService.actualizarProductoCampo(persistedEditId, campo, valor);
+      }
+      let updatedProductoFromAssignments = null;
+      if (almacenesChanged) {
+        const assignmentResp = await inventarioService.reemplazarAsignacionesProducto(
+          persistedEditId,
+          v.cleaned.id_almacenes
+        );
+        updatedProductoFromAssignments = extractProductoFromApiResponse(assignmentResp);
+      }
+      const patchLocal = Object.fromEntries(cambiosOrdenados);
+      if (updatedProductoFromAssignments?.id_producto) {
+        upsertProductoLocal({
+          ...updatedProductoFromAssignments,
+          id_producto: parseProductoPersistedId(updatedProductoFromAssignments.id_producto) || persistedEditId
+        });
+      } else {
+        patchProductoLocalById(persistedEditId, {
+          ...patchLocal,
+          ...(almacenesChanged
+            ? {
+                id_almacen: v.cleaned.id_almacen,
+                id_almacenes: v.cleaned.id_almacenes
+              }
+            : {})
+        });
+      }
+      setLocalEstadoMap((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, persistedEditId)) return prev;
+        const next = { ...prev };
+        delete next[persistedEditId];
+        return next;
+      });
+      const shouldCloseDrawerAfterEdit = drawerOpen && Number(selectedProductoId) === Number(persistedEditId);
+      if (shouldCloseDrawerAfterEdit) {
+        cerrarDrawerProducto(true);
+      } else {
+        setDrawerMessage('Cambios guardados.');
+        setDrawerEditMode(false);
+      }
+      safeToast('EXITO', 'Cambios guardados.', 'success');
+    } catch (e) {
+      // AJUSTE: se refleja status HTTP y errores por campo en la edición.
+      const msg = handleApiStatusError(e, 'No se pudo guardar. Intenta de nuevo.', setEditErrors);
       setError(msg);
-      safeToast('ERROR', msg, 'danger');
+      setDrawerMessage(msg);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -463,21 +2282,54 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ELIMINAR PRODUCTO (CONFIRMADO)
   // ==============================
   const eliminarConfirmado = async () => {
+    if (!canInactivar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para inactivar productos.', 'warning');
+      return;
+    }
     const id = confirmModal.idToDelete;
-    if (!id) return;
+    if (!id || deleting) return;
+    const persistedDeleteId = parseProductoPersistedId(id);
+    if (!persistedDeleteId) {
+      // NEW: evita DELETE con IDs temporales/fuera de rango y refresca lista para recuperar IDs reales.
+      // WHY: impedir 500 por `valor_id` inválido en `pa_delete` y mostrar feedback profesional.
+      // IMPACT: solo protege un caso inválido; delete normal de productos persistidos no cambia.
+      const safeMsg = 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      setConfirmDeleteError(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
 
+    setDeleting(true);
     setError('');
+    setConfirmDeleteError('');
     try {
-      await inventarioService.eliminarProducto(id);
+      const resp = await inventarioService.eliminarProducto(persistedDeleteId);
       closeConfirmDelete();
-      await cargarProductos();
-
-      safeToast('ELIMINADO', 'EL PRODUCTO SE ELIMINÓ CORRECTAMENTE.', 'success');
+      if (Number(selectedProductoId) === Number(persistedDeleteId) && drawerOpen) {
+        if (showInactiveProductos) {
+          setDrawerMessage(resp.message || 'Producto inactivado.');
+        } else {
+          cerrarDrawerProducto(true);
+        }
+      }
+      patchProductoLocalById(persistedDeleteId, { estado: false });
+      // NEW: el producto inactivado se conserva en memoria para que aparezca al instante en "Ver inactivos".
+      // WHY: evitar recarga/refetch y asegurar que el toggle de inactivos lo encuentre inmediatamente.
+      // IMPACT: el card sigue saliendo de la vista activa por filtrado local, pero ya no se elimina del dataset global.
+      setLocalEstadoMap((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, persistedDeleteId)) return prev;
+        const next = { ...prev };
+        delete next[persistedDeleteId];
+        return next;
+      });
+      safeToast('INACTIVADO', resp.message || 'PRODUCTO INACTIVADO.', 'success');
     } catch (e) {
-      closeConfirmDelete();
-      const msg = e?.message || 'ERROR ELIMINANDO PRODUCTO';
+      const msg = handleApiStatusError(e, 'ERROR INACTIVANDO PRODUCTO');
       setError(msg);
-      safeToast('ERROR', msg, 'danger');
+      setConfirmDeleteError(msg);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -485,61 +2337,1184 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // FILTRAR + ORDENAR
   // ==============================
   const productosFiltrados = useMemo(() => {
-    const lista = [...productos].sort((a, b) => (a.id_producto ?? 0) - (b.id_producto ?? 0));
-    const s = search.trim().toLowerCase();
+    return Array.isArray(productos) ? productos : [];
+  }, [productos]);
 
-    return lista.filter((p) => {
-      const texto = `${p.nombre_producto ?? ''} ${p.descripcion_producto ?? ''} ${getCategoriaLabel(p.id_categoria_producto)} ${getAlmacenLabel(p.id_almacen)} ${getDeptoLabel(p.id_tipo_departamento)}`.toLowerCase();
-      const matchTexto = s ? texto.includes(s) : true;
+  const kpis = useMemo(() => {
+    const total = Array.isArray(productos) ? productos.length : 0;
+    const conStock = (productos || []).filter((p) => getStockMeta(p.cantidad, p.stock_minimo).qty > 0).length;
+    const stockBajo = (productos || []).filter((p) => getStockMeta(p.cantidad, p.stock_minimo).className === 'is-low').length;
+    const sinStock = total - conStock;
+    // AJUSTE: se agregan KPIs de activas/inactivas con la misma regla de estado.
+    const activas = (productos || []).filter((p) => resolveEstadoActivo(p)).length;
+    const inactivas = total - activas;
+    return { total, conStock, stockBajo, sinStock, activas, inactivas };
+  }, [productos, resolveEstadoActivo]);
 
-      const cant = Number.parseInt(String(p.cantidad ?? '0'), 10);
-      const conStock = !Number.isNaN(cant) && cant > 0;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(KPI_HISTORY_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setKpiHistory(parsed.slice(-KPI_HISTORY_LIMIT));
+          return;
+        }
+      }
 
-      const matchStock =
-        stockFiltro === 'todos' ? true : stockFiltro === 'con_stock' ? conStock : !conStock;
+      const legacyRaw = window.localStorage.getItem(KPI_HISTORY_LEGACY_KEY);
+      if (!legacyRaw) return;
+      const legacyParsed = JSON.parse(legacyRaw);
+      if (!Array.isArray(legacyParsed)) return;
+      const migrated = legacyParsed.slice(-KPI_HISTORY_LIMIT);
+      setKpiHistory(migrated);
+      // AJUSTE: migracion de key para no perder historico si aun existe en la key anterior.
+      window.localStorage.setItem(KPI_HISTORY_KEY, JSON.stringify(migrated));
+    } catch {
+      setKpiHistory([]);
+    }
+  }, [KPI_HISTORY_KEY, KPI_HISTORY_LEGACY_KEY, KPI_HISTORY_LIMIT]);
 
-      const matchCategoria =
-        categoriaFiltro === 'todos' ? true : String(p.id_categoria_producto) === String(categoriaFiltro);
+  useEffect(() => {
+    if (loadingProductos || typeof window === 'undefined') return;
 
-      const matchAlmacen =
-        almacenFiltro === 'todos' ? true : String(p.id_almacen) === String(almacenFiltro);
+    const snapshot = {
+      ts: Date.now(),
+      total: kpis.total,
+      activas: kpis.activas,
+      inactivas: kpis.inactivas,
+      conStock: kpis.conStock,
+      stockBajo: kpis.stockBajo,
+      sinStock: kpis.sinStock
+    };
 
-      const matchDepto =
-        deptoFiltro === 'todos'
-          ? true
-          : String(p.id_tipo_departamento ?? '') === String(deptoFiltro);
+    // NUEVO: persistencia de snapshots KPI para sparklines sin soporte histórico del backend.
+    setKpiHistory((prev) => {
+      const base = Array.isArray(prev) ? prev : [];
+      const last = base[base.length - 1];
+      const isSameAsLast = Boolean(last) && (
+        Number(last.total ?? 0) === snapshot.total &&
+        Number(last.activas ?? 0) === snapshot.activas &&
+        Number(last.inactivas ?? 0) === snapshot.inactivas &&
+        Number(last.conStock ?? 0) === snapshot.conStock &&
+        Number(last.stockBajo ?? 0) === snapshot.stockBajo &&
+        Number(last.sinStock ?? 0) === snapshot.sinStock
+      );
 
-      return matchTexto && matchStock && matchCategoria && matchAlmacen && matchDepto;
+      const next = isSameAsLast ? base : [...base, snapshot].slice(-KPI_HISTORY_LIMIT);
+      try {
+        window.localStorage.setItem(KPI_HISTORY_KEY, JSON.stringify(next));
+      } catch {
+        // VALIDACION: si localStorage falla, el flujo de KPIs no se interrumpe.
+      }
+      return next;
     });
-  }, [productos, search, stockFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, categoriasMap, almacenesMap, tipoDeptoMap]);
+  }, [
+    KPI_HISTORY_KEY,
+    KPI_HISTORY_LIMIT,
+    loadingProductos,
+    kpis.total,
+    kpis.activas,
+    kpis.inactivas,
+    kpis.conStock,
+    kpis.stockBajo,
+    kpis.sinStock
+  ]);
 
+  const kpiSeries = useMemo(() => {
+    const values = Array.isArray(kpiHistory) ? kpiHistory : [];
+    return {
+      total: values.map((item) => Number(item.total ?? 0)),
+      activas: values.map((item) => Number(item.activas ?? 0)),
+      inactivas: values.map((item) => Number(item.inactivas ?? 0)),
+      conStock: values.map((item) => Number(item.conStock ?? 0)),
+      stockBajo: values.map((item) => Number(item.stockBajo ?? 0)),
+      sinStock: values.map((item) => Number(item.sinStock ?? 0))
+    };
+  }, [kpiHistory]);
+
+  const hasActiveFilters = useMemo(() => {
+    return (
+      search.trim() !== '' ||
+      stockFiltro !== 'todos' ||
+      estadoFiltro !== 'todos' ||
+      categoriaFiltro !== 'todos' ||
+      almacenFiltroId !== null ||
+      (SHOW_PRODUCTO_DEPARTAMENTOS && deptoFiltro !== 'todos') ||
+      sortBy !== 'recientes'
+    );
+  }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltroId, deptoFiltro, sortBy]);
+
+  // NEW: contador derivado de filtros activos para reforzar el header del modal de Filtros.
+  // WHY: aprovechar el estado actual (filtros live) sin introducir lógica draft adicional.
+  // IMPACT: solo UI informativa; no altera cómo se filtra o se ordena el catálogo.
+  const activeFiltersCount = useMemo(() => {
+    return [
+      search.trim() !== '',
+      stockFiltro !== 'todos',
+      estadoFiltro !== 'todos',
+      categoriaFiltro !== 'todos',
+      almacenFiltroId !== null,
+      SHOW_PRODUCTO_DEPARTAMENTOS && deptoFiltro !== 'todos',
+      sortBy !== 'recientes'
+    ].filter(Boolean).length;
+  }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltroId, deptoFiltro, sortBy]);
+
+  const productosPaginados = productosFiltrados;
+  const carouselConfig = useMemo(
+    () => getProductosCarouselConfig(carouselViewportWidth),
+    [carouselViewportWidth]
+  );
+  const carouselPages = useMemo(
+    () => chunkProductosCarouselPages(productosPaginados, carouselConfig.perPage),
+    [carouselConfig.perPage, productosPaginados]
+  );
+  const carouselPageCount = Math.max(1, carouselPages.length || 0);
+  const currentCarouselItems = carouselPages[carouselPageIndex] || [];
+
+  useEffect(() => {
+    // NEW: mantiene la pagina actual del carrusel dentro de rango tras filtros o cambios locales.
+    // WHY: evitar saltos al inicio y conservar la posicion visual despues de crear/editar/inactivar.
+    // IMPACT: el carrusel solo corrige indices invalidos; no dispara refetch ni cambia el orden.
+    setCarouselPageIndex((prev) => Math.min(prev, Math.max(0, carouselPageCount - 1)));
+  }, [carouselPageCount]);
+
+  // NUEVO: helper de scroll para enfocar paneles abiertos sin cambiar rutas ni navegacion.
+  const scrollToSection = useCallback((sectionRef) => {
+    if (typeof window === 'undefined') return;
+    const node = sectionRef.current;
+    if (!node) return;
+    window.requestAnimationFrame(() => {
+      node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  // AJUSTE: Filtros y Nuevo son mutuamente excluyentes para evitar paneles abiertos al mismo tiempo.
+  const toggleFiltrosPanel = useCallback(() => {
+    const nextOpen = !filtersOpen;
+    if (!nextOpen) {
+      setFiltersOpen(false);
+      return;
+    }
+    setCreatePanelOpen(false);
+    setShowCreateProductoSheet(false);
+    setFiltersOpen(true);
+    scrollToSection(filtersSectionRef);
+  }, [filtersOpen, scrollToSection]);
+
+  // AJUSTE: al abrir Nuevo en desktop se cierran filtros y se enfoca el formulario.
+  const toggleNuevoDesktop = useCallback(() => {
+    if (!canCrear) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para crear productos.', 'warning');
+      return;
+    }
+    const nextOpen = !createPanelOpen;
+    if (!nextOpen) {
+      setCreatePanelOpen(false);
+      return;
+    }
+    setFiltersOpen(false);
+    setShowCreateProductoSheet(false);
+    setCreatePanelOpen(true);
+    scrollToSection(createSectionRef);
+  }, [canCrear, createPanelOpen, safeToast, scrollToSection]);
+
+  // AJUSTE: en mobile, Nuevo abre sheet y cierra filtros para mantener exclusividad.
+  const _abrirNuevoMobile = useCallback(() => {
+    if (!canCrear) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para crear productos.', 'warning');
+      return;
+    }
+    setFiltersOpen(false);
+    setCreatePanelOpen(false);
+    setShowCreateProductoSheet(true);
+  }, [canCrear, safeToast]);
+
+  // NEW: cierre compartido del shell lateral de Filtros/Nuevo cuando se usa overlay.
+  // WHY: mantener la UX de drawer lateral consistente con otros submodulos sin tocar la logica interna de formularios.
+  // IMPACT: solo controla apertura/cierre visual de paneles de Productos (Filtros/Nuevo).
+  const closePanelsDrawer = useCallback(() => {
+    setFiltersOpen(false);
+    setCreatePanelOpen(false);
+  }, []);
+
+  // NEW: flags derivados para unificar apertura de modales auxiliares de Productos.
+  // WHY: compartir scroll-lock y shell portal entre `createPanelOpen` y `showCreateProductoSheet`.
+  // IMPACT: estado derivado de UI; no modifica flujos de creación/filtros existentes.
+  const createProductoModalOpen = createPanelOpen || showCreateProductoSheet;
+  const productsAuxModalOpen = filtersOpen || createProductoModalOpen;
+
+  // NEW: bloqueo de scroll del body mientras Filtros/Nuevo están abiertos en overlay.
+  // WHY: evitar desplazamiento del fondo y mantener foco visual en el modal activo.
+  // IMPACT: solo modifica temporalmente `body.style.overflow`; no toca lógica de CRUD.
+  useEffect(() => {
+    if (typeof document === 'undefined' || !productsAuxModalOpen) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [productsAuxModalOpen]);
+
+  // NEW: focus al primer campo inválido del formulario de Nuevo producto.
+  // WHY: mejorar UX al mostrar errores existentes sin cambiar reglas de validación.
+  // IMPACT: mueve foco solo dentro del modal de alta cuando hay `createErrors`.
+  useEffect(() => {
+    if (!createProductoModalOpen) return undefined;
+    if (!createErrors || Object.keys(createErrors).length === 0) return undefined;
+    if (typeof window === 'undefined') return undefined;
+
+    const rafId = window.requestAnimationFrame(() => {
+      const firstInvalid = createSectionRef.current?.querySelector?.('.is-invalid');
+      if (!firstInvalid || typeof firstInvalid.focus !== 'function') return;
+      firstInvalid.focus({ preventScroll: true });
+      firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [createErrors, createProductoModalOpen]);
+
+  useEffect(() => {
+    if (!filtersOpen || typeof window === 'undefined') return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      if (filtersBodyRef.current) filtersBodyRef.current.scrollTop = 0;
+      const container = pickVisibleContainer([
+        '.inv-prod-pmodal--filters.show .inv-prod-pmodal__panel',
+        '.inv-prod-filters.open.show'
+      ]);
+      focusFirstEditableField(container);
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [filtersOpen, focusFirstEditableField, pickVisibleContainer]);
+
+  useEffect(() => {
+    if (!createProductoModalOpen || typeof window === 'undefined') return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      if (createBodyRef.current) createBodyRef.current.scrollTop = 0;
+      const container = pickVisibleContainer([
+        '.inv-prod-pmodal--create.show .inv-prod-pmodal__panel',
+        '.inv-prod-create-wrap.open.show',
+        '#inv-prod-create-panel'
+      ]);
+      focusFirstEditableField(container);
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [createProductoModalOpen, focusFirstEditableField, pickVisibleContainer]);
+
+  useEffect(() => {
+    if (!drawerOpen || typeof window === 'undefined') return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      if (drawerBodyRef.current) drawerBodyRef.current.scrollTop = 0;
+      const container = pickVisibleContainer('.inv-ins-drawer--edit.show');
+      focusFirstEditableField(container);
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [drawerOpen, focusFirstEditableField, pickVisibleContainer]);
+
+  useEffect(() => {
+    if (createProductoModalOpen && !prevCreateModalOpenRef.current) {
+      createModalFocusReturnRef.current = captureActiveElement();
+    } else if (!createProductoModalOpen && prevCreateModalOpenRef.current) {
+      restoreFocusToElement(createModalFocusReturnRef.current);
+      createModalFocusReturnRef.current = null;
+    }
+    prevCreateModalOpenRef.current = createProductoModalOpen;
+  }, [captureActiveElement, createProductoModalOpen, restoreFocusToElement]);
+
+  useEffect(() => {
+    if (filtersOpen && !prevFiltersOpenRef.current) {
+      filtersFocusReturnRef.current = captureActiveElement();
+    } else if (!filtersOpen && prevFiltersOpenRef.current) {
+      restoreFocusToElement(filtersFocusReturnRef.current);
+      filtersFocusReturnRef.current = null;
+    }
+    prevFiltersOpenRef.current = filtersOpen;
+  }, [captureActiveElement, filtersOpen, restoreFocusToElement]);
+
+  useEffect(() => {
+    if (drawerOpen && !prevDrawerOpenRef.current) {
+      editDrawerFocusReturnRef.current = captureActiveElement();
+    } else if (!drawerOpen && prevDrawerOpenRef.current) {
+      restoreFocusToElement(editDrawerFocusReturnRef.current);
+      editDrawerFocusReturnRef.current = null;
+    }
+    prevDrawerOpenRef.current = drawerOpen;
+  }, [captureActiveElement, drawerOpen, restoreFocusToElement]);
+
+  useEffect(() => {
+    if ((!createProductoModalOpen && !drawerOpen) || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (createProductoModalOpen) {
+        event.preventDefault();
+        closeCreateProductoModal();
+        return;
+      }
+      if (drawerOpen) {
+        event.preventDefault();
+        cerrarDrawerProducto();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cerrarDrawerProducto, closeCreateProductoModal, createProductoModalOpen, drawerOpen]);
+
+  const resetFiltros = () => {
+    setSearch('');
+    setStockFiltro('todos');
+    // AJUSTE: limpia tambien el nuevo filtro por estado.
+    setEstadoFiltro('todos');
+    setCategoriaFiltro('todos');
+    setAlmacenFiltro('todos');
+    setDeptoFiltro('todos');
+    setSortBy('recientes');
+    setCurrentPage(1);
+  };
+
+  const drawerEstadoActivo = selectedProducto ? resolveEstadoActivo(selectedProducto) : true;
+  const drawerImageSrc = getProductoImageSrc(selectedProducto);
+  const productsAuxDrawerOpen = filtersOpen || createPanelOpen;
+
+  const renderCreateImageField = (className = 'col-12') => (
+    !canSubirImagenProducto ? null : (
+    <div className={className}>
+      <label className="form-label mb-1">Imagen (opcional)</label>
+      <div className={`inv-prod-image-field ${createImage.loading ? 'is-loading' : ''}`}>
+        <div className={`inv-prod-image-preview ${createImage.previewUrl ? 'has-image' : ''}`} aria-live="polite">
+          {createImage.loading ? (
+            <div className="inv-prod-image-loading" role="status">
+              <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+              <span>Cargando imagen...</span>
+            </div>
+          ) : createImage.previewUrl ? (
+            <img src={createImage.previewUrl} alt="Vista previa del producto" onError={onCreatePreviewError} />
+          ) : (
+            <div className="inv-prod-image-placeholder">
+              <i className="bi bi-image" />
+              <span>Sin imagen seleccionada</span>
+            </div>
+          )}
+        </div>
+
+        <div className="inv-prod-image-actions">
+          <label className="btn inv-prod-btn-subtle inv-prod-image-picker">
+            <input ref={createImageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={onCreateImageChange} />
+            <i className="bi bi-upload" />
+            <span>{createImage.previewUrl ? 'Cambiar imagen' : 'Seleccionar imagen'}</span>
+          </label>
+
+          <button
+            type="button"
+            className="btn inv-prod-btn-outline"
+            onClick={clearCreateImage}
+            disabled={!createImage.previewUrl && !createImage.error && !createImage.loading}
+          >
+            Quitar
+          </button>
+        </div>
+
+        {createImage.error ? (
+          <div className="inv-prod-image-feedback is-error">{createImage.error}</div>
+        ) : (
+          <div className="inv-prod-image-feedback">JPG, PNG o WEBP hasta 6 MB.</div>
+        )}
+      </div>
+    </div>
+    )
+  );
+
+  // AJUSTE: renderiza cada KPI con sparkline de fondo sin duplicar contenido principal.
+  const renderKpiCard = (key, label, value, className = '') => {
+    const series = kpiSeries[key] || [];
+    const points = buildSparklinePoints(series);
+    const iconByKey = {
+      total: 'bi-grid-1x2',
+      activas: 'bi-check-circle',
+      inactivas: 'bi-slash-circle',
+      conStock: 'bi-box-seam',
+      stockBajo: 'bi-exclamation-triangle',
+      sinStock: 'bi-x-circle'
+    };
+
+    return (
+      <div className={`inv-prod-kpi inv-invstat-card ${className}`.trim()}>
+        <div className="inv-invstat-icon" aria-hidden="true">
+          <i className={`bi ${iconByKey[key] || 'bi-bar-chart'}`} />
+        </div>
+        {points ? (
+          <svg className="inv-prod-kpi-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points={points} />
+          </svg>
+        ) : null}
+        <div className="inv-prod-kpi-content">
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+      </div>
+    );
+  };
+
+  if (permisosLoading) return null;
+
+  if (!canVer) {
+    return <SinPermiso permiso={PERMISSIONS.INVENTARIO_PRODUCTOS_VER} />;
+  }
+
+  // NEW: helper class para habilitar sticky del header del submódulo Productos.
+  // WHY: el sticky requiere un override local de `overflow` en el card contenedor.
+  // IMPACT: solo comportamiento visual del header al scrollear; no cambia CRUD ni filtros.
   return (
-    <div className="card shadow-sm mb-3">
-      <div className="card-header fw-semibold d-flex align-items-center justify-content-between">
-        <span>Productos</span>
+    <div className="card shadow-sm mb-3 inv-prod-card inv-has-sticky-header">
+      <div className="card-header inv-prod-header">
+        <div className="inv-prod-title-wrap">
+          <div className="inv-prod-title-row">
+            <i className="bi bi-bag-check inv-prod-title-icon" />
+            <span className="inv-prod-title">Productos</span>
+          </div>
+          <div className="inv-prod-subtitle">Gestión del Catálogo de Productos</div>
+        </div>
 
-        <button
-          type="button"
-          className="btn btn-sm btn-primary d-md-none"
-          onClick={() => setShowCreateProductoSheet(true)}
-        >
-          + Agregar
-        </button>
+        <div className="inv-prod-header-actions">
+          {/* NEW: buscador en header como patrón de Categorías/Insumos, reutilizando el mismo estado `search`. */}
+          {/* WHY: sacar la búsqueda del modal de filtros y mantener acceso directo sin cambiar la lógica de filtrado. */}
+          {/* IMPACT: solo reubica la UI del input; `productosFiltrados` sigue usando `search` igual. */}
+          <label className="inv-ins-search inv-prod-header-search" aria-label="Buscar productos">
+            <i className="bi bi-search" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar productos..."
+            />
+          </label>
+
+          <button
+            type="button"
+            className={`inv-prod-toolbar-btn ${filtersOpen ? 'is-on' : ''}`}
+            // AJUSTE: usa handler dedicado para exclusión mutua con panel Nuevo.
+            onClick={toggleFiltrosPanel}
+            aria-expanded={filtersOpen}
+            aria-controls="inv-prod-filters"
+          >
+            <i className="bi bi-funnel" />
+            <span>Filtros</span>
+          </button>
+
+          {canCrear ? (
+            <>
+              <button
+                type="button"
+                className={`inv-prod-toolbar-btn d-none d-md-inline-flex ${createPanelOpen ? 'is-on' : ''}`}
+                // AJUSTE: usa handler dedicado para cerrar filtros y hacer scroll al formulario.
+                onClick={toggleNuevoDesktop}
+                aria-expanded={createPanelOpen}
+                aria-controls="inv-prod-create-panel"
+              >
+                <i className="bi bi-plus-circle" />
+                <span>Nuevo</span>
+              </button>
+
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn d-md-none"
+                // NEW: en mobile se reutiliza el drawer lateral para mantener el mismo patron visual de Inventario.
+                // WHY: estandarizar Nuevo de Productos con el shell derecho (glass/overlay/animacion) sin cambiar el formulario.
+                // IMPACT: UI-only; el submit/validaciones del formulario permanecen intactos.
+                onClick={toggleNuevoDesktop}
+                aria-label="Abrir drawer de crear producto"
+              >
+                <i className="bi bi-plus-circle" />
+                <span>Nuevo</span>
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
 
-      <div className="card-body">
-        {error && <div className="alert alert-danger">{error}</div>}
+      <div className="inv-prod-kpis">
+        {renderKpiCard('total', 'Total', kpis.total)}
+        {renderKpiCard('activas', 'Activas', kpis.activas, 'is-ok')}
+        {renderKpiCard('inactivas', 'Inactivas', kpis.inactivas, 'is-empty')}
+        {renderKpiCard('conStock', 'Con stock', kpis.conStock, 'is-ok')}
+        {renderKpiCard('stockBajo', 'Stock bajo', kpis.stockBajo, 'is-low')}
+        {renderKpiCard('sinStock', 'Sin stock', kpis.sinStock, 'is-empty')}
+      </div>
+
+      <div className="card-body inv-prod-body">
+        {error && <div className="alert alert-danger inv-prod-alert">{error}</div>}
+
+        {/* NEW: portal local de Productos para evitar recortes por `overflow/transform` del card contenedor. */}
+        {/* WHY: renderizar Filtros y Nuevo sobre `document.body` con overlay completo y animación centrada bottom-up. */}
+        {/* IMPACT: solo reemplaza el shell visual de Filtros/Nuevo; handlers, filtros y submit siguen iguales. */}
+        {productsModalPortalTarget ? createPortal(
+          <>
+            <div className={`inv-prod-pmodal inv-prod-pmodal--filters ${filtersOpen ? 'show' : ''}`} aria-hidden={!filtersOpen}>
+              <div className="inv-prod-pmodal__overlay" onClick={() => setFiltersOpen(false)} />
+
+              <div className="inv-prod-pmodal__viewport">
+                <section
+                  id="inv-prod-filters"
+                  ref={filtersSectionRef}
+                  className="inv-prod-pmodal__panel inv-prod-pmodal__panel--filters"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="inv-prod-filters-title"
+                  aria-describedby="inv-prod-filters-sub"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <form
+                    className="inv-prod-pmodal__form-shell"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      setFiltersOpen(false);
+                    }}
+                  >
+                    <div ref={filtersBodyRef} className="inv-prod-pmodal__body inv-prod-pmodal__body--filters">
+                      <div className="inv-ins-create-hero inv-ins-filter-hero">
+                        <button
+                          type="button"
+                          className="inv-prod-drawer-close inv-ins-create-hero__close"
+                          onClick={() => setFiltersOpen(false)}
+                          aria-label="Cerrar filtros"
+                        >
+                          <i className="bi bi-x-lg" />
+                        </button>
+                        <div className="inv-ins-create-hero__icon">
+                          <i className="bi bi-funnel" aria-hidden="true" />
+                        </div>
+                        <div className="inv-ins-create-hero__copy">
+                          <div id="inv-prod-filters-sub" className="inv-ins-create-hero__kicker">Vista De Filtros</div>
+                          <div id="inv-prod-filters-title" className="inv-ins-create-hero__title">
+                            Ajusta stock, categoría y orden del catálogo
+                          </div>
+                        </div>
+                        <div className="inv-ins-create-hero__chips">
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-sliders2" aria-hidden="true" />
+                            {activeFiltersCount > 0 ? `${activeFiltersCount} Activos` : 'Vista General'}
+                          </span>
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-tags" aria-hidden="true" />
+                            {categoriaFiltro !== 'todos' ? getCategoriaLabel(categoriaFiltro) : 'Todas las categorías'}
+                          </span>
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-arrow-down-up" aria-hidden="true" />
+                            {PRODUCTO_FILTER_SORT_LABELS[sortBy] || 'Más recientes'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="inv-prod-pmodal__sections inv-prod-pmodal__sections--filters">
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Estado y stock</div>
+                            <div className="inv-prod-pmodal__section-sub">Filtra disponibilidad y estado del producto.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-filters-grid">
+                            <div className="col-12 col-sm-6">
+                              <select className="form-select" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
+                                <option value="todos">ESTADOS</option>
+                                <option value="activo">Activos</option>
+                                <option value="inactivo">Inactivos</option>
+                              </select>
+                            </div>
+
+                            <div className="col-12 col-sm-6">
+                              <select className="form-select" value={stockFiltro} onChange={(e) => setStockFiltro(e.target.value)}>
+                                <option value="todos">STOCK</option>
+                                <option value="con_stock">Con stock</option>
+                                <option value="sin_stock">Sin stock</option>
+                              </select>
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Clasificación</div>
+                            <div className="inv-prod-pmodal__section-sub">Filtra por categoría, almacén y departamento.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-filters-grid">
+                            <div className="col-12 col-md-4">
+                              <select className="form-select" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
+                                <option value="todos">CATEGORÍAS</option>
+                                {categoriasActivas.map((c) => (
+                                  <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
+                                    {c.nombre_categoria}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="col-12 col-md-8">
+                              <div className="small text-uppercase fw-semibold text-muted mb-1">Almacén</div>
+                              <select
+                                className="form-select"
+                                value={almacenFiltro}
+                                onChange={(e) => setAlmacenFiltro(e.target.value)}
+                              >
+                                <option value="todos">Todos</option>
+                                {almacenes.map((a) => {
+                                  const idAlmacen = Number.parseInt(String(a.id_almacen ?? ''), 10);
+                                  if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return null;
+                                  return (
+                                    <option key={idAlmacen} value={String(idAlmacen)}>
+                                      {a.nombre}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+
+                            {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                              <div className="col-12 col-md-4">
+                                <select className="form-select" value={deptoFiltro} onChange={(e) => setDeptoFiltro(e.target.value)}>
+                                  <option value="todos">DEPTOS</option>
+                                  {tipoDepartamentos.map((d) => (
+                                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : null}
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Ordenamiento</div>
+                            <div className="inv-prod-pmodal__section-sub">El filtrado es inmediato; usa Aplicar para cerrar el modal.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-filters-grid">
+                            <div className="col-12 col-md-6">
+                              <select className="form-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                                <option value="recientes">{'M\u00E1s recientes'}</option>
+                                <option value="nombre_asc">Nombre A-Z</option>
+                                <option value="nombre_desc">Nombre Z-A</option>
+                                <option value="precio_desc">Precio mayor</option>
+                                <option value="precio_asc">Precio menor</option>
+                                <option value="stock_desc">Stock mayor</option>
+                                <option value="stock_asc">Stock menor</option>
+                              </select>
+                            </div>
+                          </div>
+                        </section>
+                      </div>
+                    </div>
+
+                    <div className="inv-prod-pmodal__footer">
+                      <button
+                        className="btn btn-outline-secondary inv-prod-btn-subtle"
+                        type="button"
+                        onClick={resetFiltros}
+                      >
+                        Limpiar filtros
+                      </button>
+                      <button className="btn inv-prod-btn-primary" type="submit">
+                        Aplicar
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              </div>
+            </div>
+
+            <div className={`inv-prod-pmodal inv-prod-pmodal--create ${createProductoModalOpen ? 'show' : ''}`} aria-hidden={!createProductoModalOpen}>
+            <div className="inv-prod-pmodal__overlay" onClick={() => closeCreateProductoModal()} />
+
+              <div className="inv-prod-pmodal__viewport">
+                <section
+                  id="inv-prod-create-panel"
+                  ref={createSectionRef}
+                  className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="inv-prod-create-title"
+                  aria-describedby="inv-prod-create-sub"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <form onSubmit={onCrear} className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create">
+                    <div ref={createBodyRef} className="inv-prod-pmodal__body">
+                      <div className="inv-ins-create-hero is-create">
+                        <button
+                          type="button"
+                          className="inv-prod-drawer-close inv-ins-create-hero__close"
+                          onClick={() => closeCreateProductoModal()}
+                          aria-label="Cerrar nuevo producto"
+                        >
+                          <i className="bi bi-x-lg" />
+                        </button>
+                        <div className="inv-ins-create-hero__icon">
+                          <i className="bi bi-stars" aria-hidden="true" />
+                        </div>
+                        <div className="inv-ins-create-hero__copy">
+                          <div id="inv-prod-create-sub" className="inv-ins-create-hero__kicker">Nuevo Registro</div>
+                          <div id="inv-prod-create-title" className="inv-ins-create-hero__title">Alta Rapida de Producto</div>
+                        </div>
+                        <div className="inv-ins-create-hero__chips">
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-cash-stack" aria-hidden="true" />
+                            {formatMoney(form.precio || 0)}
+                          </span>
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-tags" aria-hidden="true" />
+                            {form.id_categoria_producto ? getCategoriaLabel(form.id_categoria_producto) : 'Sin categoría'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="inv-prod-pmodal__sections">
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Imagen</div>
+                            <div className="inv-prod-pmodal__section-sub">Carga opcional con preview y validacion actual.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            {renderCreateImageField('col-12')}
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Datos principales</div>
+                            <div className="inv-prod-pmodal__section-sub">Nombre, categoría y descripción del producto.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            <div className="col-12 col-lg-8">
+                              <label className="form-label mb-1">Nombre del producto</label>
+                              <input
+                                className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
+                                placeholder="Ej: Hamburguesa clásica"
+                                value={form.nombre_producto}
+                                onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
+                                required
+                              />
+                              {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
+                            </div>
+
+                            <div className="col-12 col-md-6 col-lg-4">
+                              <label className="form-label mb-1">Categoría</label>
+                              <select
+                                className={`form-select ${createErrors.id_categoria_producto ? 'is-invalid' : ''}`}
+                                value={String(form.id_categoria_producto ?? '')}
+                                onChange={(e) => setForm((s) => ({ ...s, id_categoria_producto: e.target.value }))}
+                                required
+                              >
+                                <option value="">Seleccione categoría</option>
+                                {categoriasActivas.map((c) => (
+                                  <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
+                                    {c.nombre_categoria}
+                                  </option>
+                                ))}
+                              </select>
+                              {createErrors.id_categoria_producto && (
+                                <div className="invalid-feedback">{createErrors.id_categoria_producto}</div>
+                              )}
+                            </div>
+
+                            <div className="col-12">
+                              <label className="form-label mb-1">Descripción (opcional)</label>
+                              <input
+                                className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
+                                placeholder="Ej: Incluye papas y bebida"
+                                value={form.descripcion_producto}
+                                onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
+                              />
+                              {createErrors.descripcion_producto && (
+                                <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
+                              )}
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Inventario</div>
+                            <div className="inv-prod-pmodal__section-sub">Stock mínimo y ubicación.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            <div className="col-12 col-sm-6 col-lg-3">
+                              <label className="form-label mb-1">{'Stock m\u00EDnimo'}</label>
+                              <input
+                                className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
+                                type="number"
+                                step="1"
+                                min="0"
+                                inputMode="numeric"
+                                value={form.stock_minimo}
+                                onKeyDown={blockNonIntegerKeys}
+                                onChange={(e) => setForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }))}
+                              />
+                              {createErrors.stock_minimo && <div className="invalid-feedback">{createErrors.stock_minimo}</div>}
+                            </div>
+
+                            <div className="col-12 col-md-6 col-lg-3">
+                              <label className="form-label mb-1">Almacén asignado</label>
+                              {renderAlmacenSelectField({
+                                scope: 'create-1',
+                                selectedValue: form.id_almacen,
+                                selectedValues: form.id_almacenes,
+                                error: createErrors.id_almacen,
+                                onChangeMulti: updateCreateAlmacenes
+                              })}
+                            </div>
+
+                            {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                              <div className="col-12 col-lg-3">
+                                <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                                <select
+                                  className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                                  value={String(form.id_tipo_departamento ?? '')}
+                                  onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                                  disabled={loadingTipoDepto}
+                                >
+                                  <option value="">
+                                    {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
+                                  </option>
+                                  {tipoDepartamentos.map((d) => (
+                                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                {createErrors.id_tipo_departamento && (
+                                  <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Precio</div>
+                            <div className="inv-prod-pmodal__section-sub">Configura el precio de venta inicial.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            <div className="col-12 col-md-6 col-lg-4">
+                              <label className="form-label mb-1">Precio</label>
+                              <input
+                                className={`form-control ${createErrors.precio ? 'is-invalid' : ''}`}
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="Ej: 150.00"
+                                value={form.precio}
+                                onChange={(e) => setForm((s) => ({ ...s, precio: e.target.value }))}
+                                required
+                              />
+                              {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
+                            </div>
+                            <div className="col-12 col-md-6 col-lg-4">
+                              <label className="form-label mb-1">Costo de compra</label>
+                              <input
+                                className={`form-control ${createErrors.costo_compra ? 'is-invalid' : ''}`}
+                                type="number"
+                                step="0.0001"
+                                min="0"
+                                inputMode="decimal"
+                                placeholder="Opcional"
+                                value={form.costo_compra}
+                                onChange={(e) => setForm((s) => ({ ...s, costo_compra: e.target.value }))}
+                              />
+                              {createErrors.costo_compra && <div className="invalid-feedback">{createErrors.costo_compra}</div>}
+                              <div className={`form-text ${createMarginSummary.tone === 'danger' ? 'text-danger' : 'text-muted'}`}>{createMarginSummary.text}</div>
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Fechas</div>
+                            <div className="inv-prod-pmodal__section-sub">Campos opcionales de ingreso y caducidad.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            <div className="col-12 col-md-6">
+                              <label className="form-label mb-1">Fecha ingreso (opcional)</label>
+                              <input
+                                className={`form-control ${createErrors.fecha_ingreso_producto ? 'is-invalid' : ''}`}
+                                type="date"
+                                value={form.fecha_ingreso_producto}
+                                onChange={(e) => setForm((s) => ({ ...s, fecha_ingreso_producto: e.target.value }))}
+                              />
+                              {createErrors.fecha_ingreso_producto && (
+                                <div className="invalid-feedback">{createErrors.fecha_ingreso_producto}</div>
+                              )}
+                            </div>
+
+                            <div className="col-12 col-md-6">
+                              <label className="form-label mb-1">Fecha caducidad (opcional)</label>
+                              <input
+                                className={`form-control ${createErrors.fecha_caducidad ? 'is-invalid' : ''}`}
+                                type="date"
+                                value={form.fecha_caducidad}
+                                onChange={(e) => setForm((s) => ({ ...s, fecha_caducidad: e.target.value }))}
+                              />
+                              {createErrors.fecha_caducidad && <div className="invalid-feedback">{createErrors.fecha_caducidad}</div>}
+                            </div>
+                          </div>
+                        </section>
+
+                      </div>
+                    </div>
+
+                    <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+                      <button className="btn inv-prod-btn-subtle" type="button" onClick={resetForm} disabled={creating}>
+                        Limpiar
+                      </button>
+                      <button className="btn inv-prod-btn-subtle" type="button" onClick={() => closeCreateProductoModal()} disabled={creating}>
+                        Cancelar
+                      </button>
+                      <button className="btn inv-prod-btn-primary" type="submit" disabled={creating}>
+                        {creating ? 'Guardando...' : 'Guardar'}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              </div>
+            </div>
+          </>,
+          productsModalPortalTarget
+        ) : null}
+
+        {enableLegacyProductosModalShellFallback && (
+        <>
+        {/* NEW: overlay compartido para drawers de Filtros y Nuevo reutilizando el shell visual de Categorias. */}
+        {/* WHY: unificar la experiencia de apertura/cierre lateral en Productos sin tocar el contenido interno. */}
+        {/* IMPACT: solo afecta paneles de Filtros/Nuevo; no altera otros modales ni el drawer de detalle. */}
+        <div
+          // NEW: clase hook exclusiva para separar el overlay de Filtros/Nuevo del drawer de detalle en desktop.
+          // WHY: permitir revertir solo el shell desktop de paneles auxiliares sin afectar responsive ni el drawer de detalle.
+          // IMPACT: solo agrega selector CSS para estilos por breakpoint; sin cambios funcionales.
+          className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop inv-prod-aux-backdrop ${productsAuxDrawerOpen ? 'show' : ''}`}
+          onClick={closePanelsDrawer}
+          aria-hidden={!productsAuxDrawerOpen}
+        />
 
         {/* FORM CREAR (SOLO DESKTOP/TABLET) */}
-        <div className="d-none d-md-block">
-          <form onSubmit={onCrear} className="row g-2 mb-3">
+        <div
+          id="inv-prod-create-panel"
+          ref={createSectionRef}
+          // NEW: clase hook del panel Nuevo para aplicar look previo solo en desktop mediante media query.
+          // WHY: recuperar el estilo ligero anterior en desktop sin tocar el drawer actual de mobile/tablet.
+          // IMPACT: UI-only; mantiene handlers, validaciones y submit existentes.
+          className={`inv-prod-create-wrap inv-prod-drawer inv-cat-v2__drawer inv-prod-aux-panel ${createPanelOpen ? 'open show' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          aria-hidden={!createPanelOpen}
+        >
+          <div className="inv-prod-drawer-head">
+            {/* NEW: icono de producto en header del drawer Nuevo con el mismo tratamiento visual del patron. */}
+            {/* WHY: reforzar consistencia del shell de Productos con el resto de submodulos sin redisenar el formulario. */}
+            {/* IMPACT: decorativo; no modifica el flujo de alta. */}
+            <i className="bi bi-bag-check inv-cat-v2__drawer-mark" aria-hidden="true" />
+            <div>
+              <div className="inv-prod-drawer-title">Nuevo producto</div>
+              <div className="inv-prod-drawer-sub">Registro de producto</div>
+            </div>
+            <button type="button" className="inv-prod-drawer-close" onClick={() => closeCreateProductoModal()} aria-label="Cerrar nuevo producto">
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+
+          <div className="inv-prod-drawer-body">
+            <div className="inv-prod-section-head inv-prod-panel-head">
+              <div className="inv-prod-panel-eyebrow">Alta rápida</div>
+              <div className="inv-prod-section-title">Registro de producto</div>
+              <div className="inv-prod-section-sub">Completa los datos esenciales sin salir del catálogo</div>
+            </div>
+
+          {USE_PREMIUM_NEW_FORM ? (
+          <form onSubmit={onCrear} className="row g-3 mb-1 inv-prod-create-form inv-prod-create-form-premium">
+            <div className="col-12 col-xl-8">
+              <div className="row g-2">
+                <div className="col-12">
+                  <label className="form-label mb-1">Nombre del producto</label>
+                  <input
+                    className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
+                    placeholder="Ej: Hamburguesa clásica"
+                    value={form.nombre_producto}
+                    onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
+                    required
+                  />
+                  {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Precio</label>
+                  <input
+                    className={`form-control ${createErrors.precio ? 'is-invalid' : ''}`}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Ej: 150.00"
+                    value={form.precio}
+                    onChange={(e) => setForm((s) => ({ ...s, precio: e.target.value }))}
+                    required
+                  />
+                  {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
+                </div>
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Costo de compra</label>
+                  <input
+                    className={`form-control ${createErrors.costo_compra ? 'is-invalid' : ''}`}
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    inputMode="decimal"
+                    placeholder="Opcional"
+                    value={form.costo_compra}
+                    onChange={(e) => setForm((s) => ({ ...s, costo_compra: e.target.value }))}
+                  />
+                  {createErrors.costo_compra && <div className="invalid-feedback">{createErrors.costo_compra}</div>}
+                  <div className={`form-text ${createMarginSummary.tone === 'danger' ? 'text-danger' : 'text-muted'}`}>{createMarginSummary.text}</div>
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Stock mínimo</label>
+                  <input
+                    className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
+                    type="number"
+                    step="1"
+                    min="0"
+                    inputMode="numeric"
+                    value={form.stock_minimo}
+                    onKeyDown={blockNonIntegerKeys}
+                    onChange={(e) => setForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }))}
+                  />
+                  {createErrors.stock_minimo && <div className="invalid-feedback">{createErrors.stock_minimo}</div>}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Categoría</label>
+                  <select
+                    className={`form-select ${createErrors.id_categoria_producto ? 'is-invalid' : ''}`}
+                    value={String(form.id_categoria_producto ?? '')}
+                    onChange={(e) => setForm((s) => ({ ...s, id_categoria_producto: e.target.value }))}
+                    required
+                  >
+                    <option value="">Seleccione categoría</option>
+                    {categoriasActivas.map((c) => (
+                      <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
+                        {c.nombre_categoria}
+                      </option>
+                    ))}
+                  </select>
+                  {createErrors.id_categoria_producto && (
+                    <div className="invalid-feedback">{createErrors.id_categoria_producto}</div>
+                  )}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Almacén asignado</label>
+                  {renderAlmacenSelectField({
+                    scope: 'create-2',
+                    selectedValue: form.id_almacen,
+                    selectedValues: form.id_almacenes,
+                    error: createErrors.id_almacen,
+                    onChangeMulti: updateCreateAlmacenes
+                  })}
+                </div>
+
+                {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                  <div className="col-12 col-md-4">
+                    <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                    <select
+                      className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                      value={String(form.id_tipo_departamento ?? '')}
+                      onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                      disabled={loadingTipoDepto}
+                    >
+                      <option value="">
+                        {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
+                      </option>
+                      {tipoDepartamentos.map((d) => (
+                        <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                          {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {createErrors.id_tipo_departamento && (
+                      <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                    )}
+                  </div>
+                ) : null}
+
+                <div className="col-12">
+                  <label className="form-label mb-1">Descripción (opcional)</label>
+                  <input
+                    className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
+                    placeholder="Ej: Incluye papas y bebida"
+                    value={form.descripcion_producto}
+                    onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
+                  />
+                  {createErrors.descripcion_producto && (
+                    <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
+                  )}
+                </div>
+
+                <div className="col-12 col-md-6">
+                  <label className="form-label mb-1">Fecha ingreso (opcional)</label>
+                  <input
+                    className={`form-control ${createErrors.fecha_ingreso_producto ? 'is-invalid' : ''}`}
+                    type="date"
+                    value={form.fecha_ingreso_producto}
+                    onChange={(e) => setForm((s) => ({ ...s, fecha_ingreso_producto: e.target.value }))}
+                  />
+                  {createErrors.fecha_ingreso_producto && (
+                    <div className="invalid-feedback">{createErrors.fecha_ingreso_producto}</div>
+                  )}
+                </div>
+
+                <div className="col-12 col-md-6">
+                  <label className="form-label mb-1">Fecha caducidad (opcional)</label>
+                  <input
+                    className={`form-control ${createErrors.fecha_caducidad ? 'is-invalid' : ''}`}
+                    type="date"
+                    value={form.fecha_caducidad}
+                    onChange={(e) => setForm((s) => ({ ...s, fecha_caducidad: e.target.value }))}
+                  />
+                  {createErrors.fecha_caducidad && <div className="invalid-feedback">{createErrors.fecha_caducidad}</div>}
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-xl-4">
+              <div className="inv-prod-create-premium-media">
+                <div className="inv-prod-create-premium-media-title">Imagen del producto</div>
+                {renderCreateImageField('col-12')}
+              </div>
+            </div>
+
+            <div className="col-12 inv-prod-create-actions-col">
+              <div className="inv-prod-create-actions">
+                <button className="btn inv-prod-btn-primary" type="submit" disabled={creating}>
+                  {creating ? 'Creando...' : 'Crear'}
+                </button>
+                <button className="btn inv-prod-btn-subtle" type="button" onClick={resetForm} disabled={creating}>
+                  Limpiar
+                </button>
+              </div>
+            </div>
+          </form>
+          ) : (
+          <form onSubmit={onCrear} className="row g-2 mb-1 inv-prod-create-form">
             <div className="col-12 col-md-3">
               <label className="form-label mb-1">Nombre del producto</label>
               <input
                 className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
                 placeholder="Ej: Hamburguesa clásica"
                 value={form.nombre_producto}
-                onChange={(e) => setForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                 required
               />
               {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
@@ -559,22 +3534,34 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               />
               {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
             </div>
+            <div className="col-6 col-md-2">
+              <label className="form-label mb-1">Costo de compra</label>
+              <input
+                className={`form-control ${createErrors.costo_compra ? 'is-invalid' : ''}`}
+                type="number"
+                step="0.0001"
+                min="0"
+                inputMode="decimal"
+                value={form.costo_compra}
+                onChange={(e) => setForm((s) => ({ ...s, costo_compra: e.target.value }))}
+              />
+              {createErrors.costo_compra && <div className="invalid-feedback">{createErrors.costo_compra}</div>}
+              <div className={`form-text ${createMarginSummary.tone === 'danger' ? 'text-danger' : 'text-muted'}`}>{createMarginSummary.text}</div>
+            </div>
 
             <div className="col-6 col-md-2">
-              <label className="form-label mb-1">Cantidad</label>
+              <label className="form-label mb-1">{'Stock m\u00EDnimo'}</label>
               <input
-                className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
+                className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
                 type="number"
                 step="1"
                 min="0"
                 inputMode="numeric"
-                placeholder="Ej: 10"
-                value={form.cantidad}
+                value={form.stock_minimo}
                 onKeyDown={blockNonIntegerKeys}
-                onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                required
+                onChange={(e) => setForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }))}
               />
-              {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
+              {createErrors.stock_minimo && <div className="invalid-feedback">{createErrors.stock_minimo}</div>}
             </div>
 
             <div className="col-12 col-md-2">
@@ -586,7 +3573,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 required
               >
                 <option value="">Seleccione categoría</option>
-                {categorias.map((c) => (
+                {categoriasActivas.map((c) => (
                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                     {c.nombre_categoria}
                   </option>
@@ -598,47 +3585,39 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             </div>
 
             <div className="col-12 col-md-3">
-              <label className="form-label mb-1">Almacén</label>
-              <select
-                className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
-                value={String(form.id_almacen ?? '')}
-                onChange={(e) => setForm((s) => ({ ...s, id_almacen: e.target.value }))}
-                required
-                disabled={loadingAlmacenes}
-              >
-                <option value="">
-                  {loadingAlmacenes ? 'Cargando almacenes...' : 'Seleccione almacén'}
-                </option>
-                {almacenes.map((a) => (
-                  <option key={a.id_almacen} value={a.id_almacen}>
-                    {a.nombre} (Sucursal {a.id_sucursal})
-                  </option>
-                ))}
-              </select>
-              {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
+              <label className="form-label mb-1">Almacén asignado</label>
+              {renderAlmacenSelectField({
+                scope: 'create-3',
+                selectedValue: form.id_almacen,
+                selectedValues: form.id_almacenes,
+                error: createErrors.id_almacen,
+                onChangeMulti: updateCreateAlmacenes
+              })}
             </div>
 
-            <div className="col-12 col-md-3">
-              <label className="form-label mb-1">Tipo departamento (opcional)</label>
-              <select
-                className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                value={String(form.id_tipo_departamento ?? '')}
-                onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                disabled={loadingTipoDepto}
-              >
-                <option value="">
-                  {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                </option>
-                {tipoDepartamentos.map((d) => (
-                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+            {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+              <div className="col-12 col-md-3">
+                <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                <select
+                  className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                  value={String(form.id_tipo_departamento ?? '')}
+                  onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                  disabled={loadingTipoDepto}
+                >
+                  <option value="">
+                    {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                   </option>
-                ))}
-              </select>
-              {createErrors.id_tipo_departamento && (
-                <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
-              )}
-            </div>
+                  {tipoDepartamentos.map((d) => (
+                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {createErrors.id_tipo_departamento && (
+                  <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                )}
+              </div>
+            ) : null}
 
             <div className="col-12 col-md-3">
               <label className="form-label mb-1">Fecha ingreso (opcional)</label>
@@ -670,107 +3649,370 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
                 placeholder="Ej: Incluye papas y bebida"
                 value={form.descripcion_producto}
-                onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: e.target.value }))}
+                onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
               />
               {createErrors.descripcion_producto && (
                 <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
               )}
             </div>
 
-            <div className="col-12 col-md-3 d-grid align-items-end">
-              <button className="btn btn-primary" type="submit">
-                Crear
-              </button>
+            {renderCreateImageField('col-12 col-md-6')}
+
+            <div className="col-12 col-md-6 inv-prod-create-actions-col">
+              <div className="inv-prod-create-actions">
+                <button className="btn inv-prod-btn-primary" type="submit" disabled={creating}>
+                  {creating ? 'Creando...' : 'Crear'}
+                </button>
+                <button className="btn inv-prod-btn-subtle" type="button" onClick={resetForm} disabled={creating}>
+                  Limpiar
+                </button>
+              </div>
             </div>
           </form>
+          )}
+          </div>
         </div>
+        </>
+        )}
 
         {/* FILTROS */}
-        <div className="row g-2 mb-3">
-          <div className="col-12 col-md-4">
+        <div className="inv-prod-results-meta inv-inventory-results-meta">
+          <span>{loadingProductos ? 'Cargando productos...' : `${productosFiltrados.length} resultados`}</span>
+          <span>{loadingProductos ? '' : `Total: ${totalProductos}`}</span>
+          <span>{loadingProductos ? '' : `Página ${carouselPageIndex + 1} de ${carouselPageCount}`}</span>
+          {/* NEW: toggle admin para incluir productos inactivos en el GET del tab. */}
+          {/* WHY: backend lista solo activos por defecto despues del cambio a soft delete. */}
+          {/* IMPACT: recarga usando el mismo endpoint; filtros locales se mantienen. */}
+          <label className="form-check form-switch mb-0 inv-catpro-inline-toggle">
             <input
-              className="form-control"
-              placeholder="Buscar por nombre, descripción, categoría, almacén..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              className="form-check-input"
+              type="checkbox"
+              checked={showInactiveProductos}
+              onChange={(e) => setShowInactiveProductos(e.target.checked)}
             />
-          </div>
-
-          <div className="col-12 col-md-2">
-            <select className="form-select" value={stockFiltro} onChange={(e) => setStockFiltro(e.target.value)}>
-              <option value="todos">Todos</option>
-              <option value="con_stock">Con stock</option>
-              <option value="sin_stock">Sin stock</option>
-            </select>
-          </div>
-
-          <div className="col-12 col-md-2">
-            <select className="form-select" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
-              <option value="todos">Todas las categorías</option>
-              {categorias.map((c) => (
-                <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
-                  {c.nombre_categoria}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-12 col-md-2">
-            <select className="form-select" value={almacenFiltro} onChange={(e) => setAlmacenFiltro(e.target.value)}>
-              <option value="todos">Todos los almacenes</option>
-              {almacenes.map((a) => (
-                <option key={a.id_almacen} value={a.id_almacen}>
-                  {a.nombre} (Sucursal {a.id_sucursal})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-12 col-md-2">
-            <select className="form-select" value={deptoFiltro} onChange={(e) => setDeptoFiltro(e.target.value)}>
-              <option value="todos">Todos los deptos</option>
-              {tipoDepartamentos.map((d) => (
-                <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                  {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-12 col-md-3 d-grid">
-            <button
-              className="btn btn-outline-secondary"
-              type="button"
-              onClick={() => {
-                setSearch('');
-                setStockFiltro('todos');
-                setCategoriaFiltro('todos');
-                setAlmacenFiltro('todos');
-                setDeptoFiltro('todos');
-              }}
-            >
-              Limpiar filtros
-            </button>
-          </div>
+            <span className="form-check-label">Ver inactivos</span>
+          </label>
+          {hasActiveFilters ? (
+            <span className="inv-prod-active-filter-pill">
+              <span>Filtros activos</span>
+              {/* NEW: acceso rápido para resetear todos los filtros desde el resumen. */}
+              {/* WHY: reutilizar `resetFiltros` existente sin abrir el panel/modal de filtros. */}
+              {/* IMPACT: no cambia la lógica de filtrado; solo agrega un atajo de UX. */}
+              <button
+                type="button"
+                className="inv-prod-active-filter-pill__clear"
+                onClick={resetFiltros}
+                aria-label="Limpiar filtros"
+                title="Limpiar filtros"
+              >
+                <i className="bi bi-x-lg" aria-hidden="true" />
+              </button>
+            </span>
+          ) : null}
         </div>
 
-        {/* MOBILE CARDS */}
-        <div className="d-md-none">
+        {enableLegacyProductosModalShellFallback && (
+        <div
+          id="inv-prod-filters"
+          ref={filtersSectionRef}
+          // NEW: clase hook del panel Filtros para revertir el shell solo en desktop.
+          // WHY: conservar la experiencia responsive actual y recuperar el formato compacto previo en desktop.
+          // IMPACT: visual por breakpoint; no altera filtros ni datos.
+          className={`inv-prod-filters inv-prod-drawer inv-cat-v2__drawer inv-prod-aux-panel ${filtersOpen ? 'open show' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          aria-hidden={!filtersOpen}
+        >
+          <div className="inv-prod-drawer-head">
+            {/* NEW: icono de producto en header del drawer de Filtros para homogeneidad con el shell de Inventario. */}
+            {/* WHY: mantener el lenguaje visual unificado entre Filtros/Nuevo en Productos. */}
+            {/* IMPACT: solo decorativo; no altera filtros ni consultas locales. */}
+            <i className="bi bi-bag-check inv-cat-v2__drawer-mark" aria-hidden="true" />
+            <div>
+              <div className="inv-prod-drawer-title">Filtros de productos</div>
+              <div className="inv-prod-drawer-sub">Stock, estado, categoría, almacén y orden</div>
+            </div>
+            <button type="button" className="inv-prod-drawer-close" onClick={() => setFiltersOpen(false)} aria-label="Cerrar filtros">
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+
+          <div className="inv-prod-drawer-body">
+            <div className="inv-prod-panel-head inv-prod-filters-head">
+              <div className="inv-prod-panel-eyebrow">Búsqueda avanzada</div>
+              <div className="inv-prod-section-title">Filtros y Orden del Catálogo</div>
+              <div className="inv-prod-section-sub">Refina resultados por stock, categoría, almacén y departamento</div>
+            </div>
+
+          <div className="row g-2 inv-prod-filters-grid">
+            <div className="col-12 col-md-4">
+              <input
+                className="form-control"
+                placeholder="Buscar productos..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="col-12 col-md-2">
+              <select className="form-select" value={stockFiltro} onChange={(e) => setStockFiltro(e.target.value)}>
+                <option value="todos">STOCK</option>
+                <option value="con_stock">Con stock</option>
+                <option value="sin_stock">Sin stock</option>
+              </select>
+            </div>
+
+            <div className="col-12 col-md-2">
+              <select className="form-select" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
+                <option value="todos">ESTADOS</option>
+                <option value="activo">Activos</option>
+                <option value="inactivo">Inactivos</option>
+              </select>
+            </div>
+
+            <div className="col-12 col-md-2">
+              <select className="form-select" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
+                <option value="todos">CATEGORÍAS</option>
+                {categoriasActivas.map((c) => (
+                  <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
+                    {c.nombre_categoria}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-12 col-md-4">
+              <div className="small text-uppercase fw-semibold text-muted mb-1">Almacén</div>
+              <select
+                className="form-select"
+                value={almacenFiltro}
+                onChange={(e) => setAlmacenFiltro(e.target.value)}
+              >
+                <option value="todos">Todos</option>
+                {almacenes.map((a) => {
+                  const idAlmacen = Number.parseInt(String(a.id_almacen ?? ''), 10);
+                  if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return null;
+                  return (
+                    <option key={idAlmacen} value={String(idAlmacen)}>
+                      {a.nombre}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+              <div className="col-12 col-md-2">
+                <select className="form-select" value={deptoFiltro} onChange={(e) => setDeptoFiltro(e.target.value)}>
+                  <option value="todos">DEPTOS</option>
+                  {tipoDepartamentos.map((d) => (
+                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <div className="col-12 col-md-2">
+              <select className="form-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                <option value="recientes">{'M\u00E1s recientes'}</option>
+                <option value="nombre_asc">Nombre A-Z</option>
+                <option value="nombre_desc">Nombre Z-A</option>
+                <option value="precio_desc">Precio mayor</option>
+                <option value="precio_asc">Precio menor</option>
+                <option value="stock_desc">Stock mayor</option>
+                <option value="stock_asc">Stock menor</option>
+              </select>
+            </div>
+
+            <div className="col-12 col-md-2 d-grid">
+              <button
+                className="btn btn-outline-secondary inv-prod-btn-subtle"
+                type="button"
+                onClick={resetFiltros}
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          </div>
+          </div>
+        </div>
+        )}
+
+        <div className="inv-prod-catalog-zone">
           {loadingProductos ? (
-            <div className="text-muted">Cargando...</div>
-          ) : productosFiltrados.length === 0 ? (
-            <div className="text-muted">Sin datos</div>
+            <div className="inv-prod-skeleton-grid" role="status" aria-live="polite">
+              {Array.from({ length: 8 }).map((_, idx) => (
+                <div key={`sk-${idx}`} className="inv-prod-skeleton-card" />
+              ))}
+            </div>
+          ) : productosPaginados.length === 0 ? (
+            <div className="inv-prod-empty inv-prod-empty-rich">
+              <i className={`bi ${hasActiveFilters ? 'bi-search' : 'bi-box-seam'}`} />
+              <div className="inv-prod-empty-title">
+                {hasActiveFilters
+                  ? 'No encontramos productos con esos filtros.'
+                  : 'Aún no hay productos. Haz clic en "Nuevo" para crear el primero.'}
+              </div>
+            </div>
           ) : (
-            <div className="d-flex flex-column gap-2">
-              {productosFiltrados.map((p, index) => {
+            <div className="inv-prod-catalog-shell">
+              <div className="inv-prod-carousel-caption">Carrusel de productos</div>
+              <div className="inv-prod-carousel-meta">
+                <span>{`Página ${carouselPageIndex + 1} de ${carouselPageCount}`}</span>
+                <span>{`${productosPaginados.length} productos visibles`}</span>
+              </div>
+              <div className="inv-prod-carousel-stage inv-prod-carousel-stage--paged">
+                <button
+                  type="button"
+                  className={`btn inv-prod-carousel-float is-prev ${carouselPageIndex > 0 ? 'is-visible' : ''}`}
+                  aria-label="Página anterior del carrusel de productos"
+                  onClick={() => setCarouselPageIndex((prev) => Math.max(0, prev - 1))}
+                  disabled={carouselPageIndex <= 0}
+                >
+                  <i className="bi bi-chevron-left" />
+                </button>
+
+                <div className={`inv-prod-carousel-page cols-${carouselConfig.columns}`} key={`productos-page-${carouselPageIndex}`}>
+                {currentCarouselItems.map((p) => {
+                  const cardIsActive = resolveEstadoActivo(p);
+                  const canToggleCardEstado = cardIsActive ? canInactivar : canEditar;
+                  const estado = resolveEstadoProducto(p);
+                  const stock = getStockMeta(p.cantidad, p.stock_minimo);
+                  const imgSrc = getProductoImageSrc(p);
+                  const stockMin = Number.parseInt(String(p.stock_minimo ?? 0), 10);
+                  const ratioBase = stockMin > 0 ? stock.qty / (stockMin * 2) : stock.qty / 20;
+                  const ratio = Math.max(0, Math.min(1, Number.isNaN(ratioBase) ? 0 : ratioBase));
+
+                  return (
+                    <article
+                      key={p.id_producto}
+                      className={`inv-prod-catalog-card ${estado.className} ${Number(selectedProductoId) === Number(p.id_producto) && drawerOpen ? 'is-selected' : ''} ${removingProductoIds[Number(p.id_producto)] ? 'is-removing' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => abrirDrawerProducto(p)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          abrirDrawerProducto(p);
+                        }
+                      }}
+                    >
+                      <div className="inv-prod-thumb-wrap">
+                        {imgSrc ? (
+                          <img
+                            src={imgSrc}
+                            alt={p.nombre_producto || 'Producto'}
+                            className="inv-prod-thumb"
+                            loading="lazy"
+                            onError={() => markImageAsError(p.id_producto)}
+                          />
+                        ) : (
+                          <div className="inv-prod-thumb placeholder">
+                            <i className="bi bi-image" />
+                            <span>Sin imagen</span>
+                          </div>
+                        )}
+                        <span className={`inv-prod-card-state ${estado.className}`}>{estado.label}</span>
+                      </div>
+
+                      <div className="inv-prod-card-body">
+                        {/* NEW: icono decorativo centrado dentro del card de producto. */}
+                        {/* WHY: replicar el lenguaje visual premium aplicado en Insumos sin alterar el contenido operativo del card. */}
+                        {/* IMPACT: solo decoracion visual del card; no modifica acciones, datos ni eventos. */}
+                        <div className="inv-prod-card-bg-icon" aria-hidden="true">
+                          <i className="bi bi-box-seam" />
+                        </div>
+
+                        <div className="inv-prod-card-name">{p.nombre_producto || 'Producto sin nombre'}</div>
+                        <div className="inv-prod-card-category">{getCategoriaLabel(p.id_categoria_producto)}</div>
+
+                        <div className="inv-prod-card-metrics">
+                          <div>
+                            <div className="inv-prod-card-label">Precio</div>
+                            <div className="inv-prod-card-value">{formatMoney(p.precio)}</div>
+                          </div>
+                          <div>
+                            <div className="inv-prod-card-label">Existencias</div>
+                            <div className="inv-prod-card-value">{Number.parseInt(String(p.cantidad ?? '0'), 10) || 0}</div>
+                          </div>
+                        </div>
+
+                        <div className="inv-prod-stock-line">
+                          <div className="inv-prod-stock-meta">
+                            <div className="inv-prod-stock-ring" style={{ '--stock-ratio': ratio }} />
+                            <div className="inv-prod-stock-copy">
+                              <span>{stock.label}</span>
+                            </div>
+                          </div>
+
+                          {/* NEW: CTA de estado dinamico para que el card sea coherente en activos vs. solo inactivos. */}
+                          {/* WHY: cuando el producto esta inactivo el usuario debe poder activarlo desde el card sin abrir drawer. */}
+                          {/* IMPACT: `Inactivar` conserva el flujo actual (DELETE + confirm); `Activar` reutiliza PUT por campo `estado`. */}
+                          {canToggleCardEstado ? (
+                            <button
+                              type="button"
+                              className={`btn inv-prod-card-action ${cardIsActive ? 'inactivate' : ''} inv-prod-card-action-compact`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (cardIsActive) {
+                                  openConfirmDelete(p.id_producto, p.nombre_producto);
+                                  return;
+                                }
+                                void activarProductoDesdeCard(p);
+                              }}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              aria-label={`${cardIsActive ? 'Inactivar' : 'Activar'} ${p.nombre_producto || 'producto'}`}
+                              title={`${cardIsActive ? 'Inactivar' : 'Activar'} producto`}
+                              disabled={togglingEstado || deleting}
+                            >
+                              <i className={`bi ${cardIsActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
+                              <span className="inv-prod-card-action-label">{cardIsActive ? 'Inactivar' : 'Activar'}</span>
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+                </div>
+
+                <button
+                  type="button"
+                  className={`btn inv-prod-carousel-float is-next ${carouselPageIndex < carouselPageCount - 1 ? 'is-visible' : ''}`}
+                  aria-label="Página siguiente del carrusel de productos"
+                  onClick={() => setCarouselPageIndex((prev) => Math.min(carouselPageCount - 1, prev + 1))}
+                  disabled={carouselPageIndex >= carouselPageCount - 1}
+                >
+                  <i className="bi bi-chevron-right" />
+                </button>
+              </div>
+
+            </div>
+          )}
+        </div>
+
+        {/* MOBILE CARDS (LEGACY) */}
+        {renderLegacyLayouts ? (
+        <div className="d-none inv-prod-mobile-zone">
+          {loadingProductos ? (
+            <div className="inv-prod-loading" role="status" aria-live="polite">Cargando...</div>
+          ) : productosPaginados.length === 0 ? (
+            <div className="inv-prod-empty">Sin datos</div>
+          ) : (
+            <div className="d-flex flex-column gap-2 inv-prod-mobile-list">
+              {productosPaginados.map((p, index) => {
                 const isEditing = editId === p.id_producto;
+                const stockMeta = getStockMeta(p.cantidad, p.stock_minimo);
 
                 return (
-                  <div key={p.id_producto} className="card border">
+                  <div key={p.id_producto} className={`card border inv-prod-mobile-card ${isEditing ? 'is-editing' : ''}`}>
                     <div className="card-body">
                       <div className="d-flex justify-content-between align-items-start mb-2">
                         <div>
-                          <div className="text-muted small">No. {index + 1}</div>
+                          <div className="text-muted small">No. {(currentPage - 1) * pageSize + index + 1}</div>
                           <div className="fw-bold">{isEditing ? 'EDITANDO' : p.nombre_producto}</div>
                           <div className="text-muted small">
                             Categoría: <span className="fw-semibold">{getCategoriaLabel(p.id_categoria_producto)}</span> •
@@ -780,6 +4022,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                             Almacén: <span className="fw-semibold">{getAlmacenLabel(p.id_almacen)}</span>
                           </div>
                         </div>
+
+                        <span className={`inv-prod-stock-badge ${stockMeta.className}`}>{stockMeta.label}</span>
                       </div>
 
                       {/* CAMPOS */}
@@ -790,7 +4034,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                             <input
                               className={`form-control form-control-sm ${editErrors.nombre_producto ? 'is-invalid' : ''}`}
                               value={editForm.nombre_producto}
-                              onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                              onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                              onBlur={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                             />
                             {editErrors.nombre_producto && <div className="invalid-feedback">{editErrors.nombre_producto}</div>}
                           </>
@@ -819,27 +4064,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           )}
                         </div>
 
-                        <div className="col-6">
-                          <div className="small text-muted">Cantidad</div>
-                          {isEditing ? (
-                            <>
-                              <input
-                                className={`form-control form-control-sm ${editErrors.cantidad ? 'is-invalid' : ''}`}
-                                type="number"
-                                step="1"
-                                min="0"
-                                inputMode="numeric"
-                                value={editForm.cantidad}
-                                onKeyDown={blockNonIntegerKeys}
-                                onChange={(e) => setEditForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                              />
-                              {editErrors.cantidad && <div className="invalid-feedback">{editErrors.cantidad}</div>}
-                            </>
-                          ) : (
-                            <div>{p.cantidad}</div>
-                          )}
-                        </div>
-
                         <div className="col-12">
                           <div className="small text-muted">Categoría</div>
                           {isEditing ? (
@@ -850,7 +4074,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 onChange={(e) => setEditForm((s) => ({ ...s, id_categoria_producto: e.target.value }))}
                               >
                                 <option value="">Seleccione</option>
-                                {categorias.map((c) => (
+                                {categoriasActivas.map((c) => (
                                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                                     {c.nombre_categoria}
                                   </option>
@@ -866,58 +4090,47 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         </div>
 
                         <div className="col-12">
-                          <div className="small text-muted">Almacén</div>
+                          <div className="small text-muted">Almacén asignado</div>
                           {isEditing ? (
                             <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.id_almacen ? 'is-invalid' : ''}`}
-                                value={String(editForm.id_almacen ?? '')}
-                                onChange={(e) => setEditForm((s) => ({ ...s, id_almacen: e.target.value }))}
-                                disabled={loadingAlmacenes}
-                              >
-                                <option value="">
-                                  {loadingAlmacenes ? 'Cargando...' : 'Seleccione'}
-                                </option>
-                                {almacenes.map((a) => (
-                                  <option key={a.id_almacen} value={a.id_almacen}>
-                                    {a.nombre} (Sucursal {a.id_sucursal})
-                                  </option>
-                                ))}
-                              </select>
-                              {editErrors.id_almacen && <div className="invalid-feedback">{editErrors.id_almacen}</div>}
+                              <div className="form-control form-control-sm" title="El almacén no puede modificarse desde la edición de catálogo.">
+                                {getAlmacenLabel(editForm.id_almacen)}
+                              </div>
                             </>
                           ) : (
                             <div>{getAlmacenLabel(p.id_almacen)}</div>
                           )}
                         </div>
 
-                        <div className="col-12">
-                          <div className="small text-muted">Departamento (opcional)</div>
-                          {isEditing ? (
-                            <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                                value={String(editForm.id_tipo_departamento ?? '')}
-                                onChange={(e) => setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                                disabled={loadingTipoDepto}
-                              >
-                                <option value="">
-                                  {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                                </option>
-                                {tipoDepartamentos.map((d) => (
-                                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                        {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                          <div className="col-12">
+                            <div className="small text-muted">Departamento (opcional)</div>
+                            {isEditing ? (
+                              <>
+                                <select
+                                  className={`form-select form-select-sm ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                                  value={String(editForm.id_tipo_departamento ?? '')}
+                                  onChange={(e) => setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                                  disabled={loadingTipoDepto}
+                                >
+                                  <option value="">
+                                    {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                                   </option>
-                                ))}
-                              </select>
-                              {editErrors.id_tipo_departamento && (
-                                <div className="invalid-feedback">{editErrors.id_tipo_departamento}</div>
-                              )}
-                            </>
-                          ) : (
-                            <div>{getDeptoLabel(p.id_tipo_departamento)}</div>
-                          )}
-                        </div>
+                                  {tipoDepartamentos.map((d) => (
+                                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                {editErrors.id_tipo_departamento && (
+                                  <div className="invalid-feedback">{editErrors.id_tipo_departamento}</div>
+                                )}
+                              </>
+                            ) : (
+                              <div>{getDeptoLabel(p.id_tipo_departamento)}</div>
+                            )}
+                          </div>
+                        ) : null}
 
                         <div className="col-12">
                           <div className="small text-muted">Descripción (opcional)</div>
@@ -926,7 +4139,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               <input
                                 className={`form-control form-control-sm ${editErrors.descripcion_producto ? 'is-invalid' : ''}`}
                                 value={editForm.descripcion_producto}
-                                onChange={(e) => setEditForm((s) => ({ ...s, descripcion_producto: e.target.value }))}
+                                onChange={(e) => setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                              onBlur={(e) => setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
                               />
                               {editErrors.descripcion_producto && (
                                 <div className="invalid-feedback">{editErrors.descripcion_producto}</div>
@@ -939,26 +4153,30 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
                         <div className="col-12">
                           {isEditing ? (
-                            <div className="d-flex gap-2 mt-2">
-                              <button className="btn btn-sm btn-primary" type="button" onClick={guardarEdicion}>
-                                Guardar
+                            <div className="d-flex gap-2 mt-2 inv-prod-actions">
+                              <button className="btn btn-sm btn-primary inv-prod-btn-primary" type="button" onClick={guardarEdicion} disabled={savingEdit || !canEditar}>
+                                {savingEdit ? 'Guardando...' : 'Guardar'}
                               </button>
-                              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={cancelarEdicion}>
+                              <button className="btn btn-sm btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={cancelarEdicion} disabled={savingEdit}>
                                 Cancelar
                               </button>
                             </div>
                           ) : (
-                            <div className="d-flex gap-2 mt-2">
-                              <button className="btn btn-sm btn-outline-primary" type="button" onClick={() => iniciarEdicion(p)}>
-                                Editar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger"
-                                type="button"
-                                onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
-                              >
-                                Eliminar
-                              </button>
+                            <div className="d-flex gap-2 mt-2 inv-prod-actions">
+                              {canEditar ? (
+                                <button className="btn btn-sm btn-outline-primary inv-prod-btn-outline" type="button" onClick={() => iniciarEdicion(p)}>
+                                  <i className="bi bi-pencil-square" /> Editar
+                                </button>
+                              ) : null}
+                              {canInactivar ? (
+                                <button
+                                  className="btn btn-sm btn-outline-danger inv-prod-btn-danger-lite"
+                                  type="button"
+                                  onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
+                                >
+                                  <i className="bi bi-trash3" /> Inactivar
+                                </button>
+                              ) : null}
                             </div>
                           )}
                         </div>
@@ -970,35 +4188,38 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             </div>
           )}
         </div>
+        ) : null}
 
-        {/* DESKTOP TABLE */}
-        <div className="d-none d-md-block">
+        {/* DESKTOP TABLE (LEGACY) */}
+        {renderLegacyLayouts ? (
+        <div className="d-none inv-prod-table-zone">
           {loadingProductos ? (
-            <div className="text-muted">Cargando...</div>
-          ) : productosFiltrados.length === 0 ? (
-            <div className="text-muted">Sin datos</div>
+            <div className="inv-prod-loading" role="status" aria-live="polite">Cargando...</div>
+          ) : productosPaginados.length === 0 ? (
+            <div className="inv-prod-empty">Sin datos</div>
           ) : (
-            <div className="table-responsive">
-              <table className="table table-sm align-middle">
+            <div className="table-responsive inv-prod-table-wrap">
+              <table className="table table-sm align-middle inv-prod-table">
                 <thead>
                   <tr>
                     <th style={{ width: 60 }}>No.</th>
                     <th>Nombre</th>
                     <th>Categoría</th>
                     <th>Almacén</th>
-                    <th>Departamento</th>
+                    {SHOW_PRODUCTO_DEPARTAMENTOS ? <th>Departamento</th> : null}
                     <th className="text-end">Precio</th>
                     <th className="text-end">Cantidad</th>
                     <th style={{ width: 220 }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {productosFiltrados.map((p, index) => {
+                  {productosPaginados.map((p, index) => {
                     const isEditing = editId === p.id_producto;
+                    const stockMeta = getStockMeta(p.cantidad, p.stock_minimo);
 
                     return (
-                      <tr key={p.id_producto}>
-                        <td className="text-muted">{index + 1}</td>
+                      <tr key={p.id_producto} className={isEditing ? 'is-editing' : ''}>
+                        <td className="text-muted">{(currentPage - 1) * pageSize + index + 1}</td>
 
                         <td>
                           {isEditing ? (
@@ -1006,7 +4227,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               <input
                                 className={`form-control form-control-sm ${editErrors.nombre_producto ? 'is-invalid' : ''}`}
                                 value={editForm.nombre_producto}
-                                onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                                onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                              onBlur={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                               />
                               {editErrors.nombre_producto && <div className="invalid-feedback">{editErrors.nombre_producto}</div>}
                             </>
@@ -1027,7 +4249,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 onChange={(e) => setEditForm((s) => ({ ...s, id_categoria_producto: e.target.value }))}
                               >
                                 <option value="">Seleccione</option>
-                                {categorias.map((c) => (
+                                {categoriasActivas.map((c) => (
                                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                                     {c.nombre_categoria}
                                   </option>
@@ -1045,54 +4267,43 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         <td>
                           {isEditing ? (
                             <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.id_almacen ? 'is-invalid' : ''}`}
-                                value={String(editForm.id_almacen ?? '')}
-                                onChange={(e) => setEditForm((s) => ({ ...s, id_almacen: e.target.value }))}
-                                disabled={loadingAlmacenes}
-                              >
-                                <option value="">
-                                  {loadingAlmacenes ? 'Cargando...' : 'Seleccione'}
-                                </option>
-                                {almacenes.map((a) => (
-                                  <option key={a.id_almacen} value={a.id_almacen}>
-                                    {a.nombre} (Sucursal {a.id_sucursal})
-                                  </option>
-                                ))}
-                              </select>
-                              {editErrors.id_almacen && <div className="invalid-feedback">{editErrors.id_almacen}</div>}
+                              <div className="form-control form-control-sm" title="El almacén no puede modificarse desde la edición de catálogo.">
+                                {getAlmacenLabel(editForm.id_almacen)}
+                              </div>
                             </>
                           ) : (
                             <span>{getAlmacenLabel(p.id_almacen)}</span>
                           )}
                         </td>
 
-                        <td>
-                          {isEditing ? (
-                            <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                                value={String(editForm.id_tipo_departamento ?? '')}
-                                onChange={(e) => setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                                disabled={loadingTipoDepto}
-                              >
-                                <option value="">
-                                  {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                                </option>
-                                {tipoDepartamentos.map((d) => (
-                                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                        {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                          <td>
+                            {isEditing ? (
+                              <>
+                                <select
+                                  className={`form-select form-select-sm ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                                  value={String(editForm.id_tipo_departamento ?? '')}
+                                  onChange={(e) => setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                                  disabled={loadingTipoDepto}
+                                >
+                                  <option value="">
+                                    {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                                   </option>
-                                ))}
-                              </select>
-                              {editErrors.id_tipo_departamento && (
-                                <div className="invalid-feedback">{editErrors.id_tipo_departamento}</div>
-                              )}
-                            </>
-                          ) : (
-                            <span>{getDeptoLabel(p.id_tipo_departamento)}</span>
-                          )}
-                        </td>
+                                  {tipoDepartamentos.map((d) => (
+                                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                {editErrors.id_tipo_departamento && (
+                                  <div className="invalid-feedback">{editErrors.id_tipo_departamento}</div>
+                                )}
+                              </>
+                            ) : (
+                              <span>{getDeptoLabel(p.id_tipo_departamento)}</span>
+                            )}
+                          </td>
+                        ) : null}
 
                         <td className="text-end">
                           {isEditing ? (
@@ -1113,47 +4324,35 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         </td>
 
                         <td className="text-end">
-                          {isEditing ? (
-                            <>
-                              <input
-                                className={`form-control form-control-sm text-end ${editErrors.cantidad ? 'is-invalid' : ''}`}
-                                type="number"
-                                step="1"
-                                min="0"
-                                inputMode="numeric"
-                                value={editForm.cantidad}
-                                onKeyDown={blockNonIntegerKeys}
-                                onChange={(e) => setEditForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                              />
-                              {editErrors.cantidad && <div className="invalid-feedback">{editErrors.cantidad}</div>}
-                            </>
-                          ) : (
-                            <span className="fw-semibold">{p.cantidad}</span>
-                          )}
+                          <span className={`fw-semibold inv-prod-stock-inline ${stockMeta.className}`}>{p.cantidad}</span>
                         </td>
 
                         <td>
                           {isEditing ? (
-                            <div className="d-flex gap-2">
-                              <button className="btn btn-sm btn-primary" type="button" onClick={guardarEdicion}>
-                                Guardar
+                            <div className="d-flex gap-2 inv-prod-actions">
+                              <button className="btn btn-sm btn-primary inv-prod-btn-primary" type="button" onClick={guardarEdicion} disabled={savingEdit || !canEditar}>
+                                {savingEdit ? 'Guardando...' : 'Guardar'}
                               </button>
-                              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={cancelarEdicion}>
+                              <button className="btn btn-sm btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={cancelarEdicion} disabled={savingEdit}>
                                 Cancelar
                               </button>
                             </div>
                           ) : (
-                            <div className="d-flex gap-2">
-                              <button className="btn btn-sm btn-outline-primary" type="button" onClick={() => iniciarEdicion(p)}>
-                                Editar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger"
-                                type="button"
-                                onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
-                              >
-                                Eliminar
-                              </button>
+                            <div className="d-flex gap-2 inv-prod-actions">
+                              {canEditar ? (
+                                <button className="btn btn-sm btn-outline-primary inv-prod-btn-outline" type="button" onClick={() => iniciarEdicion(p)}>
+                                  <i className="bi bi-pencil-square" /> Editar
+                                </button>
+                              ) : null}
+                              {canInactivar ? (
+                                <button
+                                  className="btn btn-sm btn-outline-danger inv-prod-btn-danger-lite"
+                                  type="button"
+                                  onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
+                                >
+                                  <i className="bi bi-trash3" /> Inactivar
+                                </button>
+                              ) : null}
                             </div>
                           )}
                         </td>
@@ -1165,35 +4364,366 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             </div>
           )}
         </div>
+        ) : null}
+
+        {/* NEW: shell glass del drawer de Categorias aplicado al drawer de detalle/edicion de Productos. */}
+        {/* WHY: unificar overlay, blur y animacion lateral en todo Inventario sin tocar el contenido del formulario. */}
+        {/* IMPACT: cambio solo visual del contenedor del drawer; la logica del detalle/edicion permanece igual. */}
+        <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${drawerOpen ? 'show' : ''}`} onClick={() => cerrarDrawerProducto()} />
+        <aside
+          className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer inv-ins-drawer--edit ${drawerOpen ? 'show' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="inv-prod-edit-title"
+          aria-hidden={!drawerOpen}
+        >
+          {selectedProducto ? (
+            <>
+              <div ref={drawerBodyRef} className="inv-prod-drawer-body inv-ins-drawer-body--edit">
+                <div className="inv-ins-create-hero is-edit">
+                  <button
+                    type="button"
+                    className="inv-prod-drawer-close inv-ins-create-hero__close"
+                    onClick={() => cerrarDrawerProducto()}
+                    aria-label="Cerrar detalle"
+                  >
+                    <i className="bi bi-x-lg" />
+                  </button>
+                  <div className="inv-ins-create-hero__icon">
+                    <i className="bi bi-stars" aria-hidden="true" />
+                  </div>
+                  <div className="inv-ins-create-hero__copy">
+                    <div className="inv-ins-create-hero__kicker">Edicion Activa</div>
+                    <div id="inv-prod-edit-title" className="inv-ins-create-hero__title">{editForm.nombre_producto || selectedProducto.nombre_producto || 'Producto'}</div>
+                  </div>
+                  <div className="inv-ins-create-hero__chips">
+                    <span className="inv-ins-create-hero__chip">
+                      <i className="bi bi-cash-stack" aria-hidden="true" />
+                      {formatMoney(editForm?.precio ?? selectedProducto?.precio ?? 0)}
+                    </span>
+                    <span className="inv-ins-create-hero__chip">
+                      <i className="bi bi-box-seam" aria-hidden="true" />
+                      {getStockMeta(
+                        selectedProducto.cantidad,
+                        editForm.stock_minimo ?? selectedProducto.stock_minimo
+                      ).label}
+                    </span>
+                    <span className="inv-ins-create-hero__chip">
+                      <i className="bi bi-tags" aria-hidden="true" />
+                      {getCategoriaLabel(editForm.id_categoria_producto ?? selectedProducto.id_categoria_producto)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="inv-ins-drawer-hero is-edit">
+                  <div className="inv-ins-drawer-hero__price">{formatMoney(editForm?.precio ?? selectedProducto?.precio ?? 0)}</div>
+                  <div className="small d-flex align-items-center flex-wrap gap-1 lh-sm text-muted">
+                    <span className="fw-semibold">Costo de compra:</span>
+                    <span>{editMarginSummary.costoDefinido ? formatMoney(editForm?.costo_compra ?? selectedProducto?.costo_compra ?? 0) : 'No definido'}</span>
+                  </div>
+                  {renderCompactMarginSummary(editMarginSummary)}
+                  <span className={`inv-prod-drawer-status-pill ${drawerEstadoActivo ? 'is-active' : 'is-inactive'}`}>
+                    {drawerEstadoActivo ? 'Activo' : 'Inactivo'}
+                  </span>
+                </div>
+
+                <div className="inv-prod-drawer-hero">
+                  <div className={`inv-prod-drawer-image ${drawerImageSrc ? '' : 'placeholder'}`}>
+                    {drawerImageSrc ? (
+                      <img
+                        src={drawerImageSrc}
+                        alt={selectedProducto.nombre_producto || 'Producto'}
+                        onError={() => markImageAsError(selectedProducto.id_producto)}
+                      />
+                    ) : (
+                      <div className="inv-prod-drawer-image-empty">
+                        <i className="bi bi-image" />
+                        <span>Sin imagen</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="inv-prod-drawer-meta">
+                    <input
+                      ref={drawerImageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="d-none"
+                      onChange={onDrawerImageChange}
+                    />
+                    <span className={`inv-prod-drawer-status-pill ${drawerEstadoActivo ? 'is-active' : 'is-inactive'}`}>
+                      {drawerEstadoActivo ? 'Activo' : 'Inactivo'}
+                    </span>
+                    <div className="inv-prod-drawer-image-actions">
+                      <button
+                        type="button"
+                        className="btn inv-prod-btn-subtle"
+                        onClick={openDrawerImagePicker}
+                        disabled={drawerImageAction.loading || !canSubirImagenProducto}
+                      >
+                        <i className="bi bi-upload" /> {drawerImageSrc ? 'Cambiar imagen' : 'Agregar imagen'}
+                      </button>
+                      {canEliminarImagenProducto ? (
+                        <button
+                          type="button"
+                          className="btn inv-prod-btn-outline"
+                          onClick={removeDrawerImage}
+                          disabled={drawerImageAction.loading || (!drawerImageSrc && !selectedProducto.id_archivo_imagen_principal)}
+                        >
+                          Quitar
+                        </button>
+                      ) : null}
+                    </div>
+                    {drawerImageAction.loading ? (
+                      <div className="inv-prod-image-feedback">Procesando imagen...</div>
+                    ) : drawerImageAction.error ? (
+                      <div className="inv-prod-image-feedback is-error">{drawerImageAction.error}</div>
+                    ) : (
+                      <div className="inv-prod-image-feedback">JPG, PNG o WEBP hasta 6 MB.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="inv-prod-drawer-section">
+                  <div className="inv-prod-drawer-section-title">Datos editables del producto</div>
+                  <div className="inv-prod-drawer-form inv-prod-drawer-form-grid inv-prod-drawer-form--compact">
+                  <div className="inv-prod-drawer-field--span-2">
+                    <label>Nombre</label>
+                    <input
+                      className={editErrors.nombre_producto ? 'is-invalid' : ''}
+                      type="text"
+                      value={editForm.nombre_producto ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }));
+                      }}
+                      onBlur={(e) => {
+                        setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }));
+                      }}
+                    />
+                    {editErrors.nombre_producto ? <div className="invalid-feedback d-block">{editErrors.nombre_producto}</div> : null}
+                  </div>
+                  <div>
+                    <label>Precio (L.)</label>
+                    <input
+                      className={editErrors.precio ? 'is-invalid' : ''}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editForm.precio ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, precio: e.target.value }));
+                      }}
+                    />
+                    {editErrors.precio ? <div className="invalid-feedback d-block">{editErrors.precio}</div> : null}
+                  </div>
+                  <div>
+                    <label>Costo de compra (L.)</label>
+                    <input
+                      className={editErrors.costo_compra ? 'is-invalid' : ''}
+                      type="number"
+                      step="0.0001"
+                      min="0"
+                      inputMode="decimal"
+                      value={editForm.costo_compra ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, costo_compra: e.target.value }));
+                      }}
+                    />
+                    {editErrors.costo_compra ? <div className="invalid-feedback d-block">{editErrors.costo_compra}</div> : null}
+                    <div className="form-text mt-1">
+                      {renderCompactMarginSummary(editMarginSummary)}
+                    </div>
+                  </div>
+                  <div>
+                    <label>{'Stock m\u00EDnimo'}</label>
+                    <input
+                      className={editErrors.stock_minimo ? 'is-invalid' : ''}
+                      type="number"
+                      step="1"
+                      min="0"
+                      inputMode="numeric"
+                      value={String(editForm.stock_minimo ?? '')}
+                      onKeyDown={blockNonIntegerKeys}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }));
+                      }}
+                    />
+                    {editErrors.stock_minimo ? <div className="invalid-feedback d-block">{editErrors.stock_minimo}</div> : null}
+                  </div>
+                  <div>
+                    <label>Categoría</label>
+                    <select
+                      className={`form-select ${editErrors.id_categoria_producto ? 'is-invalid' : ''}`}
+                      value={String(editForm.id_categoria_producto ?? '')}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, id_categoria_producto: e.target.value }));
+                      }}
+                    >
+                      <option value="">Seleccione</option>
+                      {categoriasActivas.map((c) => (
+                        <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
+                          {c.nombre_categoria}
+                        </option>
+                      ))}
+                    </select>
+                    {editErrors.id_categoria_producto ? <div className="invalid-feedback d-block">{editErrors.id_categoria_producto}</div> : null}
+                  </div>
+                  <div className="inv-prod-drawer-field--span-2">
+                    <label>Sucursales donde se vendera</label>
+                    <div>
+                      {renderAlmacenSelectField({
+                        scope: 'edit-drawer',
+                        selectedValue: editForm.id_almacen,
+                        selectedValues: editForm.id_almacenes,
+                        error: editErrors.id_almacen,
+                        onChangeMulti: updateEditAlmacenes,
+                        compact: true,
+                        feedbackClassName: 'invalid-feedback d-block'
+                      })}
+                    </div>
+                  </div>
+                  {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                    <div>
+                      <label>Departamento (opcional)</label>
+                      <select
+                        className={`form-select ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                        value={String(editForm.id_tipo_departamento ?? '')}
+                        onChange={(e) => {
+                          setDrawerEditMode(true);
+                          setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }));
+                        }}
+                        disabled={loadingTipoDepto}
+                      >
+                        <option value="">{loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}</option>
+                        {tipoDepartamentos.map((d) => (
+                          <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                            {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {editErrors.id_tipo_departamento ? <div className="invalid-feedback d-block">{editErrors.id_tipo_departamento}</div> : null}
+                    </div>
+                  ) : null}
+                  <div>
+                    <label>Fecha de ingreso</label>
+                    <input
+                      className={editErrors.fecha_ingreso_producto ? 'is-invalid' : ''}
+                      type="date"
+                      value={editForm.fecha_ingreso_producto ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, fecha_ingreso_producto: e.target.value }));
+                      }}
+                    />
+                    {editErrors.fecha_ingreso_producto ? <div className="invalid-feedback d-block">{editErrors.fecha_ingreso_producto}</div> : null}
+                  </div>
+                  <div>
+                    <label>Fecha de caducidad</label>
+                    <input
+                      className={editErrors.fecha_caducidad ? 'is-invalid' : ''}
+                      type="date"
+                      value={editForm.fecha_caducidad ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, fecha_caducidad: e.target.value }));
+                      }}
+                    />
+                    {editErrors.fecha_caducidad ? <div className="invalid-feedback d-block">{editErrors.fecha_caducidad}</div> : null}
+                  </div>
+                  <div className="inv-prod-drawer-field--span-2">
+                    <label>Descripción (opcional)</label>
+                    <textarea
+                      className={`form-control ${editErrors.descripcion_producto ? 'is-invalid' : ''}`}
+                      rows={4}
+                      value={editForm.descripcion_producto ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }));
+                      }}
+                      onBlur={(e) => {
+                        setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }));
+                      }}
+                    />
+                    {editErrors.descripcion_producto ? <div className="invalid-feedback d-block">{editErrors.descripcion_producto}</div> : null}
+                  </div>
+                </div>
+                </div>
+
+                <div className="inv-prod-drawer-actions inv-prod-drawer-actions--edit inv-ins-drawer-footer">
+                  {canEditar ? (
+                    <button
+                      type="button"
+                      className={`btn ${drawerEstadoActivo ? 'inv-prod-btn-danger-lite' : 'inv-prod-btn-success-lite'}`}
+                      onClick={toggleEstadoProductoDesdeDrawer}
+                      disabled={togglingEstado}
+                    >
+                      {togglingEstado ? 'Procesando...' : drawerEstadoActivo ? 'Desactivar' : 'Activar'}
+                    </button>
+                  ) : null}
+                  {canEditar ? (
+                    <button type="button" className="btn inv-prod-btn-primary" onClick={guardarEdicion} disabled={savingEdit || togglingEstado}>
+                      {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+                  ) : null}
+                </div>
+
+                {drawerMessage ? <div className="inv-prod-drawer-feedback">{drawerMessage}</div> : null}
+              </div>
+            </>
+          ) : null}
+        </aside>
+
+        <MaestroAsignacionesModal
+          show={Boolean(assignmentsModalProducto)}
+          entityLabel="producto"
+          selectedItem={assignmentsModalProducto}
+          onClose={closeAssignmentsModal}
+          onNotify={safeToast}
+          loadAssignments={inventarioService.obtenerAsignacionesProducto}
+          loadAvailableWarehouses={inventarioService.obtenerAlmacenesDisponiblesProducto}
+          assignToWarehouse={inventarioService.asignarProductoASucursal}
+          deactivateAssignment={inventarioService.inactivarAsignacionProducto}
+          canAssign={canEditar}
+          canDeactivate={canInactivar}
+        />
 
         {/* ==============================
             SHEET CREAR PRODUCTO (MÓVIL CENTRADO)
             ============================== */}
-        {showCreateProductoSheet && (
+        {enableLegacyProductosModalShellFallback && showCreateProductoSheet && (
           <div
-            className="modal fade show"
+            className="modal fade show inv-prod-modal-backdrop"
             style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2500 }}
             role="dialog"
             aria-modal="true"
-            onClick={() => setShowCreateProductoSheet(false)}
+            onClick={() => closeCreateProductoModal()}
           >
-            <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-content shadow">
-                <div className="modal-header d-flex align-items-center justify-content-between">
-                  <div className="fw-semibold">Agregar producto</div>
-                  <button type="button" className="btn btn-sm btn-light" onClick={() => setShowCreateProductoSheet(false)}>
-                    ✕
+            <div className="modal-dialog modal-dialog-centered inv-prod-modal-dialog" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-content shadow inv-prod-modal-content">
+                <div className="modal-header d-flex align-items-center justify-content-between inv-prod-modal-header">
+                  <div>
+                    <div className="fw-semibold">Agregar producto</div>
+                    <div className="small text-muted">Completa los campos y guarda</div>
+                  </div>
+                  <button type="button" className="btn btn-sm btn-light inv-prod-modal-close" onClick={() => closeCreateProductoModal()}>
+                    <i className="bi bi-x-lg" />
                   </button>
                 </div>
 
-                <div className="modal-body">
-                  <form onSubmit={onCrear} className="row g-2">
+                <div className="modal-body inv-prod-modal-body">
+                  <form onSubmit={onCrear} className="row g-2 inv-prod-create-form inv-prod-create-form--modal">
                     <div className="col-12">
                       <label className="form-label mb-1">Nombre</label>
                       <input
                         className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
                         value={form.nombre_producto}
-                        onChange={(e) => setForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                        onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                         required
                       />
                       {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
@@ -1212,21 +4742,34 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       />
                       {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
                     </div>
+                    <div className="col-6">
+                      <label className="form-label mb-1">Costo de compra</label>
+                      <input
+                        className={`form-control ${createErrors.costo_compra ? 'is-invalid' : ''}`}
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        inputMode="decimal"
+                        value={form.costo_compra}
+                        onChange={(e) => setForm((s) => ({ ...s, costo_compra: e.target.value }))}
+                      />
+                      {createErrors.costo_compra && <div className="invalid-feedback">{createErrors.costo_compra}</div>}
+                      <div className={`form-text ${createMarginSummary.tone === 'danger' ? 'text-danger' : 'text-muted'}`}>{createMarginSummary.text}</div>
+                    </div>
 
                     <div className="col-6">
-                      <label className="form-label mb-1">Cantidad</label>
+                      <label className="form-label mb-1">{'Stock m\u00EDnimo'}</label>
                       <input
-                        className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
+                        className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
                         type="number"
                         step="1"
                         min="0"
                         inputMode="numeric"
-                        value={form.cantidad}
+                        value={form.stock_minimo}
                         onKeyDown={blockNonIntegerKeys}
-                        onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                        required
+                        onChange={(e) => setForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }))}
                       />
-                      {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
+                      {createErrors.stock_minimo && <div className="invalid-feedback">{createErrors.stock_minimo}</div>}
                     </div>
 
                     <div className="col-12">
@@ -1238,7 +4781,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         required
                       >
                         <option value="">Seleccione</option>
-                        {categorias.map((c) => (
+                        {categoriasActivas.map((c) => (
                           <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                             {c.nombre_categoria}
                           </option>
@@ -1250,65 +4793,84 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     </div>
 
                     <div className="col-12">
-                      <label className="form-label mb-1">Almacén</label>
-                      <select
-                        className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
-                        value={String(form.id_almacen ?? '')}
-                        onChange={(e) => setForm((s) => ({ ...s, id_almacen: e.target.value }))}
-                        required
-                        disabled={loadingAlmacenes}
-                      >
-                        <option value="">
-                          {loadingAlmacenes ? 'Cargando...' : 'Seleccione'}
-                        </option>
-                        {almacenes.map((a) => (
-                          <option key={a.id_almacen} value={a.id_almacen}>
-                            {a.nombre} (Sucursal {a.id_sucursal})
-                          </option>
-                        ))}
-                      </select>
-                      {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
+                      <label className="form-label mb-1">Almacén asignado</label>
+                      {renderAlmacenSelectField({
+                        scope: 'create-4',
+                        selectedValue: form.id_almacen,
+                        selectedValues: form.id_almacenes,
+                        error: createErrors.id_almacen,
+                        onChangeMulti: updateCreateAlmacenes
+                      })}
                     </div>
 
-                    <div className="col-12">
-                      <label className="form-label mb-1">Tipo departamento (opcional)</label>
-                      <select
-                        className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                        value={String(form.id_tipo_departamento ?? '')}
-                        onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                        disabled={loadingTipoDepto}
-                      >
-                        <option value="">
-                          {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                        </option>
-                        {tipoDepartamentos.map((d) => (
-                          <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                            {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                    {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                      <div className="col-12">
+                        <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                        <select
+                          className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                          value={String(form.id_tipo_departamento ?? '')}
+                          onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                          disabled={loadingTipoDepto}
+                        >
+                          <option value="">
+                            {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                           </option>
-                        ))}
-                      </select>
-                      {createErrors.id_tipo_departamento && (
-                        <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
-                      )}
-                    </div>
+                          {tipoDepartamentos.map((d) => (
+                            <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                              {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {createErrors.id_tipo_departamento && (
+                          <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                        )}
+                      </div>
+                    ) : null}
 
                     <div className="col-12">
                       <label className="form-label mb-1">Descripción (opcional)</label>
                       <input
                         className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
                         value={form.descripcion_producto}
-                        onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: e.target.value }))}
+                        onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
                       />
                       {createErrors.descripcion_producto && (
                         <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
                       )}
                     </div>
 
+                    <div className="col-12 col-md-6">
+                      <label className="form-label mb-1">Fecha ingreso (opcional)</label>
+                      <input
+                        className={`form-control ${createErrors.fecha_ingreso_producto ? 'is-invalid' : ''}`}
+                        type="date"
+                        value={form.fecha_ingreso_producto}
+                        onChange={(e) => setForm((s) => ({ ...s, fecha_ingreso_producto: e.target.value }))}
+                      />
+                      {createErrors.fecha_ingreso_producto && (
+                        <div className="invalid-feedback">{createErrors.fecha_ingreso_producto}</div>
+                      )}
+                    </div>
+
+                    <div className="col-12 col-md-6">
+                      <label className="form-label mb-1">Fecha caducidad (opcional)</label>
+                      <input
+                        className={`form-control ${createErrors.fecha_caducidad ? 'is-invalid' : ''}`}
+                        type="date"
+                        value={form.fecha_caducidad}
+                        onChange={(e) => setForm((s) => ({ ...s, fecha_caducidad: e.target.value }))}
+                      />
+                      {createErrors.fecha_caducidad && <div className="invalid-feedback">{createErrors.fecha_caducidad}</div>}
+                    </div>
+
+                    {renderCreateImageField('col-12')}
+
                     <div className="col-12 d-grid gap-2 mt-2">
-                      <button className="btn btn-primary" type="submit">
-                        Guardar
+                      <button className="btn btn-primary inv-prod-btn-primary" type="submit" disabled={creating}>
+                        {creating ? 'Guardando...' : 'Guardar'}
                       </button>
-                      <button className="btn btn-outline-secondary" type="button" onClick={() => setShowCreateProductoSheet(false)}>
+                      <button className="btn btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={() => closeCreateProductoModal()} disabled={creating}>
                         Cancelar
                       </button>
                     </div>
@@ -1323,42 +4885,101 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         {/* ==============================
             MODAL CONFIRMAR ELIMINAR
             ============================== */}
-        {confirmModal.show && (
-          <div
-            className="modal fade show"
-            style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2600 }}
-            role="dialog"
-            aria-modal="true"
-            onClick={closeConfirmDelete}
-          >
-            <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-content shadow">
-                <div className="modal-header d-flex align-items-center justify-content-between">
-                  <div className="fw-semibold">Confirmar eliminación</div>
-                  <button type="button" className="btn btn-sm btn-light" onClick={closeConfirmDelete}>
-                    ✕
-                  </button>
-                </div>
-
-                <div className="modal-body">
-                  <div className="mb-2">
-                    ¿Deseas eliminar este producto?
+        {discardConfirm.show && productsModalPortalTarget ? createPortal(
+          <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeDiscardConfirm}>
+            <div className="inv-pro-confirm-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="inv-pro-confirm-glow" aria-hidden="true" />
+              <div className="inv-pro-confirm-head">
+                <div className="inv-pro-confirm-head-main">
+                  <div className="inv-pro-confirm-head-icon">
+                    <i className="bi bi-exclamation-triangle" aria-hidden="true" />
                   </div>
-                  {confirmModal.nombre && (
-                    <div className="text-muted small">
-                      <span className="fw-semibold">{confirmModal.nombre}</span>
-                    </div>
-                  )}
+                  <div className="inv-pro-confirm-head-copy">
+                    <div className="inv-pro-confirm-kicker">Productos</div>
+                    <div className="inv-pro-confirm-title">Cambios sin guardar</div>
+                    <div className="inv-pro-confirm-sub">Hay informacion pendiente en el formulario.</div>
+                  </div>
+                </div>
+                <button type="button" className="inv-pro-confirm-close" onClick={closeDiscardConfirm} aria-label="Cerrar">
+                  <i className="bi bi-x-lg" />
+                </button>
+              </div>
+              <div className="inv-pro-confirm-body">
+                <div className="inv-pro-confirm-note">
+                  <i className="bi bi-shield-exclamation" aria-hidden="true" />
+                  <span>Si cierras ahora, se perderan los cambios que no has guardado.</span>
+                </div>
+                <div className="inv-pro-confirm-question">Deseas cerrar sin guardar?</div>
+              </div>
+              <div className="inv-pro-confirm-footer">
+                <button className="btn inv-pro-btn-cancel" type="button" onClick={closeDiscardConfirm}>Seguir editando</button>
+                <button className="btn inv-pro-btn-danger" type="button" onClick={confirmDiscardProductoChanges}>
+                  <i className="bi bi-box-arrow-right" aria-hidden="true" />
+                  <span>Cerrar sin guardar</span>
+                </button>
+              </div>
+            </div>
+          </div>,
+          productsModalPortalTarget
+        ) : null}
+        {confirmModal.show && (
+          <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
+            <div className="inv-pro-confirm-panel inv-pro-confirm-panel--danger" onClick={(e) => e.stopPropagation()}>
+              <div className="inv-pro-confirm-glow" aria-hidden="true" />
+
+              <div className="inv-pro-confirm-head">
+                <div className="inv-pro-confirm-head-main">
+                  <div className="inv-pro-confirm-head-icon">
+                    <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
+                  </div>
+                  <div className="inv-pro-confirm-head-copy">
+                    {/* NEW: etiqueta de contexto para que el modal deje claro el módulo afectado. */}
+                    {/* WHY: reforzar orientación visual sin cambiar los textos de confirmación ya unificados. */}
+                    {/* IMPACT: solo mejora jerarquía del encabezado del modal. */}
+                    <div className="inv-pro-confirm-kicker">Productos</div>
+                    <div className="inv-pro-confirm-title">{INACTIVATE_CONFIRM_COPY.title}</div>
+                    <div className="inv-pro-confirm-sub">{INACTIVATE_CONFIRM_COPY.subtitle}</div>
+                  </div>
+                </div>
+                <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar" disabled={deleting}>
+                  <i className="bi bi-x-lg" />
+                </button>
+              </div>
+
+              <div className="inv-pro-confirm-body">
+                {/* NEW: aviso breve con tono operativo para explicar el resultado de la acción. */}
+                {/* WHY: el usuario pidió un modal más profesional; este bloque aporta claridad sin recargar el contenido. */}
+                {/* IMPACT: solo agrega contexto visual al confirmar la inactivación. */}
+                <div className="inv-pro-confirm-note">
+                  <i className="bi bi-shield-exclamation" aria-hidden="true" />
+                  <span>El producto pasará a la vista de inactivos y podrá activarse nuevamente después.</span>
                 </div>
 
-                <div className="modal-footer d-flex gap-2">
-                  <button className="btn btn-outline-secondary" type="button" onClick={closeConfirmDelete}>
-                    Cancelar
-                  </button>
-                  <button className="btn btn-danger" type="button" onClick={eliminarConfirmado}>
-                    Eliminar
-                  </button>
+                <div className="inv-pro-confirm-question">{INACTIVATE_CONFIRM_COPY.question}</div>
+
+                <div className="inv-pro-confirm-name">
+                  <div className="inv-pro-confirm-name-label">Registro seleccionado</div>
+                  <div className="inv-pro-confirm-name-value">
+                    <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
+                    <span>{confirmModal.nombre || INACTIVATE_CONFIRM_COPY.fallbackName}</span>
+                  </div>
                 </div>
+
+                {confirmDeleteError ? (
+                  <div className="alert alert-danger inv-pro-confirm-error mb-0" role="alert">
+                    {confirmDeleteError}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="inv-pro-confirm-footer">
+                <button className="btn inv-pro-btn-cancel" type="button" onClick={closeConfirmDelete} disabled={deleting}>
+                  Cancelar
+                </button>
+                <button className="btn inv-pro-btn-danger" type="button" onClick={eliminarConfirmado} disabled={deleting}>
+                  <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
+                  <span>{deleting ? 'Inactivando...' : 'Inactivar'}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1370,3 +4991,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 };
 
 export default ProductosTab;
+
+
+

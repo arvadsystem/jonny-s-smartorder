@@ -1,0 +1,227 @@
+.venta-ticket-print-root {
+  display: none;
+}
+
+.venta-ticket-print {
+  font-family: 'Courier New', Courier, monospace;
+  color: #111;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.venta-ticket-print__header {
+  text-align: center;
+}
+
+.venta-ticket-print__logo {
+  width: 52px;
+  height: auto;
+  margin: 0 auto 6px;
+  display: block;
+}
+
+.venta-ticket-print__header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.venta-ticket-print__header p {
+  margin: 2px 0 0;
+  font-size: 11px;
+}
+
+.venta-ticket-print__divider {
+  border-top: 1px dashed #333;
+  margin: 8px 0;
+}
+
+.venta-ticket-print__meta,
+.venta-ticket-print__totals {
+  margin: 0;
+}
+
+.venta-ticket-print__meta > div,
+.venta-ticket-print__totals > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px;
+}
+
+.venta-ticket-print__totals > div {
+  grid-template-columns: 1fr auto;
+}
+
+.venta-ticket-print__meta dt,
+.venta-ticket-print__meta dd,
+.venta-ticket-print__totals dt,
+.venta-ticket-print__totals dd {
+  margin: 0;
+}
+
+.venta-ticket-print__meta dd {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.venta-ticket-print__items-head,
+.venta-ticket-print__item-row {
+  display: grid;
+  grid-template-columns: 30px 1fr 58px 58px;
+  gap: 4px;
+}
+
+.venta-ticket-print__items-head {
+  font-weight: 700;
+}
+
+.venta-ticket-print__items-head span:nth-child(3),
+.venta-ticket-print__items-head span:nth-child(4),
+.venta-ticket-print__item-row span:nth-child(3),
+.venta-ticket-print__item-row span:nth-child(4) {
+  text-align: right;
+}
+
+.venta-ticket-print__item-row {
+  padding: 2px 0;
+}
+
+.venta-ticket-print__item-row-wrap {
+  display: grid;
+  gap: 2px;
+}
+
+.venta-ticket-print__item-row-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10px;
+  color: #333;
+  padding-left: 34px;
+}
+
+.venta-ticket-print__item-row span:nth-child(2) {
+  overflow-wrap: anywhere;
+}
+
+.venta-ticket-print__split {
+  display: grid;
+  gap: 5px;
+}
+
+.venta-ticket-print__split-group {
+  display: grid;
+  gap: 2px;
+}
+
+.venta-ticket-print__split-title {
+  display: flex;
+  font-weight: 700;
+  justify-content: space-between;
+}
+
+.venta-ticket-print__totals .is-total {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.venta-ticket-print__thanks {
+  text-align: center;
+  margin: 8px 0 0;
+  font-size: 11px;
+}
+
+@media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.venta-ticket-printing {
+    width: 80mm;
+  }
+
+  body.venta-ticket-printing * {
+    visibility: hidden !important;
+  }
+
+  body.venta-ticket-printing .venta-ticket-print-root,
+  body.venta-ticket-printing .venta-ticket-print-root * {
+    visibility: visible !important;
+  }
+
+  body.venta-ticket-printing .venta-ticket-print-root {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    z-index: 99999;
+    background: #fff;
+    padding: 2mm;
+    margin: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    box-sizing: border-box;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  body.venta-ticket-printing .venta-ticket-print-root--80mm {
+    width: 80mm;
+  }
+
+  body.venta-ticket-printing .venta-ticket-print-root--58mm {
+    width: 58mm;
+  }
+
+  body.venta-ticket-printing .venta-ticket-print {
+    width: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.venta-ticket-printing .ventas-modal-backdrop,
+  body.venta-ticket-printing .ventas-modal,
+  body.venta-ticket-printing .ventas-modal__body,
+  body.venta-ticket-printing .ventas-detail-modal,
+  body.venta-ticket-printing .ventas-detail-modal__body {
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    transform: none !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  body.venta-ticket-printing .venta-ticket-print-root--58mm .venta-ticket-print {
+    font-size: 10px;
+  }
+
+  body.venta-ticket-printing .venta-ticket-print-root--58mm .venta-ticket-print__items-head,
+  body.venta-ticket-printing .venta-ticket-print-root--58mm .venta-ticket-print__item-row {
+    grid-template-columns: 24px 1fr 44px 44px;
+  }
+
+  body.venta-ticket-printing .venta-ticket-print-root--58mm .venta-ticket-print__header h3 {
+    font-size: 12px;
+  }
+
+  body.venta-ticket-printing .venta-ticket-print-root--58mm .venta-ticket-print__header p {
+    font-size: 9px;
+  }
+
+  @page {
+    margin: 0;
+    size: 80mm auto;
+  }
+}

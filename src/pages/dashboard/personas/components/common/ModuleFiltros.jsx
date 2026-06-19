@@ -1,0 +1,124 @@
+const DEFAULT_SORT_OPTIONS = [
+  { value: "recientes", label: "Mas recientes" },
+  { value: "nombre_asc", label: "Nombre (A-Z)" },
+  { value: "nombre_desc", label: "Nombre (Z-A)" },
+];
+
+export default function ModuleFiltros({
+  open,
+  drawerId,
+  iconClass,
+  title,
+  draft,
+  onChangeDraft,
+  onClose,
+  onApply,
+  onClear,
+  statusLabel = "Estado",
+  allLabel = "Todas",
+  activeLabel = "Activas",
+  inactiveLabel = "Inactivas",
+  sortLabel = "Ordenar por",
+  sortOptions = DEFAULT_SORT_OPTIONS,
+  allowAll = true,
+  extraFilters = null,
+}) {
+  const selectId = `${drawerId}-sort`;
+  const chipLabel = String(title || "")
+    .replace(/^filtros\s+de\s+/i, "")
+    .trim();
+
+  if (!open) return null;
+
+  return (
+    <aside
+      className="inv-prod-drawer inv-cat-v2__drawer inv-cat-v2__drawer--filters personas-module-filters-drawer show"
+      id={drawerId}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="inv-prod-drawer-body inv-cat-v2__drawer-body">
+        <div className="inv-cat-create-hero inv-cat-filter-hero">
+          <button type="button" className="inv-prod-drawer-close inv-cat-create-hero__close" onClick={onClose} title="Cerrar">
+            <i className="bi bi-x-lg" />
+          </button>
+          <div className="inv-cat-create-hero__icon">
+            <i className={`${iconClass}`} aria-hidden="true" />
+          </div>
+          <div className="inv-cat-create-hero__copy">
+            <div className="inv-cat-create-hero__kicker">VISTA DE FILTROS</div>
+            <div className="inv-cat-create-hero__title">{title}</div>
+          </div>
+          <div className="inv-cat-create-hero__chips">
+            <span className="inv-cat-create-hero__chip">
+              <i className={`${iconClass}`} aria-hidden="true" />
+              {chipLabel || "Listado"}
+            </span>
+          </div>
+        </div>
+
+        <div className="inv-cat-filter-grid">
+          <div className="inv-cat-filter-card inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">{statusLabel}</div>
+            <div className="inv-ins-chip-grid">
+              {allowAll ? (
+                <button
+                  type="button"
+                  className={`inv-ins-chip ${draft.estadoFiltro === "todos" ? "is-active" : ""}`}
+                  onClick={() => onChangeDraft((state) => ({ ...state, estadoFiltro: "todos" }))}
+                >
+                  {allLabel}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={`inv-ins-chip ${draft.estadoFiltro === "activo" ? "is-active" : ""}`}
+                onClick={() => onChangeDraft((state) => ({ ...state, estadoFiltro: "activo" }))}
+              >
+                {activeLabel}
+              </button>
+              <button
+                type="button"
+                className={`inv-ins-chip ${draft.estadoFiltro === "inactivo" ? "is-active" : ""}`}
+                onClick={() => onChangeDraft((state) => ({ ...state, estadoFiltro: "inactivo" }))}
+              >
+                {inactiveLabel}
+              </button>
+            </div>
+            <div className="inv-ins-help">
+              {allowAll ? "Selecciona un estado o deja el listado completo." : "Selecciona si quieres ver activos o inactivos."}
+            </div>
+          </div>
+
+          <div className="inv-cat-filter-card inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Orden</div>
+            <label className="form-label" htmlFor={selectId}>{sortLabel}</label>
+            <select
+              id={selectId}
+              className="form-select"
+              value={draft.sortBy}
+              onChange={(event) => onChangeDraft((state) => ({ ...state, sortBy: event.target.value }))}
+            >
+              {sortOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {typeof extraFilters === "function" ? extraFilters({ draft, onChangeDraft }) : null}
+        </div>
+
+        <div className="inv-prod-drawer-actions inv-cat-v2__drawer-actions personas-module-filters-drawer__actions">
+          <button type="button" className="btn inv-prod-btn-subtle" onClick={onClear}>
+            Limpiar
+          </button>
+          <button type="button" className="btn inv-prod-btn-primary" onClick={onApply}>
+            Aplicar
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}

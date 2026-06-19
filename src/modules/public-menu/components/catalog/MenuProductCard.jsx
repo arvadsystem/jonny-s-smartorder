@@ -1,0 +1,135 @@
+import { useMemo, useState } from 'react';
+import EmptyProductImagePlaceholder from './EmptyProductImagePlaceholder';
+import SoldOutBadge from './SoldOutBadge';
+import { requiresItemConfiguration } from '../../utils/publicMenuItemConfig';
+import { formatPublicMenuCategoryLabel } from '../../utils/publicMenuCategoryLabels';
+
+const currencyFormatter = new Intl.NumberFormat('es-HN', {
+  style: 'currency',
+  currency: 'HNL',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
+
+const normalizeText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const shouldHideCategoryDescription = (categoryName) => {
+  const normalizedCategory = normalizeText(categoryName).replace(/\s*\/\s*/g, '/');
+  return normalizedCategory.includes('cerveza') || normalizedCategory.includes('refrescos/agua');
+};
+
+const shouldRenderDescription = ({ name, description, categoryName }) => {
+  const normalizedName = normalizeText(name);
+  const normalizedDescription = normalizeText(description);
+  const genericDescription = normalizedDescription
+    .replace(/^producto\s+/i, '')
+    .replace(/^bebida\s+/i, '')
+    .trim();
+
+  if (shouldHideCategoryDescription(categoryName)) return false;
+  if (!normalizedDescription || normalizedDescription === normalizedName) return false;
+  if (normalizedDescription === `producto ${normalizedName}`) return false;
+  if (normalizedDescription === `bebida ${normalizedName}`) return false;
+  if (genericDescription && normalizedName.includes(genericDescription)) return false;
+  return true;
+};
+
+const MenuProductCard = ({
+  product,
+  cartQuantity = 0,
+  onAdd,
+  onIncrease,
+  onDecrease,
+  isRecentlyAdded = false
+}) => {
+  const imageUrl = String(product?.imagen_url || '').trim();
+  const [imageFailed, setImageFailed] = useState(false);
+  const quantity = Number(cartQuantity || 0);
+  const hasInCart = quantity > 0;
+  const isSoldOut = !product?.disponibilidad?.available;
+  const isConfigurable = requiresItemConfiguration(product);
+  const canAddToCart = !isSoldOut && Number(product?.id_detalle_menu || 0) > 0;
+  const productName = String(product?.nombre || 'Producto').trim();
+  const productDescription = String(product?.descripcion || '').trim();
+  const shouldShowDescription = shouldRenderDescription({
+    name: productName,
+    description: productDescription,
+    categoryName: product?.categoria?.nombre
+  });
+  const priceLabel = product?.precio?.final === null || product?.precio?.final === undefined
+    ? 'Precio pendiente'
+    : currencyFormatter.format(product.precio.final);
+
+  const actionLabel = useMemo(() => {
+    if (isSoldOut) return 'Agotado';
+    return 'Ordenar';
+  }, [isSoldOut]);
+
+  return (
+    <article className={`pm-menu-product-card ${isSoldOut ? 'is-soldout' : ''} ${isRecentlyAdded ? 'is-added' : ''}`}>
+      <div className="pm-menu-product-card__media">
+        {imageUrl && !imageFailed ? (
+          <img
+            src={imageUrl}
+            alt={productName}
+            className="pm-menu-product-card__image"
+            loading="lazy"
+            decoding="async"
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <EmptyProductImagePlaceholder label={productName || "JONNY'S"} />
+        )}
+        <span className="pm-menu-product-card__category">
+          {formatPublicMenuCategoryLabel(product?.categoria?.nombre) || 'Categoria'}
+        </span>
+      </div>
+
+      <div className="pm-menu-product-card__body">
+        <div className="pm-menu-product-card__heading">
+          <h3 className="pm-menu-product-card__title">{productName}</h3>
+          {isSoldOut ? <SoldOutBadge /> : null}
+        </div>
+        {shouldShowDescription ? (
+          <p className="pm-menu-product-card__description">{productDescription}</p>
+        ) : null}
+        {isSoldOut ? (
+          <p className="pm-menu-product-card__availability">
+            NO DISPONIBLE POR AHORA.
+          </p>
+        ) : null}
+      </div>
+
+      <footer className="pm-menu-product-card__footer">
+        <strong className="pm-menu-product-card__price">{priceLabel}</strong>
+        {hasInCart && !isConfigurable ? (
+          <div className="pm-menu-product-card__qty" aria-label={`Cantidad de ${productName}`}>
+            <button type="button" onClick={() => onDecrease?.(product)} aria-label="Quitar unidad">
+              -
+            </button>
+            <span>{quantity}</span>
+            <button type="button" onClick={() => onIncrease?.(product)} aria-label="Agregar unidad">
+              +
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="pm-menu-product-card__add"
+            onClick={() => onAdd?.(product)}
+            disabled={!canAddToCart}
+          >
+            {actionLabel}
+          </button>
+        )}
+      </footer>
+    </article>
+  );
+};
+
+export default MenuProductCard;

@@ -1,0 +1,502 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import SucursalesCardsCarousel from './components/SucursalesCardsCarousel';
+import SucursalDeleteConfirm from './components/SucursalDeleteConfirm';
+import SucursalFormDrawer from './components/SucursalFormDrawer';
+import SucursalesFiltersDrawer from './components/SucursalesFiltersDrawer';
+import SucursalesStats from './components/SucursalesStats';
+import SucursalesToast from './components/SucursalesToast';
+import SucursalesToolbar from './components/SucursalesToolbar';
+import SucursalHorariosTab from './components/SucursalHorariosTab';
+import SucursalFacturacionTab from './components/SucursalFacturacionTab';
+import { useSucursales } from './hooks/useSucursales';
+import { usePermisos } from '../../../context/PermisosContext';
+import { getAllowedTabs, PERMISSIONS } from '../../../utils/permissions';
+import { inventarioService } from '../../../services/inventarioService';
+import './styles/sucursales.css';
+import {
+  extractApiMessage,
+  inferDuplicateFieldErrors,
+  initialSucursalForm,
+  normalizeDateForInput,
+  normalizePhone,
+  normalizeSucursalPayload,
+  parseEstado,
+  resolveCardsPerPage,
+  validateSucursalForm
+} from './utils/sucursalHelpers';
+
+const createInitialFiltersDraft = () => ({
+  estadoFiltro: 'todos',
+  sortBy: 'recientes'
+});
+
+export default function SucursalesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { canAny, isSuperAdmin, permisos } = usePermisos();
+  const canCreateSucursal = canAny([PERMISSIONS.SUCURSALES_CREAR]);
+  const canEditSucursal = canAny([PERMISSIONS.SUCURSALES_EDITAR]);
+  const canDeleteSucursal = canAny([PERMISSIONS.SUCURSALES_ELIMINAR]);
+  const canToggleSucursal = canAny([PERMISSIONS.SUCURSALES_ESTADO_CAMBIAR]);
+  const canManageHorarios = canAny([PERMISSIONS.SUCURSALES_HORARIOS_GESTIONAR]);
+  const canViewFacturacion = canAny([
+    PERMISSIONS.SUCURSALES_FACTURACION_VER,
+    PERMISSIONS.SUCURSALES_FACTURACION_EDITAR,
+    PERMISSIONS.SUCURSALES_FACTURACION_PREVIEW_VER
+  ]);
+  const canEditFacturacion = canAny([PERMISSIONS.SUCURSALES_FACTURACION_EDITAR]);
+  const canViewFacturacionPreview = canAny([PERMISSIONS.SUCURSALES_FACTURACION_PREVIEW_VER]);
+  const allowedTabs = useMemo(
+    () => getAllowedTabs('sucursales', permisos, { isSuperAdmin }).map((tab) => tab.key),
+    [isSuperAdmin, permisos]
+  );
+  const fallbackTab = allowedTabs[0] || 'sucursales';
+  const rawTab = String(searchParams.get('tab') || fallbackTab).toLowerCase();
+  const activeTab = allowedTabs.includes(rawTab) ? rawTab : fallbackTab;
+
+  const {
+    sucursales,
+    loading,
+    error,
+    setError,
+    saving,
+    deletingId,
+    togglingEstadoId,
+    toast,
+    openToast,
+    closeToast,
+    createSucursal,
+    updateSucursal,
+    toggleSucursalEstado,
+    deleteSucursal
+  } = useSucursales();
+
+  const [search, setSearch] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState('todos');
+  const [sortBy, setSortBy] = useState('recientes');
+  const [filtersDraft, setFiltersDraft] = useState(createInitialFiltersDraft);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState('create');
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState({ ...initialSucursalForm });
+  const [formErrors, setFormErrors] = useState({});
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const [confirmDelete, setConfirmDelete] = useState({
+    show: false,
+    sucursal: null
+  });
+
+  const [cardsPerPage, setCardsPerPage] = useState(() =>
+    typeof window === 'undefined' ? 6 : resolveCardsPerPage(window.innerWidth)
+  );
+  const [isResponsiveViewport, setIsResponsiveViewport] = useState(() =>
+    typeof window === 'undefined' ? false : window.innerWidth <= 991.98
+  );
+  const carouselRef = useRef(null);
+
+  useEffect(() => {
+    if (rawTab === activeTab) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', activeTab);
+    setSearchParams(next, { replace: true });
+  }, [activeTab, rawTab, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setCardsPerPage(resolveCardsPerPage(window.innerWidth));
+      setIsResponsiveViewport(window.innerWidth <= 991.98);
+    };
+
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const stats = useMemo(() => {
+    const total = Array.isArray(sucursales) ? sucursales.length : 0;
+    const activas = (sucursales || []).filter((item) => parseEstado(item?.estado)).length;
+    return { total, activas, inactivas: total - activas };
+  }, [sucursales]);
+
+  const filteredSucursales = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const list = [...(Array.isArray(sucursales) ? sucursales : [])];
+    list.sort((a, b) => Number(b?.id_sucursal ?? 0) - Number(a?.id_sucursal ?? 0));
+
+    const filtered = list.filter((s) => {
+      const isActive = parseEstado(s?.estado);
+      const matchEstado = estadoFiltro === 'todos' ? true : estadoFiltro === 'activo' ? isActive : !isActive;
+      if (!matchEstado) return false;
+
+      if (!needle) return true;
+      const hay = [
+        s?.nombre_sucursal,
+        s?.texto_direccion,
+        s?.texto_telefono,
+        s?.texto_correo,
+        s?.antiguedad_calculada,
+        s?.antiguedad,
+        s?.antiguedad_texto
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return hay.includes(needle);
+    });
+
+    filtered.sort((a, b) => {
+      if (sortBy === 'nombre_asc') {
+        return String(a?.nombre_sucursal ?? '').localeCompare(String(b?.nombre_sucursal ?? ''), 'es', { sensitivity: 'base' });
+      }
+      if (sortBy === 'nombre_desc') {
+        return String(b?.nombre_sucursal ?? '').localeCompare(String(a?.nombre_sucursal ?? ''), 'es', { sensitivity: 'base' });
+      }
+      if (sortBy === 'direccion_asc') {
+        return String(a?.texto_direccion ?? '').localeCompare(String(b?.texto_direccion ?? ''), 'es', { sensitivity: 'base' });
+      }
+      if (sortBy === 'direccion_desc') {
+        return String(b?.texto_direccion ?? '').localeCompare(String(a?.texto_direccion ?? ''), 'es', { sensitivity: 'base' });
+      }
+      return Number(b?.id_sucursal ?? 0) - Number(a?.id_sucursal ?? 0);
+    });
+
+    return filtered;
+  }, [sucursales, search, estadoFiltro, sortBy]);
+
+  const hasActiveFilters = useMemo(
+    () => search.trim() !== '' || estadoFiltro !== 'todos' || sortBy !== 'recientes',
+    [search, estadoFiltro, sortBy]
+  );
+
+  const pages = useMemo(() => {
+    const size = Math.max(1, cardsPerPage);
+    const result = [];
+    for (let i = 0; i < filteredSucursales.length; i += size) {
+      result.push(filteredSucursales.slice(i, i + size));
+    }
+    return result;
+  }, [filteredSucursales, cardsPerPage]);
+
+  const duplicateErrors = useMemo(() => {
+    const validation = validateSucursalForm({ form, sucursales, mode: drawerMode, editId });
+    return {
+      nombre_sucursal: validation.duplicates.nombre_sucursal ? validation.errors.nombre_sucursal : '',
+      texto_direccion: validation.duplicates.texto_direccion ? validation.errors.texto_direccion : ''
+    };
+  }, [form, sucursales, drawerMode, editId]);
+
+  const hasLiveDuplicates = Boolean(duplicateErrors.nombre_sucursal || duplicateErrors.texto_direccion);
+  const isAnyDrawerOpen = drawerOpen || filtersOpen;
+  const canTapCardToEdit = !isResponsiveViewport;
+
+  const resetFormState = () => {
+    setForm({ ...initialSucursalForm });
+    setFormErrors({});
+    setEditId(null);
+  };
+
+  const openCreate = () => {
+    if (!canCreateSucursal) return;
+    setFiltersOpen(false);
+    setDrawerMode('create');
+    resetFormState();
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (sucursal) => {
+    if (!canEditSucursal) return;
+    setFiltersOpen(false);
+    setDrawerMode('edit');
+    setEditId(Number(sucursal?.id_sucursal ?? 0) || null);
+    setFormErrors({});
+    setForm({
+      id_sucursal: sucursal?.id_sucursal ?? null,
+      nombre_sucursal: String(sucursal?.nombre_sucursal ?? ''),
+      texto_direccion: String(sucursal?.texto_direccion ?? ''),
+      texto_telefono: String(sucursal?.texto_telefono ?? ''),
+      texto_correo: String(sucursal?.texto_correo ?? ''),
+      fecha_inauguracion: normalizeDateForInput(sucursal?.fecha_inauguracion),
+      hora_inicio: String(sucursal?.hora_inicio || ''),
+      hora_final: String(sucursal?.hora_final || ''),
+      id_archivo_imagen: Number(sucursal?.id_archivo_imagen ?? 0) || null,
+      imagen_url_publica: String(sucursal?.imagen_url_publica || ''),
+      estado: parseEstado(sucursal?.estado)
+    });
+    setDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    if (saving) return;
+    setDrawerOpen(false);
+  };
+
+  const closeFiltersDrawer = () => setFiltersOpen(false);
+
+  const openFiltersDrawer = () => {
+    if (saving) return;
+    setDrawerOpen(false);
+    setFiltersDraft({ estadoFiltro, sortBy });
+    setFiltersOpen(true);
+  };
+
+  const applyFiltersDrawer = () => {
+    setEstadoFiltro(filtersDraft.estadoFiltro || 'todos');
+    setSortBy(filtersDraft.sortBy || 'recientes');
+    setFiltersOpen(false);
+  };
+
+  const clearVisualFilters = () => {
+    setEstadoFiltro('todos');
+    setSortBy('recientes');
+    setFiltersDraft(createInitialFiltersDraft());
+  };
+
+  const clearAllFilters = () => {
+    setSearch('');
+    clearVisualFilters();
+    setFiltersOpen(false);
+  };
+
+  const onFieldChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    let nextValue = type === 'checkbox' ? checked : value;
+    if (name === 'texto_telefono') nextValue = normalizePhone(nextValue);
+    if (name === 'texto_correo') nextValue = String(nextValue || '').trim().toLowerCase();
+    setForm((prev) => ({ ...prev, [name]: nextValue }));
+    if (name) {
+      setFormErrors((prev) => (prev[name] ? { ...prev, [name]: '' } : prev));
+    }
+  };
+
+  const onImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const isAllowedType = ['image/jpeg', 'image/png'].includes(String(file.type || '').toLowerCase());
+    if (!isAllowedType) {
+      openToast('ERROR', 'Solo se permiten imágenes JPG o PNG.', 'warning');
+      event.target.value = '';
+      return;
+    }
+    try {
+      setUploadingImage(true);
+      const toDataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+        reader.readAsDataURL(file);
+      });
+
+      const response = await inventarioService.crearArchivoImagen({
+        bucket: 'jonnys-assets',
+        contexto: 'sucursales',
+        data_url: toDataUrl,
+        nombre_original: file.name
+      });
+
+      setForm((prev) => ({
+        ...prev,
+        id_archivo_imagen: Number(response?.id_archivo ?? 0) || null,
+        imagen_url_publica: String(response?.url_publica || '')
+      }));
+    } catch (err) {
+      const msg = extractApiMessage(err, 'No se pudo subir la imagen. Intenta nuevamente.');
+      openToast('ERROR', msg, 'danger');
+    } finally {
+      setUploadingImage(false);
+      event.target.value = '';
+    }
+  };
+
+  const onSave = async (e) => {
+    e?.preventDefault?.();
+    setError('');
+
+    const normalizedForm = normalizeSucursalPayload(form);
+    setForm((prev) => ({ ...prev, ...normalizedForm }));
+    const validation = validateSucursalForm({ form: normalizedForm, sucursales, mode: drawerMode, editId });
+    setFormErrors(validation.errors);
+    if (!validation.ok) return;
+
+    try {
+      if (drawerMode === 'create') {
+        await createSucursal(validation.payload);
+      } else {
+        await updateSucursal(editId, validation.payload);
+      }
+      setDrawerOpen(false);
+      setFormErrors({});
+    } catch (err) {
+      const duplicateFieldErrors = inferDuplicateFieldErrors(err);
+      if (Object.keys(duplicateFieldErrors).length > 0) {
+        setFormErrors((prev) => ({ ...prev, ...duplicateFieldErrors }));
+      }
+
+      const msg = extractApiMessage(
+        err,
+        drawerMode === 'create' ? 'NO SE PUDO CREAR LA SUCURSAL' : 'NO SE PUDO ACTUALIZAR LA SUCURSAL'
+      );
+      openToast('ERROR', msg, Number(err?.status || 0) === 409 ? 'warning' : 'danger');
+    }
+  };
+
+  const onQuickToggleEstado = async (sucursal, nextEstado) => {
+    if (!canToggleSucursal) return;
+    try {
+      await toggleSucursalEstado(sucursal, nextEstado);
+    } catch {
+      // El hook ya maneja el feedback.
+    }
+  };
+
+  const openConfirmDelete = (sucursal) => {
+    if (!canDeleteSucursal) return;
+    setConfirmDelete({ show: true, sucursal });
+  };
+
+  const closeConfirmDelete = () => {
+    if (deletingId) return;
+    setConfirmDelete({ show: false, sucursal: null });
+  };
+
+  const eliminarConfirmado = async () => {
+    if (!confirmDelete.sucursal) return;
+    try {
+      await deleteSucursal(confirmDelete.sucursal);
+      setConfirmDelete({ show: false, sucursal: null });
+    } catch {
+      // El hook ya maneja el feedback.
+    }
+  };
+
+  const scrollCarousel = (direction) => {
+    const node = carouselRef.current;
+    if (!node) return;
+    const delta = direction === 'next' ? node.clientWidth : -node.clientWidth;
+    node.scrollBy({ left: delta, behavior: 'smooth' });
+  };
+
+  const onCarouselWheel = (e) => {
+    const node = carouselRef.current;
+    if (!node) return;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      node.scrollLeft += e.deltaY;
+    }
+  };
+
+  return (
+    <div className="suc-page">
+      {activeTab === 'horarios' ? (
+        <SucursalHorariosTab sucursales={sucursales} canManage={canManageHorarios} />
+      ) : activeTab === 'facturacion' ? (
+        <SucursalFacturacionTab
+          sucursales={sucursales}
+          canConfigurar={canViewFacturacion && canEditFacturacion}
+          canVerPreview={canViewFacturacion && canViewFacturacionPreview}
+          onToast={openToast}
+        />
+      ) : (
+      <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
+        <SucursalesToolbar
+          search={search}
+          onSearchChange={setSearch}
+          filtersOpen={filtersOpen}
+          onOpenFilters={openFiltersDrawer}
+          drawerOpen={drawerOpen}
+          drawerMode={drawerMode}
+          onOpenCreate={openCreate}
+          canCreate={canCreateSucursal}
+        />
+
+        <SucursalesStats stats={stats} />
+
+        <div className="inv-catpro-body inv-prod-body p-3">
+          {error ? (
+            <div className="alert alert-danger mb-3" role="alert">
+              {error}
+            </div>
+          ) : null}
+
+          <SucursalesCardsCarousel
+            loading={loading}
+            filteredSucursales={filteredSucursales}
+            totalSucursales={sucursales.length}
+            hasActiveFilters={hasActiveFilters}
+            drawerOpen={drawerOpen}
+            filtersOpen={filtersOpen}
+            pages={pages}
+            cardsPerPage={cardsPerPage}
+            carouselRef={carouselRef}
+            onCarouselWheel={onCarouselWheel}
+            onScrollPrev={() => scrollCarousel('prev')}
+            onScrollNext={() => scrollCarousel('next')}
+            onClearFilters={clearAllFilters}
+            onOpenCreate={openCreate}
+            canCreate={canCreateSucursal}
+            canTapCardToEdit={canTapCardToEdit}
+            togglingEstadoId={togglingEstadoId}
+            onOpenEdit={openEdit}
+            onOpenDelete={openConfirmDelete}
+            onToggleEstado={onQuickToggleEstado}
+            canEdit={canEditSucursal}
+            canDelete={canDeleteSucursal}
+            canToggleEstado={canToggleSucursal}
+          />
+        </div>
+      </div>
+      )}
+
+      {activeTab === 'sucursales' ? <button
+        type="button"
+        className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? 'is-hidden' : ''}`}
+        onClick={openCreate}
+        title="Nueva"
+        disabled={!canCreateSucursal}
+      >
+        <i className="bi bi-plus" />
+      </button> : null}
+
+      {activeTab === 'sucursales' ? <div
+        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${filtersOpen ? 'show' : ''}`}
+        onClick={closeFiltersDrawer}
+        aria-hidden={!filtersOpen}
+      /> : null}
+
+      {activeTab === 'sucursales' ? <SucursalesFiltersDrawer
+        open={filtersOpen}
+        draft={filtersDraft}
+        onChangeDraft={setFiltersDraft}
+        onClose={closeFiltersDrawer}
+        onApply={applyFiltersDrawer}
+        onClear={clearVisualFilters}
+      /> : null}
+
+      {activeTab === 'sucursales' ? <SucursalFormDrawer
+        open={drawerOpen}
+        mode={drawerMode}
+        form={form}
+        saving={saving}
+        onClose={closeDrawer}
+        onSubmit={onSave}
+        onFieldChange={onFieldChange}
+        onImageUpload={onImageUpload}
+        uploadingImage={uploadingImage}
+        fieldErrors={formErrors}
+        duplicateErrors={duplicateErrors}
+        disableSubmit={hasLiveDuplicates}
+      /> : null}
+
+      {activeTab === 'sucursales' ? <SucursalDeleteConfirm
+        open={confirmDelete.show}
+        sucursal={confirmDelete.sucursal}
+        deleting={Number(deletingId ?? 0) === Number(confirmDelete.sucursal?.id_sucursal ?? 0)}
+        onClose={closeConfirmDelete}
+        onConfirm={eliminarConfirmado}
+      /> : null}
+
+      <SucursalesToast toast={toast} onClose={closeToast} />
+    </div>
+  );
+}

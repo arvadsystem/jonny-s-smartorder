@@ -1,0 +1,91 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import {
+  buildPermissionSet,
+  hasAllPermissions,
+  hasAnyPermission,
+  hasPermission,
+  isSuperAdminRoleList,
+  normalizePermissions
+} from '../utils/permissions';
+
+const PermisosContext = createContext(null);
+const PERMISOS_FETCH_TIMEOUT_MS = 8000;
+
+const withTimeout = (promise, timeoutMs) =>
+  new Promise((resolve, reject) => {
+    const timerId = setTimeout(() => reject(new Error('PERMISOS_FETCH_TIMEOUT')), timeoutMs);
+    Promise.resolve(promise)
+      .then((result) => {
+        clearTimeout(timerId);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timerId);
+        reject(error);
+      });
+  });
+
+export const PermisosProvider = ({ children }) => {
+  const { user } = useAuth();
+  const [permisos, setPermisos] = useState(new Set());
+  const [loading, setLoading] = useState(true);
+  const isSuperAdmin = useMemo(() => isSuperAdminRoleList(user?.roles), [user?.roles]);
+
+  const hydrateFromRemote = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const data = await withTimeout(apiFetch('/seguridad/permisos', 'GET'), PERMISOS_FETCH_TIMEOUT_MS);
+      setPermisos(buildPermissionSet(data?.permisos));
+    } catch {
+      if (!silent) setPermisos(new Set());
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const idUsuario = Number.parseInt(String(user?.id_usuario ?? ''), 10);
+    if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
+      setPermisos(new Set());
+      setLoading(false);
+      return;
+    }
+
+    const userPermisos = normalizePermissions(user?.permisos);
+    if (userPermisos.length > 0) {
+      setPermisos(new Set(userPermisos));
+      setLoading(false);
+      void hydrateFromRemote({ silent: true });
+      return;
+    }
+
+    void hydrateFromRemote({ silent: false });
+  }, [hydrateFromRemote, user?.id_usuario, user?.permisos]);
+
+  const value = useMemo(() => {
+    const permissionOptions = { isSuperAdmin };
+    const can = (permiso) => hasPermission(permisos, permiso, permissionOptions);
+    const canAny = (required) => hasAnyPermission(permisos, required, permissionOptions);
+    const canAll = (required) => hasAllPermissions(permisos, required, permissionOptions);
+
+    return {
+      can,
+      canAny,
+      canAll,
+      isSuperAdmin,
+      permisos,
+      loading,
+      reload: hydrateFromRemote
+    };
+  }, [hydrateFromRemote, isSuperAdmin, loading, permisos]);
+
+  return <PermisosContext.Provider value={value}>{children}</PermisosContext.Provider>;
+};
+
+export const usePermisos = () => {
+  const ctx = useContext(PermisosContext);
+  if (!ctx) throw new Error('usePermisos debe usarse dentro de PermisosProvider');
+  return ctx;
+};

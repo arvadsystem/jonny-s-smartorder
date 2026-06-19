@@ -1,0 +1,556 @@
+import { useMemo } from 'react';
+import AsyncSelect from 'react-select/async';
+import './usuarios-modal.css';
+import '../common/crud-modal-theme.css';
+
+const toDisplayValue = (value, fallback = 'No registrado') => {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
+};
+
+const buildUsuariosSelectStyles = (hasError = false) => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: hasError
+      ? 'var(--bs-danger, #dc3545)'
+      : state.isFocused
+        ? 'rgba(158, 105, 61, 0.72)'
+        : 'rgba(206, 196, 177, 0.9)',
+    boxShadow: state.isFocused
+      ? '0 0 0 0.2rem rgba(158, 105, 61, 0.18)'
+      : 'none',
+    backgroundColor: '#fff',
+    '&:hover': {
+      borderColor: hasError
+        ? 'var(--bs-danger, #dc3545)'
+        : 'rgba(158, 105, 61, 0.72)',
+    },
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    padding: '2px 12px',
+  }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: 'rgba(98, 83, 73, 0.75)',
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: '#2f1a10',
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    paddingRight: 4,
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? 'rgba(99, 58, 37, 0.9)' : 'rgba(99, 58, 37, 0.65)',
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: 'rgba(120, 84, 66, 0.72)',
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 3000,
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    border: '1px solid rgba(206, 196, 177, 0.9)',
+    overflow: 'hidden',
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused
+      ? 'rgba(243, 238, 226, 0.95)'
+      : state.isSelected
+        ? 'rgba(236, 222, 205, 0.95)'
+        : '#fff',
+    color: state.isDisabled ? 'rgba(120, 97, 84, 0.75)' : '#2f1a10',
+  }),
+});
+
+const ROLE_VISUAL_META = {
+  administrador: { icon: 'bi-shield-check', description: 'Acceso administrativo completo al sistema.' },
+  super_admin: { icon: 'bi-crown', description: 'Super usuario con acceso total.' },
+  cocina: { icon: 'bi-bag', description: 'Gestiona pedidos y preparacion.' },
+  cajero: { icon: 'bi-cash-stack', description: 'Ventas, cobros y cierres de caja.' },
+  mesero: { icon: 'bi-cup-hot', description: 'Toma de pedidos y atencion a clientes.' },
+  supervisor: { icon: 'bi-person-workspace', description: 'Supervisa operaciones y reportes.' },
+  gerente: { icon: 'bi-briefcase', description: 'Gestion administrativa y reportes generales.' },
+  auxiliar_cocina: { icon: 'bi-egg-fried', description: 'Apoyo en cocina y preparacion.' },
+  cliente: { icon: 'bi-person', description: 'Acceso limitado como cliente.' },
+  root: { icon: 'bi-gear', description: 'Acceso tecnico y configuracion.' },
+};
+
+const resolveRoleVisualMeta = (roleName) => {
+  const slug = String(roleName ?? '').trim().toLowerCase();
+  return ROLE_VISUAL_META[slug] || {
+    icon: 'bi-person-badge',
+    description: 'Rol del sistema con permisos especificos.',
+  };
+};
+
+export default function UsuarioModal({
+  open = false,
+  mode = 'create',
+  form,
+  errors,
+  onFieldChange,
+  onSubmit,
+  onClose,
+  onResetPassword,
+  createCredentialsResult,
+  actionLoading = false,
+  resetPasswordLoading = false,
+  deletingId = null,
+  catalogLoading = false,
+  rolesLoading = false,
+  defaultEmployeeOptions = [],
+  defaultClienteOptions = [],
+  loadEmpleadoOptions,
+  loadClienteOptions,
+  employeeSelectValue = null,
+  clienteSelectValue = null,
+  targetType = 'EMPLEADO',
+  generatedUsernamePreview = '',
+  usernameDisplay = '',
+  sortedRoles = [],
+  formImage,
+  imageInputRef,
+  onFormImageChange,
+  onRemoveImage,
+  canCreate = true,
+  canEdit = true,
+  canResetPassword = true,
+  canEditPhoto = true,
+}) {
+  const isCreate = mode === 'create';
+  const isOpen = Boolean(open);
+  const isTargetCliente = String(targetType || 'EMPLEADO').toUpperCase() === 'CLIENTE';
+  const canEditRoles = !isTargetCliente;
+
+  const empleadoSelectStyles = useMemo(
+    () => buildUsuariosSelectStyles(Boolean(errors?.id_empleado || errors?.id_cliente)),
+    [errors?.id_empleado, errors?.id_cliente]
+  );
+
+  const roleOptions = useMemo(
+    () => (Array.isArray(sortedRoles) ? sortedRoles : []),
+    [sortedRoles]
+  );
+
+  const selectedRoleIds = useMemo(() => {
+    if (Array.isArray(form?.id_roles)) {
+      return form.id_roles.map((value) => String(value)).filter(Boolean);
+    }
+    if (form?.id_rol) {
+      return [String(form.id_rol)];
+    }
+    return [];
+  }, [form]);
+
+  const createDisabled =
+    actionLoading
+    || !!deletingId
+    || catalogLoading
+    || (canEditRoles ? rolesLoading : false)
+    || (isTargetCliente ? !form?.id_cliente : !form?.id_empleado)
+    || (isTargetCliente ? false : selectedRoleIds.length === 0)
+    || !canCreate;
+
+  const handleToggleRole = (roleId) => {
+    const normalizedRoleId = String(roleId || '').trim();
+    if (!normalizedRoleId) return;
+
+    const nextRoleIds = selectedRoleIds.includes(normalizedRoleId)
+      ? selectedRoleIds.filter((value) => value !== normalizedRoleId)
+      : [...selectedRoleIds, normalizedRoleId];
+
+    onFieldChange?.('id_roles', nextRoleIds);
+  };
+
+  const handleClose = () => {
+    if (typeof document !== 'undefined') {
+      const activeElement = document.activeElement;
+      if (activeElement && typeof activeElement.blur === 'function') {
+        activeElement.blur();
+      }
+    }
+    onClose?.();
+  };
+
+  const renderRoleChip = (rol, disabled) => {
+    const roleId = String(rol.id_rol);
+    const checked = selectedRoleIds.includes(roleId);
+    const roleName = String(rol?.nombre ?? '').trim();
+    const slug = roleName || `rol_${roleId}`;
+    const roleClassName = slug.toLowerCase().replace(/[^a-z0-9_]+/g, '-');
+    const visualMeta = resolveRoleVisualMeta(roleName);
+    return (
+      <label
+        key={rol.id_rol}
+        className={`usuarios-modal__role-chip is-role-${roleClassName} ${checked ? 'is-active' : ''} ${disabled ? 'is-disabled' : ''}`}
+      >
+        <span className="usuarios-modal__role-check-wrap">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => handleToggleRole(roleId)}
+            disabled={disabled}
+          />
+        </span>
+        <span className="usuarios-modal__role-main">
+          <span className="usuarios-modal__role-icon" aria-hidden="true">
+            <i className={`bi ${visualMeta.icon}`} />
+          </span>
+          <span className="usuarios-modal__role-copy">
+            <span className="usuarios-modal__role-name">{slug}</span>
+            <span className="usuarios-modal__role-desc">{visualMeta.description}</span>
+          </span>
+        </span>
+      </label>
+    );
+  };
+
+  return (
+    <aside
+      className={`inv-prod-drawer inv-cat-v2__drawer crud-modal usuarios-modal ${isOpen ? 'show' : ''} ${isCreate ? 'is-create' : 'is-edit'}`}
+      id="usr-form-drawer"
+      role={isOpen ? 'dialog' : undefined}
+      aria-modal={isOpen ? 'true' : undefined}
+      inert={!isOpen}
+    >
+      <div className="inv-prod-drawer-head usuarios-modal__header crud-modal__header">
+        <div className="usuarios-modal__title-wrap crud-modal__header-copy crud-modal__header-copy--insumo">
+          <div className="crud-modal__hero-icon" aria-hidden="true">
+            <i className="bi bi-person-gear" />
+          </div>
+          <div className="crud-modal__hero-main">
+            <div className="crud-modal__hero-kicker">{isCreate ? 'Nuevo registro' : 'Edicion activa'}</div>
+            <div className="inv-prod-drawer-title usuarios-modal__title crud-modal__title">{isCreate ? 'Nuevo Usuario' : 'Editar Usuario'}</div>
+            <div className="inv-prod-drawer-sub usuarios-modal__subtitle crud-modal__subtitle">Completa los campos y guarda los cambios.</div>
+          </div>
+          <div className="crud-modal__hero-chips">
+            <span className="crud-modal__hero-chip">
+              <i className="bi bi-key" /> Acceso del sistema
+            </span>
+            <span className="crud-modal__hero-chip">
+              <i className="bi bi-shield-lock" /> Roles y seguridad
+            </span>
+          </div>
+        </div>
+        <button type="button" className="inv-prod-drawer-close usuarios-modal__close crud-modal__close" onClick={handleClose} title="Cerrar">
+          <i className="bi bi-x-lg" />
+        </button>
+      </div>
+
+      <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite usuarios-modal__body crud-modal__body" onSubmit={onSubmit}>
+        <div className="row g-3 mt-0 usuarios-modal__grid crud-modal__grid">
+          {isCreate ? (
+            <>
+              <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
+                <label className="form-label usuarios-modal__label">Tipo de usuario</label>
+                <div className="usuarios-modal__switch-row">
+                  <label className="usuarios-modal__type-switch" htmlFor="usuario_tipo_objetivo_modal" aria-label="Seleccionar tipo de usuario">
+                    <input
+                      id="usuario_tipo_objetivo_modal"
+                      type="checkbox"
+                      className="usuarios-modal__type-switch-input"
+                      checked={isTargetCliente}
+                      onChange={(event) => onFieldChange?.('tipo_objetivo', event.target.checked ? 'CLIENTE' : 'EMPLEADO')}
+                    />
+                    <span className="usuarios-modal__type-switch-track" aria-hidden="true">
+                      <span className="usuarios-modal__type-switch-option usuarios-modal__type-switch-option--empleado">Empleado</span>
+                      <span className="usuarios-modal__type-switch-option usuarios-modal__type-switch-option--cliente">Cliente</span>
+                      <span className="usuarios-modal__type-switch-thumb" />
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="col-12 usuarios-modal__section">
+                <label className="form-label usuarios-modal__label">{isTargetCliente ? 'Cliente' : 'Empleado'}</label>
+                {isTargetCliente ? (
+                  <>
+                    <AsyncSelect
+                      inputId="usuario-cliente-select-create"
+                      className={`usuarios-empleado-select ${errors?.id_cliente ? 'is-invalid' : ''}`}
+                      classNamePrefix="usuarios-empleado-select"
+                      placeholder="Seleccione cliente"
+                      cacheOptions
+                      defaultOptions={defaultClienteOptions}
+                      loadOptions={loadClienteOptions}
+                      isClearable
+                      value={clienteSelectValue}
+                      onChange={(option) => onFieldChange?.('id_cliente', option?.value ? String(option.value) : '', option?.meta ?? null)}
+                      isOptionDisabled={(option) => Boolean(option?.isDisabled)}
+                      styles={empleadoSelectStyles}
+                      menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                      menuPosition="fixed"
+                      isDisabled={catalogLoading}
+                      noOptionsMessage={() => 'Sin coincidencias'}
+                      loadingMessage={() => 'Buscando clientes...'}
+                    />
+                    {errors?.id_cliente ? <div className="invalid-feedback d-block">{errors.id_cliente}</div> : null}
+                  </>
+                ) : (
+                  <>
+                    <AsyncSelect
+                      inputId="usuario-empleado-select-create"
+                      className={`usuarios-empleado-select ${errors?.id_empleado ? 'is-invalid' : ''}`}
+                      classNamePrefix="usuarios-empleado-select"
+                      placeholder="Seleccione empleado"
+                      cacheOptions
+                      defaultOptions={defaultEmployeeOptions}
+                      loadOptions={loadEmpleadoOptions}
+                      isClearable
+                      value={employeeSelectValue}
+                      onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '', option?.meta ?? null)}
+                      isOptionDisabled={(option) => Boolean(option?.isDisabled)}
+                      styles={empleadoSelectStyles}
+                      menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                      menuPosition="fixed"
+                      isDisabled={catalogLoading}
+                      noOptionsMessage={() => 'Sin coincidencias'}
+                      loadingMessage={() => 'Buscando empleados...'}
+                    />
+                    {errors?.id_empleado ? <div className="invalid-feedback d-block">{errors.id_empleado}</div> : null}
+                  </>
+                )}
+              </div>
+
+              <div className="col-12 usuarios-modal__section">
+                <label className="form-label usuarios-modal__label">Nombre de usuario (Autogenerado)</label>
+                <input
+                  type="text"
+                  className="form-control usuarios-modal__input"
+                  value={generatedUsernamePreview || (isTargetCliente ? 'Se generara al seleccionar un cliente' : 'Se generara al seleccionar un empleado')}
+                  readOnly
+                />
+              </div>
+
+              {canEditRoles ? (
+                <div className="col-12 usuarios-modal__section">
+                  <label className="form-label usuarios-modal__label">Roles</label>
+                  <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
+                    {roleOptions.map((rol) => renderRoleChip(rol, rolesLoading || !canCreate))}
+                  </div>
+                  <div className="usuarios-modal__roles-hint">Puedes asignar uno o varios roles al mismo usuario.</div>
+                  {errors?.id_roles ? <div className="invalid-feedback d-block">{errors.id_roles}</div> : null}
+                </div>
+              ) : (
+                <div className="col-12 usuarios-modal__section">
+                  <label className="form-label usuarios-modal__label">Rol</label>
+                  <input type="text" className="form-control usuarios-modal__input" value="Cliente (forzado por backend)" readOnly />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
+                <label className="form-label usuarios-modal__label">{isTargetCliente ? 'Cliente' : 'Empleado'}</label>
+                {isTargetCliente ? (
+                  <AsyncSelect
+                    inputId="usuario-cliente-select-edit"
+                    className="usuarios-empleado-select"
+                    classNamePrefix="usuarios-empleado-select"
+                    placeholder="Seleccione cliente"
+                    cacheOptions
+                    defaultOptions={defaultClienteOptions}
+                    loadOptions={loadClienteOptions}
+                    isClearable={false}
+                    value={clienteSelectValue}
+                    onChange={(option) => onFieldChange?.('id_cliente', option?.value ? String(option.value) : '', option?.meta ?? null)}
+                    styles={empleadoSelectStyles}
+                    menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                    menuPosition="fixed"
+                    isDisabled
+                    noOptionsMessage={() => 'Sin coincidencias'}
+                    loadingMessage={() => 'Buscando clientes...'}
+                  />
+                ) : (
+                  <AsyncSelect
+                    inputId="usuario-empleado-select-edit"
+                    className="usuarios-empleado-select"
+                    classNamePrefix="usuarios-empleado-select"
+                    placeholder="Seleccione empleado"
+                    cacheOptions
+                    defaultOptions={defaultEmployeeOptions}
+                    loadOptions={loadEmpleadoOptions}
+                    isClearable={false}
+                    value={employeeSelectValue}
+                    onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '', option?.meta ?? null)}
+                    isOptionDisabled={(option) => Boolean(option?.isDisabled)}
+                    styles={empleadoSelectStyles}
+                    menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                    menuPosition="fixed"
+                    isDisabled
+                    noOptionsMessage={() => 'Sin coincidencias'}
+                    loadingMessage={() => 'Buscando empleados...'}
+                  />
+                )}
+              </div>
+              <div className="col-12 usuarios-modal__section">
+                <label className="form-label usuarios-modal__label">Nombre de usuario</label>
+                <input
+                  type="text"
+                  className="form-control usuarios-modal__input"
+                  value={toDisplayValue(usernameDisplay, 'Sin usuario')}
+                  readOnly
+                />
+              </div>
+              {canEditRoles ? (
+                <div className="col-12 usuarios-modal__section">
+                  <label className="form-label usuarios-modal__label">Roles</label>
+                  <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
+                    {roleOptions.map((rol) => renderRoleChip(rol, rolesLoading || !canEdit))}
+                  </div>
+                  <div className="usuarios-modal__roles-hint">Puedes combinar varios roles; los permisos efectivos se unifican por usuario.</div>
+                  {errors?.id_roles ? <div className="invalid-feedback d-block">{errors.id_roles}</div> : null}
+                </div>
+              ) : (
+                <div className="col-12 usuarios-modal__section">
+                  <label className="form-label usuarios-modal__label">Rol</label>
+                  <input type="text" className="form-control usuarios-modal__input" value="Cliente" readOnly />
+                </div>
+              )}
+            </>
+          )}
+
+          {!isCreate ? (
+            <div className="col-12 usuarios-modal__section">
+              <div className="usuarios-modal__switch-row">
+                <label className="usuarios-modal__switch-label" htmlFor="usuario_estado_modal">
+                  Usuario Activo
+                </label>
+                <label className="usuarios-modal__switch" htmlFor="usuario_estado_modal">
+                  <input
+                    className="usuarios-modal__switch-input"
+                    type="checkbox"
+                    id="usuario_estado_modal"
+                    checked={Boolean(form?.estado)}
+                    onChange={(e) => onFieldChange?.('estado', e.target.checked)}
+                    disabled={!canEdit}
+                  />
+                  <span className="usuarios-modal__switch-track">
+                    <span className="usuarios-modal__switch-thumb">
+                      <i className="bi bi-check-lg" />
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="col-12 usuarios-modal__section">
+            <label className="form-label usuarios-modal__label">Imagen de perfil</label>
+            <div className={`inv-prod-image-field personas-emp-form-image usuarios-modal__image-box ${formImage?.loading ? 'is-loading' : ''}`}>
+              <div className={`inv-prod-image-preview usuarios-modal__image-preview ${formImage?.previewUrl ? 'has-image' : ''}`} aria-live="polite">
+                {formImage?.loading ? (
+                  <div className="inv-prod-image-loading" role="status">
+                    <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                    <span>Cargando imagen...</span>
+                  </div>
+                ) : formImage?.previewUrl ? (
+                  <img src={formImage.previewUrl} alt="Vista previa del usuario" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="inv-prod-image-placeholder usuarios-modal__image-placeholder">
+                    <i className="bi bi-image" />
+                    <span>Sin imagen seleccionada</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="inv-prod-image-actions usuarios-modal__image-actions">
+                <label className="btn inv-prod-btn-subtle inv-prod-image-picker usuarios-modal__btn-upload">
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={onFormImageChange}
+                    disabled={actionLoading || resetPasswordLoading || !canEditPhoto}
+                  />
+                  <i className="bi bi-upload" />
+                  <span>{formImage?.previewUrl ? 'Cambiar imagen' : 'Seleccionar imagen'}</span>
+                </label>
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-outline usuarios-modal__btn-remove"
+                  onClick={onRemoveImage}
+                  disabled={!formImage?.previewUrl && !formImage?.error && !formImage?.loading || !canEditPhoto}
+                >
+                  Quitar
+                </button>
+              </div>
+
+              {formImage?.error ? (
+                <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
+              ) : (
+                <div className="inv-prod-image-feedback usuarios-modal__hint">
+                  JPG, PNG o WEBP hasta 6 MB.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {isCreate && createCredentialsResult?.nombre_usuario ? (
+            <div className="col-12 usuarios-modal__section">
+              <div className="usuarios-modal__result-box is-success">
+                <div className="usuarios-modal__result-row">
+                  <span>Usuario generado:</span>
+                  <strong>{createCredentialsResult.nombre_usuario}</strong>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="d-flex gap-2 mt-4 usuarios-modal__footer crud-modal__footer">
+          <button
+            type="button"
+            className="btn inv-prod-btn-subtle flex-fill usuarios-modal__btn-cancel crud-modal__btn"
+            onClick={handleClose}
+            disabled={actionLoading || resetPasswordLoading || !!deletingId}
+          >
+            Cancelar
+          </button>
+
+          {!isCreate && canResetPassword ? (
+            <button
+              type="button"
+              className="btn inv-prod-btn-outline flex-fill usuarios-modal__btn-reset crud-modal__btn"
+              onClick={onResetPassword}
+              disabled={actionLoading || resetPasswordLoading || !!deletingId}
+            >
+              {resetPasswordLoading ? 'Reseteando...' : 'Generar nueva contraseña temporal'}
+            </button>
+          ) : null}
+
+          <button
+            type="submit"
+            className="btn inv-prod-btn-primary flex-fill usuarios-modal__btn-submit crud-modal__btn"
+            disabled={
+              isCreate
+                ? createDisabled
+                : (actionLoading || resetPasswordLoading || !!deletingId || catalogLoading || rolesLoading || !canEdit)
+            }
+          >
+            {actionLoading
+              ? (isCreate ? 'Generando...' : 'Guardando...')
+              : (isCreate ? 'Generar usuario y contraseña temporal' : 'Guardar')}
+          </button>
+        </div>
+      </form>
+    </aside>
+  );
+}

@@ -1,0 +1,97 @@
+html,
+body,
+#root {
+  background: var(--c-bg-soft) !important;
+  width: 100%;
+  max-width: 100%;
+}
+
+body {
+  color: var(--c-text);
+  background:
+    radial-gradient(circle at top left, rgba(243, 241, 216, 0.68), transparent 26%),
+    linear-gradient(180deg, #faf7f4 0%, var(--shell-bg) 100%) !important;
+  position: relative;
+  isolation: isolate;
+  min-width: 100%;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 600px;
+  background-image: url('../images/logo-watermark.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.dashboard-shell {
+  --sidebar-w: 262px;
+  --sidebar-w-collapsed: 88px;
+  --shell-sidebar-current: var(--sidebar-w);
+  min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  isolation: isolate;
+}
+
+.dashboard-shell.shell--collapsed {
+  --shell-sidebar-current: var(--sidebar-w-collapsed);
+}
+
+.dashboard-shell .main-content {
+  min-height: 100vh;
+  min-width: 0;
+  box-sizing: border-box;
+  margin-left: calc(var(--shell-sidebar-current) + 10px);
+  width: auto;
+  max-width: none;
+  padding: 10px 16px 32px 0;
+  background: transparent !important;
+  overflow-x: hidden;
+  transition: margin-left 180ms ease, padding 180ms ease;
+}
+
+.dashboard-shell.dashboard-shell--tv-mode .main-content {
+  margin-left: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+}
+
+.dashboard-shell .main-content > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.container-fluid,
+.container-fluid.p-3 {
+  background: transparent !important;
+}
+
+.card {
+  background: #fff !important;
+  border-color: var(--c-border-soft) !important;
+  box-shadow: 0 6px 16px rgba(var(--c-shadow-rgb), 0.14) !important;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-shell {
+    --shell-sidebar-current: 0px;
+  }
+
+  .dashboard-shell .main-content {
+    margin-left: 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 10px 10px 92px;
+  }
+}

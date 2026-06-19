@@ -1,0 +1,131 @@
+.venta-reversion-ticket-root {
+  display: none;
+}
+
+.venta-reversion-ticket-root.is-preview {
+  display: block;
+  border: 1px dashed #b6b1a6;
+  border-radius: 10px;
+  background: #fff;
+  margin-top: 12px;
+  padding: 8px;
+}
+.venta-reversion-ticket {
+  color: #111;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.venta-reversion-ticket__header {
+  text-align: center;
+}
+
+.venta-reversion-ticket__header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.venta-reversion-ticket__header p {
+  margin: 2px 0 0;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.venta-reversion-ticket__meta,
+.venta-reversion-ticket__totals {
+  margin: 8px 0;
+}
+
+.venta-reversion-ticket__meta div,
+.venta-reversion-ticket__totals div {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.venta-reversion-ticket__meta dt,
+.venta-reversion-ticket__meta dd,
+.venta-reversion-ticket__totals dt,
+.venta-reversion-ticket__totals dd {
+  margin: 0;
+}
+
+.venta-reversion-ticket__divider {
+  border-top: 1px dashed #000;
+  margin: 6px 0;
+}
+
+.venta-reversion-ticket__items-head,
+.venta-reversion-ticket__item-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.venta-reversion-ticket__items-head {
+  font-weight: 700;
+}
+
+.venta-reversion-ticket__item-row span:nth-child(2),
+.venta-reversion-ticket__item-row span:nth-child(3) {
+  text-align: right;
+}
+
+.venta-reversion-ticket__totals .is-total {
+  font-weight: 700;
+}
+
+.venta-reversion-ticket__notice {
+  margin-top: 8px;
+  font-size: 10px;
+  text-align: center;
+}
+
+@media print {
+  body.venta-reversion-ticket-printing .venta-reversion-ticket-root.is-preview {
+    border: 0 !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  body.venta-reversion-ticket-printing * {
+    visibility: hidden !important;
+  }
+
+  body.venta-reversion-ticket-printing .venta-reversion-ticket-root,
+  body.venta-reversion-ticket-printing .venta-reversion-ticket-root * {
+    visibility: visible !important;
+  }
+
+  body.venta-reversion-ticket-printing .venta-reversion-ticket-root {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #fff;
+    padding: 0;
+    margin: 0;
+  }
+
+  body.venta-reversion-ticket-printing .venta-reversion-ticket {
+    width: 80mm;
+    margin: 0 auto;
+    padding: 6mm 3mm;
+  }
+
+  body.venta-reversion-ticket-printing .venta-reversion-ticket-root--58mm .venta-reversion-ticket {
+    width: 58mm;
+    padding: 4mm 2mm;
+  }
+
+  @page {
+    margin: 0;
+    size: auto;
+  }
+}
+
+

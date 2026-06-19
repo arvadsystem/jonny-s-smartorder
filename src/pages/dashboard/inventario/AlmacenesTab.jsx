@@ -1,72 +1,680 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
+import sucursalesService from '../../../services/sucursalesService';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS, isSuperAdminRoleList } from '../../../utils/permissions';
+import { useAuth } from '../../../hooks/useAuth';
+import { normalizeVisualText } from '../../../utils/normalizeVisualText';
+import MovimientosTab from './MovimientosTab.jsx';
+import CompactHeaderSwitch from './CompactHeaderSwitch.jsx';
+import ProveedoresTab from './ProveedoresTab.jsx';
+
+// NEW: normaliza el estado de sucursal para soportar booleans, strings y numericos.
+// WHY: `sucursales` y `almacenes` pueden traer el estado en distintos formatos segun el origen.
+// IMPACT: solo afecta labels/filtros; no modifica payloads ni persistencia.
+const parseBooleanEstado = (value) => {
+  if (value === true || value === 'true' || value === 1 || value === '1') return true;
+  if (value === false || value === 'false' || value === 0 || value === '0') return false;
+  return Boolean(value);
+};
+
+const parseSucursalEstado = (value) => parseBooleanEstado(value);
+const parseAlmacenEstado = (value) => parseBooleanEstado(value);
+const ALMACENES_NO_DELETE_MESSAGE =
+  'Los almacenes no se eliminan; se inactivan para preservar la trazabilidad del inventario.';
+const ALMACENES_INACTIVATION_POLICY_MESSAGE =
+  'La inactivacion solo es posible cuando no compromete stock ni operacion.';
+const ALMACENES_SUCURSAL_CHANGE_CONFLICT_MESSAGE =
+  'No se puede cambiar la sucursal de este almacen porque ya tiene historial operativo. Para preservar la trazabilidad, crea un nuevo almacen en la sucursal correcta.';
+const ALMACENES_SUCURSAL_CHANGE_POLICY_MESSAGE =
+  'La sucursal solo puede cambiarse cuando el almacen no tiene historial operativo.';
+const ALMACENES_CONCURRENCY_CONFLICT_MESSAGE =
+  'El almacen fue modificado por otro usuario. Recarga la informacion antes de guardar.';
+const ALMACENES_SCOPE_BLOCKED_MESSAGE =
+  'No tienes acceso al recurso solicitado dentro de tu alcance de sucursal.';
+const ALMACENES_SCOPE_NOT_FOUND_MESSAGE =
+  'El almacen solicitado no esta disponible en tu alcance actual o no existe.';
+const ALMACEN_CREATE_FORM_INITIAL = Object.freeze({ nombre: '', id_sucursal: '' });
+const normalizeAlmacenNombre = (value) => normalizeVisualText(value, { mode: 'title' });
+
+const resolveAlmacenesRequestMessage = (error, fallbackMessage) => {
+  const status = Number(error?.status ?? 0);
+  const code = String(error?.code ?? error?.data?.code ?? '').trim().toUpperCase();
+  const apiMessage = String(error?.message ?? '').trim();
+
+  if (status === 403 || code === 'FORBIDDEN') {
+    return apiMessage || ALMACENES_SCOPE_BLOCKED_MESSAGE;
+  }
+
+  if (status === 404 && /almacen no encontrado/i.test(apiMessage)) {
+    return ALMACENES_SCOPE_NOT_FOUND_MESSAGE;
+  }
+
+  return apiMessage || fallbackMessage;
+};
+
+const formatSucursalOptionLabel = (sucursal, id) => {
+  const safeId = String(id ?? sucursal?.id_sucursal ?? '').trim();
+  if (!safeId) return 'Sucursal sin ID';
+  if (!sucursal) return `Sucursal ${safeId}`;
+
+  const nombre = String(sucursal?.nombre_sucursal ?? '').trim() || `Sucursal ${safeId}`;
+  return `${nombre}${parseSucursalEstado(sucursal?.estado) ? '' : ' (Inactiva)'}`;
+};
+
+const formatSucursalDisplayLabel = (sucursal, id) => {
+  const safeId = String(id ?? '').trim();
+  if (!safeId) return 'Sucursal sin ID';
+  if (!sucursal) return `Sucursal ${safeId}`;
+
+  const nombre = String(sucursal?.nombre_sucursal ?? '').trim() || `Sucursal ${safeId}`;
+  return `${nombre}${parseSucursalEstado(sucursal?.estado) ? '' : ' (Inactiva)'}`;
+};
+
+const buildSucursalSelectOptions = ({ activeSucursales, sucursalesMap, selectedId }) => {
+  const options = new Map();
+
+  for (const sucursal of Array.isArray(activeSucursales) ? activeSucursales : []) {
+    const id = String(sucursal?.id_sucursal ?? '').trim();
+    if (!id) continue;
+
+    options.set(id, {
+      id,
+      label: formatSucursalOptionLabel(sucursal, id),
+      disabled: false
+    });
+  }
+
+  const selectedKey = String(selectedId ?? '').trim();
+  if (selectedKey && !options.has(selectedKey)) {
+    options.set(selectedKey, {
+      id: selectedKey,
+      label: formatSucursalOptionLabel(sucursalesMap.get(selectedKey), selectedKey),
+      disabled: true
+    });
+  }
+
+  return Array.from(options.values()).sort((left, right) => Number(left.id) - Number(right.id));
+};
+
+// NEW: define el badge visible de estado usando el dato real disponible mas cercano (`sucursales.estado`).
+// WHY: `almacenes` no tiene columna propia de estado y la UI requiere una senal operativa sin inventar campos.
+// IMPACT: solo presentacion; el dato persistido sigue siendo `sucursal_estado`.
+const getAlmacenStatusMeta = (almacen) => {
+  const hasAlmacenState = almacen?.estado !== undefined && almacen?.estado !== null;
+  if (hasAlmacenState) {
+    return parseAlmacenEstado(almacen?.estado)
+      ? { label: 'ACTIVO', className: 'is-active', hint: 'Estado propio del almacen' }
+      : { label: 'INACTIVO', className: 'is-inactive', hint: 'INACTIVO - no disponible para operaciones' };
+  }
+
+  const hasSucursalState = almacen?.sucursal_estado !== undefined && almacen?.sucursal_estado !== null;
+  if (!hasSucursalState) {
+    return { label: 'N/D', className: 'is-unknown', hint: 'Sin estado relacionado en BD' };
+  }
+
+  return parseSucursalEstado(almacen?.sucursal_estado)
+    ? { label: 'ACTIVO', className: 'is-active', hint: 'Basado en la sucursal relacionada' }
+    : { label: 'INACTIVO', className: 'is-inactive', hint: 'Basado en la sucursal relacionada' };
+};
+
+const formatMetricValue = (value) => {
+  if (value === undefined || value === null || value === '') return 'N/D';
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? String(numeric) : String(value);
+};
+
+const getAlmacenActionMeta = (almacen) => {
+  const isActivo = parseAlmacenEstado(almacen?.estado);
+
+  if (!isActivo) {
+    return {
+      action: 'reactivar',
+      label: 'Reactivar',
+      icon: 'bi bi-arrow-clockwise',
+      buttonClass: 'btn inv-prod-btn-subtle inv-warehouse-card__action',
+      title: 'Reactivar almacen'
+    };
+  }
+
+  return {
+    action: 'inactivar',
+    label: 'Inactivar',
+    icon: 'bi bi-slash-circle',
+    buttonClass: 'btn inv-prod-btn-subtle inv-warehouse-card__action',
+    title: 'Inactivar'
+  };
+};
+
+const getConfirmCopyByAction = (action) => {
+  if (action === 'inactivar') {
+    return {
+      title: 'Confirmar inactivacion',
+      subtitle: 'El almacen dejara de estar disponible en listas activas.',
+      note: `${ALMACENES_NO_DELETE_MESSAGE} ${ALMACENES_INACTIVATION_POLICY_MESSAGE}`,
+      question: 'Deseas inactivar este almacen?',
+      actionLabel: 'Inactivar',
+      actionBusyLabel: 'Inactivando...',
+      actionIcon: 'bi-slash-circle'
+    };
+  }
+
+  if (action === 'reactivar') {
+    return {
+      title: 'Confirmar reactivacion',
+      subtitle: 'El almacen volvera a estar disponible para operaciones.',
+      note: 'Puedes volver a ocultarlo inactivandolo nuevamente cuando sea necesario.',
+      question: 'Deseas reactivar este almacen?',
+      actionLabel: 'Reactivar',
+      actionBusyLabel: 'Reactivando...',
+      actionIcon: 'bi-arrow-clockwise'
+    };
+  }
+
+  return {
+    title: 'Confirmar inactivacion',
+    subtitle: 'El almacen dejara de estar disponible en listas activas.',
+    note: `${ALMACENES_NO_DELETE_MESSAGE} ${ALMACENES_INACTIVATION_POLICY_MESSAGE}`,
+    question: 'Deseas inactivar este almacen?',
+    actionLabel: 'Inactivar',
+    actionBusyLabel: 'Inactivando...',
+    actionIcon: 'bi-slash-circle'
+  };
+};
+
+const toFiniteNonNegativeNumber = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return 0;
+  return numeric;
+};
+
+const areAlmacenFormsEqual = (left, right) => {
+  return (
+    String(left?.nombre ?? '') === String(right?.nombre ?? '') &&
+    String(left?.id_sucursal ?? '') === String(right?.id_sucursal ?? '')
+  );
+};
+
+const normalizeDependencyDetailGroup = (group) => {
+  const raw = group && typeof group === 'object' ? group : {};
+  const items = Array.isArray(raw.items) ? raw.items : [];
+  const total = toFiniteNonNegativeNumber(raw.total);
+  const remaining = toFiniteNonNegativeNumber(raw.remaining);
+  return { total, items, remaining };
+};
+
+const normalizeDependencyDetails = (rawDetails) => {
+  const source = rawDetails && typeof rawDetails === 'object' ? rawDetails : {};
+  return {
+    productos_activos: normalizeDependencyDetailGroup(source.productos_activos),
+    insumos_activos: normalizeDependencyDetailGroup(source.insumos_activos),
+    stock_productos: normalizeDependencyDetailGroup(source.stock_productos),
+    stock_insumos: normalizeDependencyDetailGroup(source.stock_insumos),
+    ordenes_compra_abiertas: normalizeDependencyDetailGroup(source.ordenes_compra_abiertas)
+  };
+};
+
+const hasDependencyDetailContent = (details) => {
+  if (!details || typeof details !== 'object') return false;
+  return Object.values(details).some(
+    (group) => toFiniteNonNegativeNumber(group?.total) > 0 || (Array.isArray(group?.items) && group.items.length > 0)
+  );
+};
+
+const normalizeAlmacenDependencies = (payload) => {
+  const countsRaw = payload?.counts && typeof payload.counts === 'object' ? payload.counts : {};
+  const stockRaw = payload?.stock && typeof payload.stock === 'object' ? payload.stock : {};
+  const normalizedReasons = Array.isArray(payload?.blockingReasons)
+    ? payload.blockingReasons
+        .map((reason) => String(reason ?? '').trim())
+        .filter(Boolean)
+    : [];
+  const normalizedSucursalChangeReasons = Array.isArray(payload?.sucursalChangeBlockingReasons)
+    ? payload.sucursalChangeBlockingReasons
+        .map((reason) => String(reason ?? '').trim())
+        .filter(Boolean)
+    : [];
+  const dependencyDetails = normalizeDependencyDetails(payload?.dependencyDetails);
+
+  const counts = {
+    movimientos: toFiniteNonNegativeNumber(countsRaw.movimientos),
+    movimientos_recientes: toFiniteNonNegativeNumber(countsRaw.movimientos_recientes),
+    productos: toFiniteNonNegativeNumber(countsRaw.productos),
+    productos_activos: toFiniteNonNegativeNumber(countsRaw.productos_activos),
+    insumos: toFiniteNonNegativeNumber(countsRaw.insumos),
+    insumos_activos: toFiniteNonNegativeNumber(countsRaw.insumos_activos),
+    ordenes_compra_abiertas: toFiniteNonNegativeNumber(countsRaw.ordenes_compra_abiertas)
+  };
+
+  const stock = {
+    productos: toFiniteNonNegativeNumber(stockRaw.productos),
+    insumos: toFiniteNonNegativeNumber(stockRaw.insumos)
+  };
+  stock.total =
+    toFiniteNonNegativeNumber(stockRaw.total) || stock.productos + stock.insumos;
+
+  const hasStock = payload?.hasStock === true || stock.total > 0;
+  const hasActiveOperationalDependencies =
+    payload?.hasActiveOperationalDependencies === true ||
+    counts.productos_activos > 0 ||
+    counts.insumos_activos > 0 ||
+    counts.ordenes_compra_abiertas > 0;
+  const hasOperationalHistory =
+    payload?.hasOperationalHistory === true ||
+    counts.movimientos > 0 ||
+    stock.total > 0 ||
+    counts.productos > 0 ||
+    counts.insumos > 0 ||
+    counts.ordenes_compra_abiertas > 0;
+
+  let canDeactivate;
+  if (payload?.canDeactivate === true || payload?.canInactivate === true) {
+    canDeactivate = true;
+  } else if (payload?.canDeactivate === false || payload?.canInactivate === false) {
+    canDeactivate = false;
+  } else {
+    canDeactivate = !(hasStock || hasActiveOperationalDependencies || normalizedReasons.length > 0);
+  }
+
+  const fallbackReason = hasStock
+    ? 'No se puede inactivar el almacen porque tiene stock disponible.'
+    : counts.productos_activos > 0 || counts.insumos_activos > 0
+    ? 'No se puede inactivar el almacen porque mantiene dependencias operativas activas.'
+    : counts.ordenes_compra_abiertas > 0
+    ? 'No se puede inactivar el almacen porque tiene ordenes de compra en curso asociadas.'
+    : 'No se puede inactivar el almacen porque mantiene dependencias operativas activas.';
+
+  const blockingReasons = normalizedReasons.length
+    ? normalizedReasons
+    : canDeactivate
+    ? []
+    : [fallbackReason];
+
+  let canChangeSucursal;
+  if (
+    payload?.canChangeSucursal === true ||
+    payload?.canChangeBranch === true ||
+    payload?.canUpdateSucursal === true
+  ) {
+    canChangeSucursal = true;
+  } else if (
+    payload?.canChangeSucursal === false ||
+    payload?.canChangeBranch === false ||
+    payload?.canUpdateSucursal === false
+  ) {
+    canChangeSucursal = false;
+  } else {
+    canChangeSucursal = !hasOperationalHistory;
+  }
+
+  const fallbackSucursalChangeReason = counts.movimientos > 0
+    ? 'No se puede cambiar la sucursal de este almacen porque ya registra movimientos de inventario.'
+    : hasStock
+    ? 'No se puede cambiar la sucursal de este almacen porque tiene stock disponible.'
+    : counts.ordenes_compra_abiertas > 0
+    ? 'No se puede cambiar la sucursal de este almacen porque tiene ordenes de compra en curso asociadas.'
+    : counts.productos > 0 || counts.insumos > 0
+    ? 'No se puede cambiar la sucursal de este almacen porque mantiene productos o insumos vinculados.'
+    : ALMACENES_SUCURSAL_CHANGE_CONFLICT_MESSAGE;
+
+  const sucursalChangeBlockingReasons = normalizedSucursalChangeReasons.length
+    ? normalizedSucursalChangeReasons
+    : canChangeSucursal
+    ? []
+    : [fallbackSucursalChangeReason];
+
+  return {
+    counts,
+    stock,
+    hasStock,
+    hasActiveOperationalDependencies,
+    hasOperationalHistory,
+    canDeactivate,
+    canInactivate: canDeactivate,
+    blockingReasons,
+    primaryBlockingReason: blockingReasons[0] || '',
+    canChangeSucursal,
+    canChangeBranch: canChangeSucursal,
+    canUpdateSucursal: canChangeSucursal,
+    sucursalChangeBlockingReasons,
+    sucursalChangePrimaryReason: sucursalChangeBlockingReasons[0] || '',
+    dependencyDetails
+  };
+};
 
 const AlmacenesTab = ({ openToast }) => {
-  // ==============================
-  // ESTADOS PRINCIPALES
-  // ==============================
+  const { user } = useAuth();
+  const { can, canAny, loading: permisosLoading } = usePermisos();
+  const canVerAlmacenes = canAny([
+    PERMISSIONS.INVENTARIO_ALMACENES_VER,
+    PERMISSIONS.INVENTARIO_ALMACENES_DETALLE_VER
+  ]);
+  const canCrearAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_CREAR);
+  const canEditarAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_EDITAR);
+  const canCambiarEstadoAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_ESTADO_CAMBIAR);
+  const canVerProveedores = canAny([
+    PERMISSIONS.INVENTARIO_PROVEEDORES_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_DETALLE_VER
+  ]);
+  const canAccessAlmacenesTab = canAny([
+    PERMISSIONS.INVENTARIO_ALMACENES_VER,
+    PERMISSIONS.INVENTARIO_ALMACENES_DETALLE_VER,
+    PERMISSIONS.INVENTARIO_ALMACENES_CREAR,
+    PERMISSIONS.INVENTARIO_ALMACENES_EDITAR,
+    PERMISSIONS.INVENTARIO_ALMACENES_ELIMINAR,
+    PERMISSIONS.INVENTARIO_ALMACENES_ESTADO_CAMBIAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_DETALLE_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_ELIMINAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_ESTADO_CAMBIAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_EDITAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_ELIMINAR
+  ]);
+
+  const canRunAlmacenAction = (action) => {
+    if (action === 'inactivar' || action === 'reactivar') return canCambiarEstadoAlmacenes;
+    return false;
+  };
+
+  const resolveDefaultScope = () => {
+    if (canVerAlmacenes) return 'almacenes';
+    if (canVerProveedores) return 'proveedores';
+    return 'almacenes';
+  };
+
+  // AM: switch principal del submodulo para alternar entre Almacenes y Proveedores.
+  const [catalogScope, setCatalogScope] = useState(resolveDefaultScope);
   const [almacenes, setAlmacenes] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingSucursales, setLoadingSucursales] = useState(false);
   const [error, setError] = useState('');
 
-  // ==============================
-  // FILTROS (BUSCAR + SUCURSAL)
-  // ==============================
   const [search, setSearch] = useState('');
-  const [sucursalFiltro, setSucursalFiltro] = useState('todas'); // todas | <id>
+  const [showInactivos, setShowInactivos] = useState(false);
+  const [selectedAlmacenId, setSelectedAlmacenId] = useState('');
 
-  // ==============================
-  // MODAL CREAR (RESPONSIVE)
-  // ==============================
-  const [showCreateSheet, setShowCreateSheet] = useState(false);
-
-  // FORM CREAR
-  const [form, setForm] = useState({
-    nombre: '',
-    id_sucursal: ''
-  });
-
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [form, setForm] = useState(ALMACEN_CREATE_FORM_INITIAL);
+  const [createFormSnapshot, setCreateFormSnapshot] = useState(ALMACEN_CREATE_FORM_INITIAL);
   const [createErrors, setCreateErrors] = useState({});
+  const [savingCreate, setSavingCreate] = useState(false);
 
-  // ==============================
-  // EDITAR (INLINE)
-  // ==============================
+  const [detailId, setDetailId] = useState(null);
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [editFormSnapshot, setEditFormSnapshot] = useState(null);
   const [editErrors, setEditErrors] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
-  // ==============================
-  // MODAL CONFIRMAR ELIMINAR
-  // ==============================
   const [confirmModal, setConfirmModal] = useState({
     show: false,
     idToDelete: null,
-    nombre: ''
+    nombre: '',
+    action: 'inactivar',
+    counts: null,
+    dependency: null
   });
+  const [deletingConfirm, setDeletingConfirm] = useState(false);
+  const [resolvingActionId, setResolvingActionId] = useState(null);
+  const [confirmDeleteError, setConfirmDeleteError] = useState('');
+  const [inactivationRulesByAlmacenId, setInactivationRulesByAlmacenId] = useState({});
+  const [loadingEditDependencies, setLoadingEditDependencies] = useState(false);
 
-  const openConfirmDelete = (id, nombre) => {
-    setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' });
+  const movimientosRef = useRef(null);
+  const catalogRequestIdRef = useRef(0);
+  const almacenesRequestIdRef = useRef(0);
+  const dependenciasRequestIdRef = useRef(0);
+  const editDependenciasRequestIdRef = useRef(0);
+  const createNombreInputRef = useRef(null);
+  const editNombreInputRef = useRef(null);
+  const modalFocusReturnRef = useRef(null);
+  const prevModalOpenRef = useRef(false);
+  const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
+  const showEditModal = Boolean(editForm && editId !== null);
+  const anyFormModalOpen = showCreateModal || showEditModal;
+
+  const captureActiveElement = useCallback(() => {
+    if (typeof document === 'undefined') return null;
+    const active = document.activeElement;
+    return active instanceof HTMLElement ? active : null;
+  }, []);
+
+  const restoreFocusToElement = useCallback((element) => {
+    if (!(element instanceof HTMLElement) || typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!document.contains(element) || element.hasAttribute('disabled') || element.getAttribute('aria-hidden') === 'true') return;
+    window.requestAnimationFrame(() => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    });
+  }, []);
+
+  const safeToast = (title, message, variant = 'success') => {
+    if (typeof openToast === 'function') openToast(title, message, variant);
   };
 
-  const closeConfirmDelete = () => {
-    setConfirmModal({ show: false, idToDelete: null, nombre: '' });
+  const hasCreateFormUnsavedChanges = useMemo(
+    () => !areAlmacenFormsEqual(form, createFormSnapshot),
+    [createFormSnapshot, form]
+  );
+
+  const hasEditFormUnsavedChanges = useMemo(() => {
+    if (!editForm || !editFormSnapshot) return false;
+    return !areAlmacenFormsEqual(editForm, editFormSnapshot);
+  }, [editForm, editFormSnapshot]);
+
+  const confirmDiscardAlmacenChanges = () => {
+    if (typeof window === 'undefined') return true;
+    return window.confirm('Hay cambios sin guardar. ¿Deseas cerrar y perderlos?');
   };
 
-  // ==============================
-  // VALIDACIÓN MÍNIMA
-  // ==============================
-  const validarAlmacen = (data) => {
+  const isSuperAdminUser = useMemo(
+    () => isSuperAdminRoleList(user?.roles),
+    [user?.roles]
+  );
+
+  const userSucursalId = useMemo(() => {
+    const parsed = Number.parseInt(String(user?.id_sucursal ?? '').trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [user?.id_sucursal]);
+
+  const sucursalesVisibles = useMemo(() => {
+    const source = Array.isArray(sucursales) ? sucursales : [];
+    if (isSuperAdminUser) return source;
+
+    const allowedIds = new Set();
+    for (const almacen of Array.isArray(almacenes) ? almacenes : []) {
+      const idSucursal = String(almacen?.id_sucursal ?? '').trim();
+      if (idSucursal) allowedIds.add(idSucursal);
+    }
+    if (userSucursalId) {
+      allowedIds.add(String(userSucursalId));
+    }
+
+    if (allowedIds.size === 0) return [];
+    return source.filter((sucursal) => allowedIds.has(String(sucursal?.id_sucursal ?? '').trim()));
+  }, [almacenes, isSuperAdminUser, sucursales, userSucursalId]);
+
+  const rememberInactivationRule = (idAlmacen, dependencyPayload) => {
+    const id = Number(idAlmacen ?? 0);
+    if (!id) return null;
+
+    const normalized = normalizeAlmacenDependencies(dependencyPayload);
+    setInactivationRulesByAlmacenId((current) => ({
+      ...current,
+      [String(id)]: normalized
+    }));
+    return normalized;
+  };
+
+  const renderDependencyDetails = useCallback((details) => {
+    if (!hasDependencyDetailContent(details)) return null;
+
+    const sections = [];
+    const addSection = (title, group, renderItem, remainingLabel) => {
+      const safeGroup = group || {};
+      const total = toFiniteNonNegativeNumber(safeGroup.total);
+      const remaining = toFiniteNonNegativeNumber(safeGroup.remaining);
+      const items = Array.isArray(safeGroup.items) ? safeGroup.items : [];
+      if (!total && items.length === 0) return;
+      sections.push({ title, total, remaining, items, renderItem, remainingLabel });
+    };
+
+    // AM: muestra detalle humano por grupo bloqueante manteniendo fallback si backend no envia detalle.
+    addSection('Productos activos', details?.productos_activos, (item) => (
+      <li key={`prod-act-${item?.id_producto ?? item?.nombre}`}>{String(item?.nombre || `Producto #${item?.id_producto ?? ''}`)}</li>
+    ), 'productos');
+    addSection('Insumos activos', details?.insumos_activos, (item) => (
+      <li key={`ins-act-${item?.id_insumo ?? item?.nombre}`}>{String(item?.nombre || `Insumo #${item?.id_insumo ?? ''}`)}</li>
+    ), 'insumos');
+    addSection('Stock de productos', details?.stock_productos, (item) => (
+      <li key={`stock-prod-${item?.id_producto ?? item?.nombre}`}>
+        {`${String(item?.nombre || `Producto #${item?.id_producto ?? ''}`)}: ${toFiniteNonNegativeNumber(item?.cantidad)} unidades`}
+      </li>
+    ), 'productos');
+    addSection('Stock de insumos', details?.stock_insumos, (item) => (
+      <li key={`stock-ins-${item?.id_insumo ?? item?.nombre}`}>
+        {`${String(item?.nombre || `Insumo #${item?.id_insumo ?? ''}`)}: ${toFiniteNonNegativeNumber(item?.cantidad)} unidades`}
+      </li>
+    ), 'insumos');
+    addSection('Ordenes de compra abiertas', details?.ordenes_compra_abiertas, (item) => (
+      <li key={`oc-open-${item?.id_orden_compra ?? item?.codigo}`}>
+        {`${String(item?.codigo || `OC #${item?.id_orden_compra ?? ''}`)} - ${String(item?.estado || '')}`.trim()}
+      </li>
+    ), 'ordenes');
+
+    if (!sections.length) return null;
+
+    return (
+      <div className="mt-2 small">
+        {sections.map((section) => (
+          <div key={section.title} className="mb-2">
+            <div className="fw-semibold">{section.title}:</div>
+            <ul className="mb-1 ps-3">
+              {section.items.length
+                ? section.items.map((item) => section.renderItem(item))
+                : <li>{`${section.total} registro(s) relacionado(s).`}</li>}
+              {section.remaining > 0 ? <li>{`Y ${section.remaining} ${section.remainingLabel} mas.`}</li> : null}
+            </ul>
+          </div>
+        ))}
+      </div>
+    );
+  }, []);
+
+  const loadEditDependencyRule = async (idAlmacen, { notifyError = false } = {}) => {
+    const id = Number(idAlmacen ?? 0);
+    if (!id) return null;
+
+    const cachedRule = inactivationRulesByAlmacenId[String(id)];
+    if (cachedRule) return cachedRule;
+
+    const requestId = ++editDependenciasRequestIdRef.current;
+    setLoadingEditDependencies(true);
+
+    try {
+      const deps = await inventarioService.getAlmacenDependencias(id);
+      if (requestId !== editDependenciasRequestIdRef.current) return null;
+      return rememberInactivationRule(id, deps);
+    } catch (requestError) {
+      if (requestId !== editDependenciasRequestIdRef.current) return null;
+      if (notifyError) {
+        const message = resolveAlmacenesRequestMessage(
+          requestError,
+          'No se pudieron consultar las dependencias operativas del almacen.'
+        );
+        safeToast('AVISO', message, 'warning');
+      }
+      return null;
+    } finally {
+      if (requestId === editDependenciasRequestIdRef.current) {
+        setLoadingEditDependencies(false);
+      }
+    }
+  };
+
+  const sucursalesMap = useMemo(() => {
+    const map = new Map();
+    for (const sucursal of Array.isArray(sucursalesVisibles) ? sucursalesVisibles : []) {
+      const key = String(sucursal?.id_sucursal ?? '').trim();
+      if (!key) continue;
+      map.set(key, sucursal);
+    }
+    return map;
+  }, [sucursalesVisibles]);
+
+  const sucursalesActivas = useMemo(() => {
+    return (Array.isArray(sucursalesVisibles) ? [...sucursalesVisibles] : [])
+      .filter((sucursal) => parseSucursalEstado(sucursal?.estado))
+      .sort((left, right) => Number(left?.id_sucursal ?? 0) - Number(right?.id_sucursal ?? 0));
+  }, [sucursalesVisibles]);
+
+  const createSucursalOptions = useMemo(
+    () =>
+      buildSucursalSelectOptions({
+        activeSucursales: sucursalesActivas,
+        sucursalesMap,
+        selectedId: form.id_sucursal
+      }),
+    [form.id_sucursal, sucursalesActivas, sucursalesMap]
+  );
+
+  const editSucursalOptions = useMemo(
+    () =>
+      buildSucursalSelectOptions({
+        activeSucursales: sucursalesActivas,
+        sucursalesMap,
+        selectedId: editForm?.id_sucursal
+      }),
+    [editForm?.id_sucursal, sucursalesActivas, sucursalesMap]
+  );
+
+  const canCreateWithCatalog = createSucursalOptions.length > 0 || loadingSucursales;
+  const canEditWithCatalog = editSucursalOptions.length > 0 || loadingSucursales;
+
+  const editHasLegacySelected =
+    !!editForm &&
+    !loadingSucursales &&
+    editSucursalOptions.some(
+      (option) => option.id === String(editForm?.id_sucursal ?? '').trim() && option.disabled === true
+    );
+
+  const validarAlmacen = (data, { allowLegacyId = null } = {}) => {
     const errors = {};
-    const nombre = String(data?.nombre ?? '').trim();
+    const nombre = normalizeAlmacenNombre(data?.nombre ?? '');
     const sucRaw = String(data?.id_sucursal ?? '').trim();
     const id_sucursal = Number.parseInt(sucRaw, 10);
 
-    if (nombre.length < 2) errors.nombre = 'MÍNIMO 2 CARACTERES';
-    if (nombre.length > 80) errors.nombre = 'MÁXIMO 80 CARACTERES';
+    if (nombre.length < 2) errors.nombre = 'MINIMO 2 CARACTERES';
+    else if (nombre.length > 80) errors.nombre = 'MAXIMO 80 CARACTERES';
 
-    if (!sucRaw) errors.id_sucursal = 'LA SUCURSAL ES OBLIGATORIA';
-    else if (!/^\d+$/.test(sucRaw)) errors.id_sucursal = 'SOLO NÚMEROS ENTEROS';
-    else if (Number.isNaN(id_sucursal) || id_sucursal <= 0) errors.id_sucursal = 'DEBE SER > 0';
+    if (!sucRaw) {
+      errors.id_sucursal = 'LA SUCURSAL ES OBLIGATORIA';
+    } else if (!/^\d+$/.test(sucRaw)) {
+      errors.id_sucursal = 'SELECCIONA UNA SUCURSAL VALIDA';
+    } else if (Number.isNaN(id_sucursal) || id_sucursal <= 0) {
+      errors.id_sucursal = 'SELECCIONA UNA SUCURSAL VALIDA';
+    } else {
+      const selectedKey = String(id_sucursal);
+      const legacyKey = String(allowLegacyId ?? '').trim();
+      const sucursal = sucursalesMap.get(selectedKey);
+      const legacyAllowed = legacyKey !== '' && legacyKey === selectedKey;
+
+      if (!sucursal && !legacyAllowed) {
+        errors.id_sucursal = 'LA SUCURSAL SELECCIONADA NO EXISTE EN EL CATALOGO';
+      } else if (sucursal && !parseSucursalEstado(sucursal?.estado) && !legacyAllowed) {
+        errors.id_sucursal = 'LA SUCURSAL SELECCIONADA ESTA INACTIVA';
+      }
+    }
 
     return {
       ok: Object.keys(errors).length === 0,
@@ -75,574 +683,1372 @@ const AlmacenesTab = ({ openToast }) => {
     };
   };
 
-  // ==============================
-  // CARGAR ALMACENES
-  // ==============================
-  const cargarAlmacenes = async () => {
+  const cargarCatalogos = async (includeInactivos = showInactivos) => {
+    const requestId = ++catalogRequestIdRef.current;
+    setLoading(true);
+    setLoadingSucursales(true);
+    setError('');
+
+    try {
+      const [almacenesData, sucursalesData] = await Promise.all([
+        inventarioService.getAlmacenes({ include_inactivos: includeInactivos }),
+        sucursalesService.getAll()
+      ]);
+
+      if (requestId !== catalogRequestIdRef.current) return;
+      setAlmacenes(Array.isArray(almacenesData) ? almacenesData : []);
+      setSucursales(Array.isArray(sucursalesData) ? sucursalesData : []);
+    } catch (fetchError) {
+      if (requestId !== catalogRequestIdRef.current) return;
+      const message = resolveAlmacenesRequestMessage(fetchError, 'ERROR CARGANDO ALMACENES');
+      setError(message);
+      safeToast('ERROR', message, 'danger');
+    } finally {
+      if (requestId === catalogRequestIdRef.current) {
+        setLoading(false);
+        setLoadingSucursales(false);
+      }
+    }
+  };
+
+  const cargarAlmacenes = async (includeInactivos = showInactivos) => {
+    const requestId = ++almacenesRequestIdRef.current;
     setLoading(true);
     setError('');
+
     try {
-      const data = await inventarioService.getAlmacenes();
+      const data = await inventarioService.getAlmacenes({ include_inactivos: includeInactivos });
+      if (requestId !== almacenesRequestIdRef.current) return;
       setAlmacenes(Array.isArray(data) ? data : []);
-    } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO ALMACENES';
-      setError(msg);
-      openToast?.('ERROR', msg, 'danger');
+    } catch (fetchError) {
+      if (requestId !== almacenesRequestIdRef.current) return;
+      const message = resolveAlmacenesRequestMessage(fetchError, 'ERROR CARGANDO ALMACENES');
+      setError(message);
+      safeToast('ERROR', message, 'danger');
     } finally {
-      setLoading(false);
+      if (requestId === almacenesRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    cargarAlmacenes();
+    if (permisosLoading) return;
+
+    if (catalogScope === 'proveedores' && !canVerProveedores) {
+      setCatalogScope('almacenes');
+      return;
+    }
+
+    if (catalogScope === 'almacenes' && !canVerAlmacenes && canVerProveedores) {
+      setCatalogScope('proveedores');
+    }
+  }, [canVerAlmacenes, canVerProveedores, catalogScope, permisosLoading]);
+
+  useEffect(() => {
+    if (!canVerAlmacenes) {
+      catalogRequestIdRef.current += 1;
+      almacenesRequestIdRef.current += 1;
+      dependenciasRequestIdRef.current += 1;
+      editDependenciasRequestIdRef.current += 1;
+      setAlmacenes([]);
+      setSucursales([]);
+      setLoading(false);
+      setLoadingSucursales(false);
+      setLoadingEditDependencies(false);
+      setShowCreateModal(false);
+      setDetailId(null);
+      setEditId(null);
+      setEditForm(null);
+      setEditFormSnapshot(null);
+      setConfirmModal({
+        show: false,
+        idToDelete: null,
+        nombre: '',
+        action: 'inactivar',
+        counts: null,
+        dependency: null
+      });
+      setDeletingConfirm(false);
+      setConfirmDeleteError('');
+      setResolvingActionId(null);
+      return;
+    }
+
+    cargarCatalogos(showInactivos);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canVerAlmacenes, showInactivos]);
+
+  useEffect(() => () => {
+    catalogRequestIdRef.current += 1;
+    almacenesRequestIdRef.current += 1;
+    dependenciasRequestIdRef.current += 1;
+    editDependenciasRequestIdRef.current += 1;
   }, []);
 
-  // ==============================
-  // RESET FORM CREAR
-  // ==============================
-  const resetForm = () => {
-    setForm({ nombre: '', id_sucursal: '' });
+  useEffect(() => {
+    // NEW: bloquea el scroll del body mientras un modal premium de Almacenes esta abierto.
+    // WHY: el shell overlay de Inventario necesita aislar la interaccion y evitar scroll del fondo.
+    // IMPACT: solo UX temporal; no altera formularios ni requests.
+    if (typeof document === 'undefined') return undefined;
+    if (!showCreateModal && !showEditModal) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showCreateModal, showEditModal]);
+
+  useEffect(() => {
+    if (!anyFormModalOpen || typeof window === 'undefined') return undefined;
+    const target = showEditModal ? editNombreInputRef.current : createNombreInputRef.current;
+    if (!target) return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      target.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [anyFormModalOpen, showCreateModal, showEditModal]);
+
+  useEffect(() => {
+    if (anyFormModalOpen && !prevModalOpenRef.current) {
+      modalFocusReturnRef.current = captureActiveElement();
+    } else if (!anyFormModalOpen && prevModalOpenRef.current) {
+      restoreFocusToElement(modalFocusReturnRef.current);
+      modalFocusReturnRef.current = null;
+    }
+    prevModalOpenRef.current = anyFormModalOpen;
+  }, [anyFormModalOpen, captureActiveElement, restoreFocusToElement]);
+
+  const resetCreateForm = () => {
+    // AJUSTE: el alta debe obligar a elegir la sucursal manualmente.
+    // IMPACT: solo cambia el valor inicial del select; validacion y persistencia siguen iguales.
+    const initialForm = { ...ALMACEN_CREATE_FORM_INITIAL };
+    setForm(initialForm);
+    setCreateFormSnapshot(initialForm);
     setCreateErrors({});
   };
 
-  // ==============================
-  // CREAR ALMACÉN
-  // ==============================
-  const onCrear = async (e) => {
-    e.preventDefault();
+  const openCreate = () => {
+    if (!canCrearAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear almacenes.', 'warning');
+      return;
+    }
+    resetCreateForm();
+    setShowCreateModal(true);
+  };
+
+  const closeCreate = (force = false) => {
+    if (savingCreate && !force) return;
+    if (!force && hasCreateFormUnsavedChanges && !confirmDiscardAlmacenChanges()) return;
+    setShowCreateModal(false);
+    resetCreateForm();
+  };
+
+  const onCrear = async (event) => {
+    event.preventDefault();
+    if (!canCrearAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear almacenes.', 'warning');
+      return;
+    }
+    if (savingCreate) return;
     setError('');
 
-    const v = validarAlmacen(form);
-    setCreateErrors(v.errors);
-    if (!v.ok) return;
+    const validation = validarAlmacen(form);
+    setCreateErrors(validation.errors);
+    if (!validation.ok) return;
 
+    setSavingCreate(true);
     try {
-      // COMENTARIO EN MAYÚSCULAS: NO ENVIAR NULLS, SOLO LOS CAMPOS REQUERIDOS
       await inventarioService.crearAlmacen({
-        nombre: v.cleaned.nombre,
-        id_sucursal: v.cleaned.id_sucursal
+        nombre: validation.cleaned.nombre,
+        id_sucursal: validation.cleaned.id_sucursal
       });
 
-      resetForm();
-      setShowCreateSheet(false);
+      closeCreate(true);
       await cargarAlmacenes();
-      openToast?.('CREADO', 'EL ALMACÉN SE CREÓ CORRECTAMENTE.', 'success');
-    } catch (e2) {
-      const msg = e2?.message || 'ERROR CREANDO ALMACÉN';
-      setError(msg);
-      openToast?.('ERROR', msg, 'danger');
+      safeToast('CREADO', 'EL ALMACEN SE CREO CORRECTAMENTE.', 'success');
+    } catch (requestError) {
+      const message = resolveAlmacenesRequestMessage(requestError, 'ERROR CREANDO ALMACEN');
+      setError(message);
+      safeToast('ERROR', message, 'danger');
+    } finally {
+      setSavingCreate(false);
     }
   };
 
-  // ==============================
-  // INICIAR EDICIÓN
-  // ==============================
-  const iniciarEdicion = (a) => {
-    setError('');
+  const iniciarEdicion = (almacen) => {
+    if (!canEditarAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para editar almacenes.', 'warning');
+      return;
+    }
+    const idAlmacen = Number(almacen?.id_almacen ?? 0);
+    editDependenciasRequestIdRef.current += 1;
+    setLoadingEditDependencies(false);
+    setDetailId(null);
     setEditErrors({});
-    setEditId(a.id_almacen);
-    setEditForm({
-      nombre: a.nombre ?? '',
-      id_sucursal: String(a.id_sucursal ?? '')
-    });
+    setEditId(idAlmacen || null);
+    const nextEditForm = {
+      nombre: almacen?.nombre ?? '',
+      id_sucursal: String(almacen?.id_sucursal ?? ''),
+      concurrency_token: String(almacen?.concurrency_token ?? '')
+    };
+    setEditForm(nextEditForm);
+    setEditFormSnapshot(nextEditForm);
+    if (idAlmacen) {
+      void loadEditDependencyRule(idAlmacen);
+    }
   };
 
-  const cancelarEdicion = () => {
+  const cancelarEdicion = (force = false) => {
+    if (savingEdit && !force) return;
+    if (!force && hasEditFormUnsavedChanges && !confirmDiscardAlmacenChanges()) return;
+    editDependenciasRequestIdRef.current += 1;
+    setLoadingEditDependencies(false);
     setEditId(null);
     setEditForm(null);
+    setEditFormSnapshot(null);
     setEditErrors({});
   };
 
-  // ==============================
-  // GUARDAR EDICIÓN (CAMPO POR CAMPO, SOLO SI CAMBIÓ)
-  // ==============================
-  const guardarEdicion = async () => {
-    if (!editId || !editForm) return;
-    setError('');
-
-    const v = validarAlmacen(editForm);
-    setEditErrors(v.errors);
-    if (!v.ok) return;
-
-    try {
-      const actual = almacenes.find((x) => x.id_almacen === editId);
-      const cambios = [];
-
-      const nombreActual = String(actual?.nombre ?? '').trim();
-      const sucActual = Number.parseInt(String(actual?.id_sucursal ?? ''), 10);
-
-      if (v.cleaned.nombre !== nombreActual) cambios.push(['nombre', v.cleaned.nombre]);
-      if (!Number.isNaN(v.cleaned.id_sucursal) && v.cleaned.id_sucursal !== sucActual) {
-        cambios.push(['id_sucursal', v.cleaned.id_sucursal]);
-      }
-
-      if (cambios.length === 0) {
-        openToast?.('SIN CAMBIOS', 'NO HAY CAMBIOS PARA GUARDAR.', 'info');
+  useEffect(() => {
+    if ((!showCreateModal && !showEditModal) || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (showEditModal) {
         cancelarEdicion();
         return;
       }
+      if (showCreateModal) {
+        closeCreate();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cancelarEdicion, closeCreate, showCreateModal, showEditModal]);
 
-      for (const [campo, valor] of cambios) {
-        await inventarioService.actualizarAlmacenCampo(editId, campo, valor);
+  const guardarEdicion = async (event) => {
+    event.preventDefault();
+    if (!canEditarAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para editar almacenes.', 'warning');
+      return;
+    }
+    if (savingEdit || editId === null || !editForm) return;
+
+    const actual = almacenes.find((item) => Number(item?.id_almacen ?? 0) === Number(editId ?? 0));
+    if (!actual) {
+      safeToast('ERROR', 'NO SE ENCONTRO EL ALMACEN A EDITAR.', 'danger');
+      cancelarEdicion();
+      return;
+    }
+
+    const validation = validarAlmacen(editForm, { allowLegacyId: actual?.id_sucursal });
+    setEditErrors(validation.errors);
+    if (!validation.ok) return;
+    const concurrencyToken = String(
+      editForm?.concurrency_token ?? actual?.concurrency_token ?? ''
+    ).trim();
+    if (!concurrencyToken) {
+      const message = 'No se pudo validar la version actual del almacen. Recarga la informacion e intenta nuevamente.';
+      setEditErrors((current) => ({ ...current, _concurrency: message }));
+      safeToast('ALMACENES', message, 'warning');
+      return;
+    }
+
+    try {
+      const payload = {};
+      const nombreActual = String(actual?.nombre ?? '').trim();
+      const sucursalActual = Number.parseInt(String(actual?.id_sucursal ?? ''), 10);
+
+      if (validation.cleaned.nombre !== nombreActual) payload.nombre = validation.cleaned.nombre;
+      if (!Number.isNaN(validation.cleaned.id_sucursal) && validation.cleaned.id_sucursal !== sucursalActual) {
+        payload.id_sucursal = validation.cleaned.id_sucursal;
       }
 
-      cancelarEdicion();
+      if (Object.prototype.hasOwnProperty.call(payload, 'id_sucursal')) {
+        const dependencyRule =
+          inactivationRulesByAlmacenId[String(editId)] || (await loadEditDependencyRule(editId));
+        if (dependencyRule?.canChangeSucursal === false) {
+          const message =
+            dependencyRule?.sucursalChangePrimaryReason || ALMACENES_SUCURSAL_CHANGE_CONFLICT_MESSAGE;
+          setEditErrors((current) => ({ ...current, id_sucursal: message }));
+          safeToast('CAMBIO BLOQUEADO', message, 'warning');
+          return;
+        }
+      }
+
+      if (!Object.keys(payload).length) {
+        safeToast('SIN CAMBIOS', 'NO HAY CAMBIOS PARA GUARDAR.', 'info');
+        cancelarEdicion();
+        return;
+      }
+      payload.concurrency_token = concurrencyToken;
+
+      // FIX IMPORTANTE: usa actualizacion atomica para evitar estados parciales por multiples PUT.
+      setSavingEdit(true);
+      await inventarioService.actualizarAlmacen(editId, payload);
+
+      cancelarEdicion(true);
       await cargarAlmacenes();
-      openToast?.('ACTUALIZADO', 'EL ALMACÉN SE ACTUALIZÓ CORRECTAMENTE.', 'success');
-    } catch (e2) {
-      const msg = e2?.message || 'ERROR ACTUALIZANDO ALMACÉN';
-      setError(msg);
-      openToast?.('ERROR', msg, 'danger');
+      safeToast('ACTUALIZADO', 'EL ALMACEN SE ACTUALIZO CORRECTAMENTE.', 'success');
+    } catch (requestError) {
+      const isConcurrencyConflict =
+        requestError?.status === 409 &&
+        String(requestError?.data?.conflict_type || '').toUpperCase() === 'CONCURRENCY';
+      if (isConcurrencyConflict) {
+        const message = requestError?.message || ALMACENES_CONCURRENCY_CONFLICT_MESSAGE;
+        setEditErrors((current) => ({ ...current, _concurrency: message }));
+        setError(message);
+        safeToast('CONFLICTO DE EDICION', message, 'warning');
+        return;
+      }
+
+      const normalizedConflict =
+        requestError?.status === 409
+          ? rememberInactivationRule(editId, requestError?.data || {})
+          : null;
+      const message =
+        normalizedConflict?.sucursalChangePrimaryReason ||
+        resolveAlmacenesRequestMessage(requestError, 'ERROR ACTUALIZANDO ALMACEN');
+      if (requestError?.status === 409) {
+        setEditErrors((current) => ({ ...current, id_sucursal: message }));
+      }
+      setError(message);
+      safeToast('ERROR', message, 'danger');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
-  // ==============================
-  // ELIMINAR (CONFIRMADO)
-  // ==============================
+  const openConfirmDelete = async (almacen, preferredAction = 'auto') => {
+    const id = Number(almacen?.id_almacen ?? 0);
+    if (!id || deletingConfirm) return;
+    if (!canVerAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para consultar almacenes.', 'warning');
+      return;
+    }
+
+    setConfirmDeleteError('');
+    const wasDeleteRequest = preferredAction === 'eliminar';
+    const isActivo = parseAlmacenEstado(almacen?.estado);
+    let action =
+      preferredAction === 'auto'
+        ? isActivo
+          ? 'inactivar'
+          : 'reactivar'
+        : preferredAction;
+
+    if (action === 'eliminar') {
+      action = isActivo ? 'inactivar' : 'reactivar';
+    }
+
+    if (wasDeleteRequest) {
+      safeToast(
+        'AVISO',
+        ALMACENES_NO_DELETE_MESSAGE,
+        'info'
+      );
+    }
+
+    if (!canRunAlmacenAction(action)) {
+      safeToast('SIN PERMISO', 'No tienes permiso para realizar esta accion sobre almacenes.', 'warning');
+      return;
+    }
+
+    if (action === 'reactivar') {
+      setConfirmModal({
+        show: true,
+        idToDelete: id,
+        nombre: almacen?.nombre || '',
+        action,
+        counts: null,
+        dependency: null
+      });
+      return;
+    }
+
+    const requestId = ++dependenciasRequestIdRef.current;
+    setResolvingActionId(id);
+    try {
+      const deps = await inventarioService.getAlmacenDependencias(id);
+      if (requestId !== dependenciasRequestIdRef.current) return;
+      const normalizedDeps = rememberInactivationRule(id, deps);
+      const counts = normalizedDeps?.counts || { movimientos: 0, productos: 0, insumos: 0 };
+
+      if (!normalizedDeps?.canDeactivate) {
+        safeToast(
+          'INACTIVACION BLOQUEADA',
+          normalizedDeps.primaryBlockingReason || 'No se puede inactivar el almacen por dependencias operativas.',
+          'warning'
+        );
+        return;
+      }
+
+      setConfirmModal({
+        show: true,
+        idToDelete: id,
+        nombre: almacen?.nombre || '',
+        action: 'inactivar',
+        counts,
+        dependency: normalizedDeps
+      });
+    } catch (requestError) {
+      if (requestId !== dependenciasRequestIdRef.current) return;
+      const message = resolveAlmacenesRequestMessage(
+        requestError,
+        'ERROR VALIDANDO DEPENDENCIAS DEL ALMACEN'
+      );
+      setError(message);
+      safeToast('ERROR', message, 'danger');
+    } finally {
+      if (requestId === dependenciasRequestIdRef.current) {
+        setResolvingActionId(null);
+      }
+    }
+  };
+
+  const closeConfirmDelete = () => {
+    if (deletingConfirm) return;
+    setConfirmDeleteError('');
+    setConfirmModal({
+      show: false,
+      idToDelete: null,
+      nombre: '',
+      action: 'inactivar',
+      counts: null,
+      dependency: null
+    });
+  };
+
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
-    if (!id) return;
+    if (!id || deletingConfirm) return;
 
-    setError('');
+    if (!canRunAlmacenAction(confirmModal.action)) {
+      safeToast('SIN PERMISO', 'No tienes permiso para realizar esta accion sobre almacenes.', 'warning');
+      return;
+    }
+
+    setDeletingConfirm(true);
+    setConfirmDeleteError('');
+
     try {
-      await inventarioService.eliminarAlmacen(id);
-      closeConfirmDelete();
+      if (confirmModal.action === 'reactivar') {
+        await inventarioService.reactivarAlmacen(id);
+      } else {
+        await inventarioService.inactivarAlmacen(id);
+      }
+
+      if (Number(detailId ?? 0) === Number(id)) setDetailId(null);
+      if (Number(editId ?? 0) === Number(id)) cancelarEdicion();
       await cargarAlmacenes();
-      openToast?.('ELIMINADO', 'EL ALMACÉN SE ELIMINÓ CORRECTAMENTE.', 'success');
-    } catch (e) {
-      closeConfirmDelete();
-      const msg = e?.message || 'ERROR ELIMINANDO ALMACÉN';
-      setError(msg);
-      openToast?.('ERROR', msg, 'danger');
+      setDeletingConfirm(false);
+      setConfirmModal({
+        show: false,
+        idToDelete: null,
+        nombre: '',
+        action: 'inactivar',
+        counts: null,
+        dependency: null
+      });
+
+      if (confirmModal.action === 'reactivar') {
+        safeToast('REACTIVADO', 'EL ALMACEN SE REACTIVO CORRECTAMENTE.', 'success');
+      } else {
+        safeToast('INACTIVADO', 'EL ALMACEN SE INACTIVO CORRECTAMENTE.', 'success');
+      }
+    } catch (requestError) {
+      const fallbackMessage =
+        confirmModal.action === 'reactivar'
+          ? 'ERROR REACTIVANDO ALMACEN'
+          : 'ERROR INACTIVANDO ALMACEN';
+      const normalizedConflict =
+        confirmModal.action === 'inactivar' && requestError?.status === 409
+          ? rememberInactivationRule(id, requestError?.data || {})
+          : null;
+      const message =
+        normalizedConflict?.primaryBlockingReason ||
+        resolveAlmacenesRequestMessage(requestError, fallbackMessage);
+      setDeletingConfirm(false);
+      setConfirmDeleteError(message);
+      setError(message);
+      safeToast('ERROR', message, 'danger');
     }
   };
 
-  // ==============================
-  // FILTRADO
-  // ==============================
-  const sucursalesDisponibles = useMemo(() => {
-    const setIds = new Set();
-    for (const a of almacenes) {
-      if (a?.id_sucursal !== undefined && a?.id_sucursal !== null) setIds.add(String(a.id_sucursal));
-    }
-    return Array.from(setIds).sort((x, y) => Number(x) - Number(y));
-  }, [almacenes]);
+  const scrollToMovimientos = () => {
+    movimientosRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const selectAlmacenCard = (almacen) => {
+    if (!almacen?.id_almacen) return;
+    setSelectedAlmacenId(String(almacen.id_almacen));
+  };
+
+  const handleMovimientoCreado = async () => {
+    await cargarAlmacenes();
+  };
 
   const almacenesFiltrados = useMemo(() => {
-    const lista = [...almacenes].sort((a, b) => (a.id_almacen ?? 0) - (b.id_almacen ?? 0));
-    const s = search.trim().toLowerCase();
+    const safeSearch = search.trim().toLowerCase();
 
-    return lista.filter((a) => {
-      const texto = `${a.nombre ?? ''} sucursal ${a.id_sucursal ?? ''}`.toLowerCase();
-      const matchTexto = s ? texto.includes(s) : true;
+    // NEW: las cards superiores muestran todos los almacenes existentes y solo respetan la busqueda textual.
+    // WHY: la seleccion del almacen ahora se hace desde la card y ese estado gobierna el resumen/listado inferior.
+    // IMPACT: el filtro por sucursal se conserva para movimientos, pero deja de ocultar almacenes en la cabecera visual.
+    return (Array.isArray(almacenes) ? [...almacenes] : [])
+      .sort((left, right) => Number(left?.id_almacen ?? 0) - Number(right?.id_almacen ?? 0))
+      .filter((almacen) => {
+        const texto = `${almacen?.nombre ?? ''} ${formatSucursalDisplayLabel(
+          sucursalesMap.get(String(almacen?.id_sucursal ?? '').trim()),
+          almacen?.id_sucursal
+        )}`.toLowerCase();
 
-      const matchSucursal = sucursalFiltro === 'todas' ? true : String(a.id_sucursal) === String(sucursalFiltro);
+        return safeSearch ? texto.includes(safeSearch) : true;
+      });
+  }, [almacenes, search, sucursalesMap]);
 
-      return matchTexto && matchSucursal;
-    });
-  }, [almacenes, search, sucursalFiltro]);
+  useEffect(() => {
+    if (!almacenesFiltrados.length) {
+      setSelectedAlmacenId('');
+      return;
+    }
 
-  return (
-    <div className="card shadow-sm mb-3">
-      <div className="card-header fw-semibold d-flex align-items-center justify-content-between">
-        <span>Almacenes</span>
+    if (!selectedAlmacenId) {
+      setSelectedAlmacenId(String(almacenesFiltrados[0].id_almacen));
+      return;
+    }
 
-        <button
-          type="button"
-          className="btn btn-sm btn-primary d-md-none"
-          onClick={() => setShowCreateSheet(true)}
-        >
-          + Agregar
-        </button>
-      </div>
+    if (
+      !almacenesFiltrados.some((almacen) => String(almacen?.id_almacen ?? '') === String(selectedAlmacenId))
+    ) {
+      setSelectedAlmacenId(String(almacenesFiltrados[0].id_almacen));
+    }
+  }, [almacenesFiltrados, selectedAlmacenId]);
 
-      <div className="card-body">
-        {error && <div className="alert alert-danger">{error}</div>}
+  const detailAlmacen = useMemo(() => {
+    const safeId = Number(detailId ?? 0);
+    if (!safeId) return null;
+    return almacenes.find((almacen) => Number(almacen?.id_almacen ?? 0) === safeId) || null;
+  }, [almacenes, detailId]);
 
-        {/* FORM CREAR (SOLO DESKTOP/TABLET) */}
-        <div className="d-none d-md-block">
-          <form onSubmit={onCrear} className="row g-2 mb-3">
-            <div className="col-12 col-md-6">
-              <label className="form-label mb-1">Nombre</label>
-              <input
-                className={`form-control ${createErrors.nombre ? 'is-invalid' : ''}`}
-                placeholder="Ej: Almacén Principal"
-                value={form.nombre}
-                onChange={(e) => setForm((s) => ({ ...s, nombre: e.target.value }))}
-                required
-              />
-              {createErrors.nombre && <div className="invalid-feedback">{createErrors.nombre}</div>}
+  const confirmAlmacen = useMemo(() => {
+    const safeId = Number(confirmModal.idToDelete ?? 0);
+    if (!safeId) return null;
+    return almacenes.find((almacen) => Number(almacen?.id_almacen ?? 0) === safeId) || null;
+  }, [almacenes, confirmModal.idToDelete]);
+  const confirmCopy = useMemo(
+    () => getConfirmCopyByAction(confirmModal.action),
+    [confirmModal.action]
+  );
+
+  const detailStatusMeta = useMemo(() => getAlmacenStatusMeta(detailAlmacen), [detailAlmacen]);
+  const detailActionMeta = useMemo(
+    () => (detailAlmacen ? getAlmacenActionMeta(detailAlmacen) : null),
+    [detailAlmacen]
+  );
+  const detailInactivationRule = useMemo(() => {
+    const id = Number(detailAlmacen?.id_almacen ?? 0);
+    if (!id) return null;
+    return inactivationRulesByAlmacenId[String(id)] || null;
+  }, [detailAlmacen, inactivationRulesByAlmacenId]);
+  const detailInactivationBlocked =
+    detailActionMeta?.action === 'inactivar' && detailInactivationRule?.canDeactivate === false;
+  const editDependencyRule = useMemo(() => {
+    const id = Number(editId ?? 0);
+    if (!id) return null;
+    return inactivationRulesByAlmacenId[String(id)] || null;
+  }, [editId, inactivationRulesByAlmacenId]);
+  const editSucursalLockedByHistory =
+    editDependencyRule?.canChangeSucursal === false;
+  const editSucursalBlockingReason =
+    editDependencyRule?.sucursalChangePrimaryReason || ALMACENES_SUCURSAL_CHANGE_CONFLICT_MESSAGE;
+
+  const detailMetrics = useMemo(() => {
+    if (!detailAlmacen) return [];
+
+    return [
+      {
+        key: 'sucursal',
+        label: 'Sucursal',
+        icon: 'bi bi-shop',
+        value: formatSucursalDisplayLabel(
+          sucursalesMap.get(String(detailAlmacen?.id_sucursal ?? '').trim()),
+          detailAlmacen?.id_sucursal
+        )
+      },
+      { key: 'estado', label: 'Estado', icon: 'bi bi-shield-check', value: detailStatusMeta.label },
+      { key: 'total', label: 'Total items', icon: 'bi bi-box-seam', value: formatMetricValue(detailAlmacen?.total_items) },
+      { key: 'alertas', label: 'Alertas stock', icon: 'bi bi-exclamation-triangle', value: formatMetricValue(detailAlmacen?.alertas_stock) },
+      { key: 'movs', label: 'Movimientos hoy', icon: 'bi bi-arrow-left-right', value: formatMetricValue(detailAlmacen?.movimientos_hoy) },
+      { key: 'entradas', label: 'Entradas hoy', icon: 'bi bi-arrow-down-left', value: formatMetricValue(detailAlmacen?.entradas_hoy) },
+      { key: 'salidas', label: 'Salidas hoy', icon: 'bi bi-arrow-up-right', value: formatMetricValue(detailAlmacen?.salidas_hoy) },
+      { key: 'ajustes', label: 'Ajustes hoy', icon: 'bi bi-sliders', value: formatMetricValue(detailAlmacen?.ajustes_hoy) }
+    ];
+  }, [detailAlmacen, detailStatusMeta.label, sucursalesMap]);
+
+  const createHeroSucursalLabel = useMemo(() => {
+    if (!form.id_sucursal) return 'Selecciona una sucursal';
+    return formatSucursalOptionLabel(sucursalesMap.get(String(form.id_sucursal).trim()), form.id_sucursal);
+  }, [form.id_sucursal, sucursalesMap]);
+
+  const editHeroSucursalLabel = useMemo(() => {
+    if (!editForm?.id_sucursal) return 'Selecciona una sucursal';
+    return formatSucursalOptionLabel(sucursalesMap.get(String(editForm.id_sucursal).trim()), editForm.id_sucursal);
+  }, [editForm?.id_sucursal, sucursalesMap]);
+
+  const centeredGridClass =
+    !loading && almacenesFiltrados.length > 0 && almacenesFiltrados.length < 3 ? 'is-centered' : '';
+
+  const cardsContent = !canVerAlmacenes ? (
+    <div className="alert alert-info mb-0">No tienes permiso para ver almacenes.</div>
+  ) : loading ? (
+    <div className={`inv-warehouse-grid ${centeredGridClass}`.trim()}>
+      {[1, 2, 3].map((skeleton) => (
+        <div key={skeleton} className="inv-warehouse-card inv-warehouse-card--skeleton" aria-hidden="true" />
+      ))}
+    </div>
+  ) : almacenesFiltrados.length === 0 ? (
+    <div className="inv-warehouse-empty">
+      <i className="bi bi-inbox" aria-hidden="true" />
+      <div className="mt-2">No hay almacenes para la busqueda actual.</div>
+    </div>
+  ) : (
+    <div className={`inv-warehouse-grid ${centeredGridClass}`.trim()}>
+      {almacenesFiltrados.map((almacen, index) => {
+        const statusMeta = getAlmacenStatusMeta(almacen);
+        const actionMeta = getAlmacenActionMeta(almacen);
+        const isInactivo = !parseAlmacenEstado(almacen?.estado);
+        const isResolvingAction = Number(resolvingActionId ?? 0) === Number(almacen?.id_almacen ?? 0);
+        const isSelected = String(selectedAlmacenId ?? '') === String(almacen?.id_almacen ?? '');
+        const knownInactivationRule =
+          inactivationRulesByAlmacenId[String(almacen?.id_almacen ?? '')] || null;
+        const isInactivationBlocked =
+          actionMeta.action === 'inactivar' && knownInactivationRule?.canDeactivate === false;
+        const actionLabel = isInactivationBlocked ? 'Bloqueada' : actionMeta.label;
+        const actionTitle = isInactivationBlocked
+          ? knownInactivationRule?.primaryBlockingReason || 'Inactivacion bloqueada por dependencias operativas.'
+          : actionMeta.title;
+        const highlights = [
+          {
+            key: 'items',
+            label: 'Total items',
+            icon: 'bi bi-box-seam',
+            value: formatMetricValue(almacen?.total_items),
+            tone: ''
+          },
+          {
+            key: 'alertas',
+            label: 'Alertas stock',
+            icon: 'bi bi-exclamation-diamond',
+            value: formatMetricValue(almacen?.alertas_stock),
+            tone: Number(almacen?.alertas_stock ?? 0) > 0 ? 'is-alert' : ''
+          },
+          {
+            key: 'movs',
+            label: 'Movs. hoy',
+            icon: 'bi bi-arrow-left-right',
+            value: formatMetricValue(almacen?.movimientos_hoy),
+            tone: ''
+          }
+        ];
+
+        return (
+          <article
+            key={almacen.id_almacen}
+            className={`inv-warehouse-card inv-anim-in ${isSelected ? 'is-selected' : ''} ${
+              Number(almacen?.alertas_stock ?? 0) > 0 ? 'has-alerts' : ''
+            } ${isInactivo ? 'opacity-75 border border-secondary-subtle' : ''}`.trim()}
+            role="button"
+            tabIndex={0}
+            style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
+            onClick={() => selectAlmacenCard(almacen)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                selectAlmacenCard(almacen);
+              }
+            }}
+          >
+            <div className="inv-warehouse-card__halo" aria-hidden="true">
+              <i className="bi bi-building" />
             </div>
 
-            <div className="col-12 col-md-3">
-              <label className="form-label mb-1">Sucursal (No.)</label>
-              <input
-                className={`form-control ${createErrors.id_sucursal ? 'is-invalid' : ''}`}
-                placeholder="Ej: 1"
-                inputMode="numeric"
-                value={form.id_sucursal}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, id_sucursal: String(e.target.value).replace(/[^\d]/g, '') }))
-                }
-                required
-              />
-              {createErrors.id_sucursal && <div className="invalid-feedback">{createErrors.id_sucursal}</div>}
-            </div>
-
-            <div className="col-12 col-md-3 d-grid align-items-end">
-              <button className="btn btn-primary" type="submit">
-                Crear
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* FILTROS */}
-        <div className="row g-2 mb-3">
-          <div className="col-12 col-md-6">
-            <input
-              className="form-control"
-              placeholder="Buscar por nombre o sucursal..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="col-12 col-md-3">
-            <select
-              className="form-select"
-              value={sucursalFiltro}
-              onChange={(e) => setSucursalFiltro(e.target.value)}
-            >
-              <option value="todas">Todas las sucursales</option>
-              {sucursalesDisponibles.map((id) => (
-                <option key={id} value={id}>
-                  Sucursal {id}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-12 col-md-3 d-grid">
-            <button
-              className="btn btn-outline-secondary"
-              type="button"
-              onClick={() => {
-                setSearch('');
-                setSucursalFiltro('todas');
-              }}
-            >
-              Limpiar filtros
-            </button>
-          </div>
-        </div>
-
-        {/* MOBILE CARDS */}
-        <div className="d-md-none">
-          {loading ? (
-            <div className="text-muted">Cargando...</div>
-          ) : almacenesFiltrados.length === 0 ? (
-            <div className="text-muted">Sin datos</div>
-          ) : (
-            <div className="d-flex flex-column gap-2">
-              {almacenesFiltrados.map((a, index) => {
-                const isEditing = editId === a.id_almacen;
-
-                return (
-                  <div key={a.id_almacen} className="card border">
-                    <div className="card-body">
-                      <div className="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                          <div className="text-muted small">No. {index + 1}</div>
-                          <div className="fw-bold">{isEditing ? 'EDITANDO' : a.nombre}</div>
-                          <div className="text-muted small">
-                            Sucursal: <span className="fw-semibold">{a.id_sucursal}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mb-2">
-                        <div className="small text-muted">Nombre</div>
-                        {isEditing ? (
-                          <>
-                            <input
-                              className={`form-control form-control-sm ${editErrors.nombre ? 'is-invalid' : ''}`}
-                              value={editForm.nombre}
-                              onChange={(e) => setEditForm((s) => ({ ...s, nombre: e.target.value }))}
-                            />
-                            {editErrors.nombre && <div className="invalid-feedback">{editErrors.nombre}</div>}
-                          </>
-                        ) : (
-                          <div>{a.nombre}</div>
-                        )}
-                      </div>
-
-                      <div className="mb-3">
-                        <div className="small text-muted">Sucursal (No.)</div>
-                        {isEditing ? (
-                          <>
-                            <input
-                              className={`form-control form-control-sm ${editErrors.id_sucursal ? 'is-invalid' : ''}`}
-                              inputMode="numeric"
-                              value={editForm.id_sucursal}
-                              onChange={(e) =>
-                                setEditForm((s) => ({
-                                  ...s,
-                                  id_sucursal: String(e.target.value).replace(/[^\d]/g, '')
-                                }))
-                              }
-                            />
-                            {editErrors.id_sucursal && (
-                              <div className="invalid-feedback">{editErrors.id_sucursal}</div>
-                            )}
-                          </>
-                        ) : (
-                          <div>{a.id_sucursal}</div>
-                        )}
-                      </div>
-
-                      {isEditing ? (
-                        <div className="d-grid gap-2">
-                          <button className="btn btn-success" type="button" onClick={guardarEdicion}>
-                            Guardar
-                          </button>
-                          <button className="btn btn-secondary" type="button" onClick={cancelarEdicion}>
-                            Cancelar
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="d-grid gap-2">
-                          <button className="btn btn-outline-primary" type="button" onClick={() => iniciarEdicion(a)}>
-                            Editar
-                          </button>
-                          <button
-                            className="btn btn-outline-danger"
-                            type="button"
-                            onClick={() => openConfirmDelete(a.id_almacen, a.nombre)}
-                          >
-                            Eliminar
-                          </button>
-                        </div>
+            <div className="inv-warehouse-card__header">
+              <div className="inv-warehouse-card__title-wrap">
+                <span className="inv-warehouse-card__icon" aria-hidden="true">
+                  <i className="bi bi-building-fill" />
+                </span>
+                <div>
+                  <div className="inv-warehouse-card__name">{almacen.nombre || `Almacen ${almacen.id_almacen}`}</div>
+                  <div className="inv-warehouse-card__branch">
+                    <i className="bi bi-shop" aria-hidden="true" />
+                    <span>
+                      {formatSucursalDisplayLabel(
+                        sucursalesMap.get(String(almacen?.id_sucursal ?? '').trim()),
+                        almacen?.id_sucursal
                       )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* DESKTOP TABLE */}
-        <div className="d-none d-md-block">
-          <div className="table-responsive">
-            <table className="table table-sm table-striped align-middle">
-              <thead>
-                <tr>
-                  <th style={{ width: 70 }}>No.</th>
-                  <th>Nombre</th>
-                  <th style={{ width: 140 }}>Sucursal</th>
-                  <th style={{ width: 220 }}>Acciones</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="4">Cargando...</td></tr>
-                ) : almacenesFiltrados.length === 0 ? (
-                  <tr><td colSpan="4">Sin datos</td></tr>
-                ) : (
-                  almacenesFiltrados.map((a, index) => {
-                    const isEditing = editId === a.id_almacen;
-
-                    return (
-                      <tr key={a.id_almacen}>
-                        <td className="text-muted">{index + 1}</td>
-
-                        <td>
-                          {isEditing ? (
-                            <>
-                              <input
-                                className={`form-control form-control-sm ${editErrors.nombre ? 'is-invalid' : ''}`}
-                                value={editForm.nombre}
-                                onChange={(e) => setEditForm((s) => ({ ...s, nombre: e.target.value }))}
-                              />
-                              {editErrors.nombre && <div className="invalid-feedback">{editErrors.nombre}</div>}
-                            </>
-                          ) : (
-                            a.nombre
-                          )}
-                        </td>
-
-                        <td>
-                          {isEditing ? (
-                            <>
-                              <input
-                                className={`form-control form-control-sm ${editErrors.id_sucursal ? 'is-invalid' : ''}`}
-                                inputMode="numeric"
-                                value={editForm.id_sucursal}
-                                onChange={(e) =>
-                                  setEditForm((s) => ({
-                                    ...s,
-                                    id_sucursal: String(e.target.value).replace(/[^\d]/g, '')
-                                  }))
-                                }
-                              />
-                              {editErrors.id_sucursal && (
-                                <div className="invalid-feedback">{editErrors.id_sucursal}</div>
-                              )}
-                            </>
-                          ) : (
-                            `Sucursal ${a.id_sucursal}`
-                          )}
-                        </td>
-
-                        <td>
-                          {isEditing ? (
-                            <div className="d-flex gap-2">
-                              <button className="btn btn-sm btn-success" onClick={guardarEdicion} type="button">
-                                Guardar
-                              </button>
-                              <button className="btn btn-sm btn-secondary" onClick={cancelarEdicion} type="button">
-                                Cancelar
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="d-flex gap-2">
-                              <button className="btn btn-sm btn-outline-primary" onClick={() => iniciarEdicion(a)} type="button">
-                                Editar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger"
-                                onClick={() => openConfirmDelete(a.id_almacen, a.nombre)}
-                                type="button"
-                              >
-                                Eliminar
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* ==============================
-          MODAL CREAR (MÓVIL CENTRADO)
-          ============================== */}
-      {showCreateSheet && (
-        <div
-          className="modal fade show"
-          style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2500 }}
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowCreateSheet(false)}
-        >
-          <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content shadow">
-              <div className="modal-header d-flex align-items-center justify-content-between">
-                <div className="fw-semibold">Agregar almacén</div>
-                <button type="button" className="btn btn-sm btn-light" onClick={() => setShowCreateSheet(false)}>
-                  ✕
-                </button>
-              </div>
-
-              <div className="modal-body">
-                <form onSubmit={onCrear} className="row g-2">
-                  <div className="col-12">
-                    <label className="form-label mb-1">Nombre</label>
-                    <input
-                      className={`form-control ${createErrors.nombre ? 'is-invalid' : ''}`}
-                      placeholder="Ej: Almacén Principal"
-                      value={form.nombre}
-                      onChange={(e) => setForm((s) => ({ ...s, nombre: e.target.value }))}
-                      required
-                    />
-                    {createErrors.nombre && <div className="invalid-feedback">{createErrors.nombre}</div>}
-                  </div>
-
-                  <div className="col-12">
-                    <label className="form-label mb-1">Sucursal (No.)</label>
-                    <input
-                      className={`form-control ${createErrors.id_sucursal ? 'is-invalid' : ''}`}
-                      placeholder="Ej: 1"
-                      inputMode="numeric"
-                      value={form.id_sucursal}
-                      onChange={(e) =>
-                        setForm((s) => ({ ...s, id_sucursal: String(e.target.value).replace(/[^\d]/g, '') }))
-                      }
-                      required
-                    />
-                    {createErrors.id_sucursal && <div className="invalid-feedback">{createErrors.id_sucursal}</div>}
-                  </div>
-
-                  <div className="col-12 d-grid gap-2 mt-2">
-                    <button className="btn btn-primary" type="submit">
-                      Guardar
-                    </button>
-                    <button className="btn btn-outline-secondary" type="button" onClick={() => setShowCreateSheet(false)}>
-                      Cancelar
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              <div className="modal-footer">
-                <div className="text-muted small me-auto">LA SUCURSAL ES OBLIGATORIA</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==============================
-          MODAL CONFIRMACIÓN ELIMINAR
-          ============================== */}
-      {confirmModal.show && (
-        <div
-          className="modal fade show"
-          style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)' }}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content shadow">
-              <div className="modal-header bg-danger text-white">
-                <h5 className="modal-title">CONFIRMAR ELIMINACIÓN</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={closeConfirmDelete} />
-              </div>
-
-              <div className="modal-body">
-                <div className="d-flex gap-3">
-                  <div style={{ fontSize: 28 }}>⚠️</div>
-                  <div>
-                    <div className="fw-semibold">¿DESEAS ELIMINAR ESTE ALMACÉN?</div>
-                    <div className="text-muted">
-                      <span className="fw-bold">{confirmModal.nombre || '(SIN NOMBRE)'}</span>
-                    </div>
-                    <div className="text-muted small mt-2">ESTA ACCIÓN NO SE PUEDE DESHACER.</div>
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <div className="modal-footer">
-                <button className="btn btn-outline-secondary" type="button" onClick={closeConfirmDelete}>
-                  Cancelar
-                </button>
-                <button className="btn btn-danger" type="button" onClick={eliminarConfirmado}>
-                  Sí, eliminar
-                </button>
+              <span className={`inv-warehouse-card__status ${statusMeta.className}`} title={statusMeta.hint}>
+                {statusMeta.label}
+              </span>
+            </div>
+
+            <div className="inv-warehouse-card__body">
+              {isInactivo ? (
+                <div className="alert alert-warning py-2 mb-3" role="status">
+                  INACTIVO - no disponible para operaciones
+                </div>
+              ) : null}
+              {highlights.map((item) => (
+                <div key={item.key} className={`inv-warehouse-card__fact ${item.tone}`.trim()}>
+                  <span className="inv-warehouse-card__fact-icon" aria-hidden="true">
+                    <i className={item.icon} />
+                  </span>
+                  <div className="inv-warehouse-card__fact-copy">
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="inv-warehouse-card__meta">
+              <span className="inv-warehouse-card__meta-pill">
+                <i className="bi bi-arrow-down-left" aria-hidden="true" />
+                <span>Entradas</span>
+                <strong>{formatMetricValue(almacen?.entradas_hoy)}</strong>
+              </span>
+              <span className="inv-warehouse-card__meta-pill">
+                <i className="bi bi-sliders" aria-hidden="true" />
+                <span>Ajustes</span>
+                <strong>{formatMetricValue(almacen?.ajustes_hoy)}</strong>
+              </span>
+              <span className="inv-warehouse-card__meta-pill">
+                <i className="bi bi-arrow-up-right" aria-hidden="true" />
+                <span>Salidas</span>
+                <strong>{formatMetricValue(almacen?.salidas_hoy)}</strong>
+              </span>
+            </div>
+
+            <div className="inv-warehouse-card__footer">
+              <div className="inv-warehouse-card__actions">
+                {canEditarAlmacenes ? (
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle inv-warehouse-card__action"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      iniciarEdicion(almacen);
+                    }}
+                    title="Editar"
+                    disabled={deletingConfirm}
+                  >
+                    <i className="bi bi-pencil-square" />
+                    <span>Editar</span>
+                  </button>
+                ) : null}
+
+                {canRunAlmacenAction(actionMeta.action) ? (
+                  <button
+                    type="button"
+                    className={actionMeta.buttonClass}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openConfirmDelete(almacen, actionMeta.action);
+                    }}
+                    title={actionTitle}
+                    disabled={deletingConfirm || isResolvingAction || isInactivationBlocked}
+                  >
+                    <i className={`bi ${isResolvingAction ? 'bi-hourglass-split' : actionMeta.icon}`} />
+                    <span>{isResolvingAction ? 'Validando...' : actionLabel}</span>
+                  </button>
+                ) : null}
               </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+
+  if (permisosLoading) return null;
+
+  if (!canAccessAlmacenesTab) {
+    return <SinPermiso permiso={PERMISSIONS.INVENTARIO_ALMACENES_VER} />;
+  }
+
+  if (catalogScope === 'proveedores') {
+    if (!canVerProveedores) {
+      return <SinPermiso permiso={PERMISSIONS.INVENTARIO_PROVEEDORES_VER} />;
+    }
+    return <ProveedoresTab openToast={openToast} onScopeChange={setCatalogScope} />;
+  }
+
+  const createModal =
+    canCrearAlmacenes && modalPortalTarget && showCreateModal
+      ? createPortal(
+          <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showCreateModal}>
+            <div className="inv-prod-pmodal__overlay" onClick={closeCreate} />
+            <div className="inv-prod-pmodal__viewport">
+              <div
+                className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="inv-warehouse-create-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <form onSubmit={onCrear} className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create">
+                  <div className="inv-prod-pmodal__body">
+                    <div className="inv-ins-create-hero is-create">
+                      <button
+                        type="button"
+                        className="inv-prod-drawer-close inv-ins-create-hero__close"
+                        onClick={closeCreate}
+                        aria-label="Cerrar alta de almacen"
+                        disabled={savingCreate}
+                      >
+                        <i className="bi bi-x-lg" aria-hidden="true" />
+                      </button>
+
+                      <div className="inv-ins-create-hero__icon">
+                        <i className="bi bi-building-add" aria-hidden="true" />
+                      </div>
+
+                      <div className="inv-ins-create-hero__copy">
+                        <div className="inv-ins-create-hero__kicker">Nuevo Registro</div>
+                        <div id="inv-warehouse-create-title" className="inv-ins-create-hero__title">
+                          Alta rapida de almacen
+                        </div>
+                        <div className="inv-ins-create-hero__text">
+                          Registra la ubicacion base y dejala lista para recibir movimientos desde el mismo modulo.
+                        </div>
+                      </div>
+
+                      <div className="inv-ins-create-hero__chips">
+                        <span className="inv-ins-create-hero__chip">
+                          <i className="bi bi-shop" aria-hidden="true" /> {createHeroSucursalLabel}
+                        </span>
+                        <span className="inv-ins-create-hero__chip">
+                          <i className="bi bi-box-seam" aria-hidden="true" /> Kardex habilitado
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="inv-prod-pmodal__sections">
+                      <section className="inv-prod-pmodal__section">
+                        <div className="inv-prod-pmodal__section-head">
+                          <div className="inv-prod-pmodal__section-title">Datos principales</div>
+                          <div className="inv-prod-pmodal__section-sub">
+                            Nombre y sucursal real del almacen segun el catalogo activo.
+                          </div>
+                        </div>
+
+                        <div className="row g-3">
+                          <div className="col-12">
+                            <label className="form-label mb-1" htmlFor="inv-warehouse-create-nombre">
+                              Nombre del almacen
+                            </label>
+                            <input
+                              ref={createNombreInputRef}
+                              id="inv-warehouse-create-nombre"
+                              className={`form-control ${createErrors.nombre ? 'is-invalid' : ''}`}
+                              value={form.nombre}
+                              onChange={(event) => setForm((current) => ({ ...current, nombre: event.target.value }))}
+                              onBlur={(event) =>
+                                setForm((current) => ({
+                                  ...current,
+                                  nombre: normalizeAlmacenNombre(event.target.value)
+                                }))
+                              }
+                              placeholder="Ej: Bodega Norte"
+                              disabled={savingCreate}
+                            />
+                            {createErrors.nombre ? <div className="invalid-feedback">{createErrors.nombre}</div> : null}
+                          </div>
+
+                          <div className="col-12">
+                            <label className="form-label mb-1" htmlFor="inv-warehouse-create-sucursal">
+                              Sucursal
+                            </label>
+                            <select
+                              id="inv-warehouse-create-sucursal"
+                              className={`form-select ${createErrors.id_sucursal ? 'is-invalid' : ''}`}
+                              value={form.id_sucursal}
+                              onChange={(event) =>
+                                setForm((current) => ({ ...current, id_sucursal: event.target.value }))
+                              }
+                              disabled={!canCreateWithCatalog || savingCreate}
+                            >
+                              <option value="">{loadingSucursales ? 'Cargando sucursales...' : 'Seleccione una sucursal'}</option>
+                              {createSucursalOptions.map((option) => (
+                                <option key={option.id} value={option.id} disabled={option.disabled}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            {createErrors.id_sucursal ? (
+                              <div className="invalid-feedback">{createErrors.id_sucursal}</div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+
+                  <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+                    <button type="button" className="btn inv-prod-btn-subtle" onClick={resetCreateForm} disabled={savingCreate}>
+                      Limpiar
+                    </button>
+                    <button type="button" className="btn inv-prod-btn-outline" onClick={closeCreate} disabled={savingCreate}>
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn inv-prod-btn-primary" disabled={!canCreateWithCatalog || savingCreate}>
+                      {savingCreate ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>,
+          modalPortalTarget
+        )
+      : null;
+
+  const detailModal = canVerAlmacenes && detailAlmacen ? (
+    <div
+      className="modal fade show"
+      style={{ display: 'block', backgroundColor: 'rgba(17, 8, 10, 0.55)', zIndex: 2600 }}
+      role="dialog"
+      aria-modal="true"
+      onClick={() => setDetailId(null)}
+    >
+      <div className="modal-dialog modal-dialog-centered modal-lg" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-content shadow inv-warehouse-detail-modal__body">
+          <div className="modal-body">
+            <div className="inv-warehouse-detail-modal__hero">
+              <div className="inv-warehouse-detail-modal__hero-main">
+                <p className="inv-warehouse-detail-modal__eyebrow">Detalle de almacen</p>
+                <strong>{detailAlmacen.nombre || `Almacen ${detailAlmacen.id_almacen}`}</strong>
+                <p>
+                  {formatSucursalDisplayLabel(
+                    sucursalesMap.get(String(detailAlmacen?.id_sucursal ?? '').trim()),
+                    detailAlmacen?.id_sucursal
+                  )}
+                </p>
+              </div>
+              <span className={`inv-warehouse-card__status ${detailStatusMeta.className}`}>{detailStatusMeta.label}</span>
+            </div>
+
+            <div className="inv-warehouse-detail-modal__grid mt-3">
+              {detailMetrics.map((metric) => (
+                <div key={metric.key} className="inv-warehouse-detail-modal__card">
+                  <div className="inv-warehouse-detail-modal__card-head">
+                    <i className={metric.icon} aria-hidden="true" />
+                    <span>{metric.label}</span>
+                  </div>
+                  <strong>{metric.value}</strong>
+                </div>
+              ))}
+            </div>
+            {detailInactivationBlocked ? (
+              <div className="alert alert-warning mt-3 mb-0" role="status">
+                {detailInactivationRule?.primaryBlockingReason ||
+                  'No se puede inactivar este almacen por dependencias operativas.'}
+                {renderDependencyDetails(detailInactivationRule?.dependencyDetails)}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="modal-footer inv-warehouse-detail-modal__footer">
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={() => {
+                if (!detailAlmacen?.id_almacen) return;
+                setSelectedAlmacenId(String(detailAlmacen.id_almacen));
+                window.setTimeout(scrollToMovimientos, 80);
+              }}
+            >
+              Ver Kardex
+            </button>
+            {canEditarAlmacenes ? (
+              <button type="button" className="btn btn-light" onClick={() => iniciarEdicion(detailAlmacen)}>
+                Editar
+              </button>
+            ) : null}
+            {detailActionMeta && canRunAlmacenAction(detailActionMeta.action) ? (
+              <button
+                type="button"
+                className={`btn ${
+                  detailActionMeta.action === 'inactivar' ? 'btn-outline-secondary' : 'btn-outline-success'
+                }`}
+                onClick={() => openConfirmDelete(detailAlmacen, detailActionMeta.action)}
+                disabled={
+                  Number(resolvingActionId ?? 0) === Number(detailAlmacen?.id_almacen ?? 0) ||
+                  detailInactivationBlocked
+                }
+                title={
+                  detailInactivationBlocked
+                    ? detailInactivationRule?.primaryBlockingReason ||
+                      'Inactivacion bloqueada por dependencias operativas.'
+                    : detailActionMeta.title
+                }
+              >
+                {Number(resolvingActionId ?? 0) === Number(detailAlmacen?.id_almacen ?? 0)
+                  ? 'Validando...'
+                  : detailInactivationBlocked
+                  ? 'Inactivacion bloqueada'
+                  : detailActionMeta.label}
+              </button>
+            ) : null}
+            <button type="button" className="btn btn-primary" onClick={() => setDetailId(null)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const editModal =
+    canEditarAlmacenes && modalPortalTarget && showEditModal
+      ? createPortal(
+          <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showEditModal}>
+            <div className="inv-prod-pmodal__overlay" onClick={cancelarEdicion} />
+            <div className="inv-prod-pmodal__viewport">
+              <div
+                className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="inv-warehouse-edit-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <form onSubmit={guardarEdicion} className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create">
+                  <div className="inv-prod-pmodal__body">
+                    <div className="inv-ins-create-hero is-edit">
+                      <button
+                        type="button"
+                        className="inv-prod-drawer-close inv-ins-create-hero__close"
+                        onClick={cancelarEdicion}
+                        aria-label="Cerrar edicion de almacen"
+                        disabled={savingEdit}
+                      >
+                        <i className="bi bi-x-lg" aria-hidden="true" />
+                      </button>
+
+                      <div className="inv-ins-create-hero__icon">
+                        <i className="bi bi-building-gear" aria-hidden="true" />
+                      </div>
+
+                      <div className="inv-ins-create-hero__copy">
+                        <div className="inv-ins-create-hero__kicker">Edicion Activa</div>
+                        <div id="inv-warehouse-edit-title" className="inv-ins-create-hero__title">
+                          Actualiza Tu Almacen
+                        </div>
+                      </div>
+
+                      <div className="inv-ins-create-hero__chips">
+                        <span className="inv-ins-create-hero__chip">
+                          <i className="bi bi-shop" aria-hidden="true" /> {editHeroSucursalLabel}
+                        </span>
+                        <span className="inv-ins-create-hero__chip">
+                          <i className="bi bi-shield-check" aria-hidden="true" /> Kardex operativo
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="inv-prod-pmodal__sections">
+                      <section className="inv-prod-pmodal__section">
+                        <div className="inv-prod-pmodal__section-head">
+                          <div className="inv-prod-pmodal__section-title">Datos principales</div>
+                          <div className="inv-prod-pmodal__section-sub">
+                            {editSucursalLockedByHistory
+                              ? 'Este almacen tiene historial operativo: puedes editar el nombre, pero no cambiar su sucursal.'
+                              : 'Ajusta nombre y sucursal respetando el catalogo operativo actual.'}
+                          </div>
+                        </div>
+                        {editErrors._concurrency ? (
+                          <div className="alert alert-warning py-2 mb-3" role="alert">
+                            {editErrors._concurrency}
+                          </div>
+                        ) : null}
+
+                        <div className="row g-3">
+                          <div className="col-12">
+                            <label className="form-label mb-1" htmlFor="inv-warehouse-edit-nombre">
+                              Nombre del almacen
+                            </label>
+                            <input
+                              ref={editNombreInputRef}
+                              id="inv-warehouse-edit-nombre"
+                              className={`form-control ${editErrors.nombre ? 'is-invalid' : ''}`}
+                              value={editForm.nombre}
+                              onChange={(event) => setEditForm((current) => ({ ...current, nombre: event.target.value }))}
+                              onBlur={(event) =>
+                                setEditForm((current) => ({
+                                  ...current,
+                                  nombre: normalizeAlmacenNombre(event.target.value)
+                                }))
+                              }
+                              placeholder="Ej: Bodega Norte"
+                              disabled={savingEdit}
+                            />
+                            {editErrors.nombre ? <div className="invalid-feedback">{editErrors.nombre}</div> : null}
+                          </div>
+
+                          <div className="col-12">
+                            <label className="form-label mb-1" htmlFor="inv-warehouse-edit-sucursal">
+                              Sucursal
+                            </label>
+                            <select
+                              id="inv-warehouse-edit-sucursal"
+                              className={`form-select ${editErrors.id_sucursal ? 'is-invalid' : ''}`}
+                              value={editForm.id_sucursal}
+                              onChange={(event) =>
+                                setEditForm((current) => ({ ...current, id_sucursal: event.target.value }))
+                              }
+                              disabled={!canEditWithCatalog || savingEdit || loadingEditDependencies || editSucursalLockedByHistory}
+                            >
+                              <option value="">
+                                {loadingSucursales ? 'Cargando sucursales...' : 'Seleccione una sucursal'}
+                              </option>
+                              {editSucursalOptions.map((option) => (
+                                <option key={option.id} value={option.id} disabled={option.disabled}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            {editErrors.id_sucursal ? <div className="invalid-feedback">{editErrors.id_sucursal}</div> : null}
+                            {loadingEditDependencies ? (
+                              <div className="form-text">Validando dependencias operativas del almacen...</div>
+                            ) : null}
+                            {editSucursalLockedByHistory ? (
+                              <div className="form-text text-warning">
+                                {`${editSucursalBlockingReason} ${ALMACENES_SUCURSAL_CHANGE_POLICY_MESSAGE}`}
+                              </div>
+                            ) : null}
+                            {editHasLegacySelected ? (
+                              <div className="form-text">
+                                La sucursal actual esta fuera del catalogo activo, pero puede conservarse.
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+
+                  <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+                    <button type="button" className="btn inv-prod-btn-outline" onClick={cancelarEdicion} disabled={savingEdit}>
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn inv-prod-btn-primary" disabled={savingEdit}>
+                      {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>,
+          modalPortalTarget
+        )
+      : null;
+
+  const confirmDeleteModal = confirmModal.show && canRunAlmacenAction(confirmModal.action) ? (
+    <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
+      <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="inv-pro-confirm-glow" aria-hidden="true" />
+
+        <div className="inv-pro-confirm-head">
+          <div className="inv-pro-confirm-head-main">
+            <div className="inv-pro-confirm-head-icon">
+              <i className={`bi ${confirmCopy.actionIcon}`} aria-hidden="true" />
+            </div>
+            <div className="inv-pro-confirm-head-copy">
+              <div className="inv-pro-confirm-kicker">Almacenes</div>
+              <div className="inv-pro-confirm-title">{confirmCopy.title}</div>
+              <div className="inv-pro-confirm-sub">{confirmCopy.subtitle}</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="inv-pro-confirm-close"
+            onClick={closeConfirmDelete}
+            aria-label="Cerrar"
+            disabled={deletingConfirm}
+          >
+            <i className="bi bi-x-lg" />
+          </button>
+        </div>
+
+        <div className="inv-pro-confirm-body">
+          <div className="inv-pro-confirm-note">
+            <i className="bi bi-shield-exclamation" aria-hidden="true" />
+            <span>{confirmCopy.note}</span>
+          </div>
+
+          {confirmModal.counts ? (
+            <div className="small text-muted mb-2">
+              {`Dependencias: movimientos ${confirmModal.counts.movimientos}, productos ${confirmModal.counts.productos}, insumos ${confirmModal.counts.insumos}`}
+            </div>
+          ) : null}
+
+          <div className="inv-pro-confirm-question">{confirmCopy.question}</div>
+
+          <div className="inv-pro-confirm-name">
+            <div className="inv-pro-confirm-name-label">Registro seleccionado</div>
+            <div className="inv-pro-confirm-name-value">
+              <i className="bi bi-building-fill-gear" aria-hidden="true" />
+              <span>{confirmModal.nombre || confirmAlmacen?.nombre || 'Almacen seleccionado'}</span>
+            </div>
+          </div>
+
+          {confirmDeleteError ? (
+            <div className="alert alert-danger inv-pro-confirm-error mb-0" role="alert">
+              {confirmDeleteError}
+              {renderDependencyDetails(
+                inactivationRulesByAlmacenId[String(confirmModal?.idToDelete ?? '')]?.dependencyDetails
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="inv-pro-confirm-footer">
+          <button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete} disabled={deletingConfirm}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className={`btn ${
+              confirmModal.action === 'reactivar' ? 'btn-success' : 'btn-warning'
+            }`}
+            onClick={eliminarConfirmado}
+            disabled={deletingConfirm}
+          >
+            <i className={`bi ${deletingConfirm ? 'bi-hourglass-split' : confirmCopy.actionIcon}`} aria-hidden="true" />
+            <span>{deletingConfirm ? confirmCopy.actionBusyLabel : confirmCopy.actionLabel}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <>
+      <div className="card shadow-sm mb-3 inv-prod-card inv-ins-module inv-has-sticky-header inv-warehouse-module">
+        <div className="card-header inv-prod-header inv-cat-v3__header">
+          <div className="inv-cat-v3__layout">
+            <div className="inv-cat-v3__title">
+              <div className="inv-prod-title-wrap">
+                <div className="inv-prod-title-row">
+                  <i className="bi bi-building inv-prod-title-icon" aria-hidden="true" />
+                  <span className="inv-prod-title">Almacenes</span>
+                </div>
+                <div className="inv-prod-subtitle">Gestion visual de almacenes y kardex por sucursal</div>
+              </div>
+            </div>
+
+            <div className="inv-cat-v3__switch-slot">
+              <CompactHeaderSwitch
+                value={catalogScope}
+                onChange={(nextScope) => {
+                  if (nextScope === 'proveedores' && !canVerProveedores) {
+                    safeToast('SIN PERMISO', 'No tienes permiso para ver proveedores.', 'warning');
+                    return;
+                  }
+                  setCatalogScope(nextScope);
+                }}
+                leftValue="almacenes"
+                rightValue="proveedores"
+                leftLabel="ALMACENES"
+                rightLabel="PROVEEDORES"
+                ariaLabel="Cambiar vista de almacenes y proveedores"
+              />
+            </div>
+
+            <label className="inv-ins-search inv-prod-header-search inv-cat-v3__search" aria-label="Buscar almacenes">
+              <i className="bi bi-search" aria-hidden="true" />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar almacen..."
+              />
+            </label>
+
+            <div className="inv-prod-header-actions inv-ins-header-actions inv-cat-v3__actions-stack">
+              <div className="form-check form-switch m-0 d-flex align-items-center justify-content-center gap-2">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  id="inv-warehouse-show-inactive"
+                  checked={showInactivos}
+                  onChange={(event) => setShowInactivos(event.target.checked)}
+                  disabled={loading}
+                />
+                <label className="form-check-label small mb-0" htmlFor="inv-warehouse-show-inactive">
+                  Mostrar inactivos
+                </label>
+              </div>
+              {canCrearAlmacenes ? (
+                <button
+                  type="button"
+                  className="inv-prod-toolbar-btn inv-cat-v3__new-btn"
+                  onClick={openCreate}
+                  disabled={!canCreateWithCatalog}
+                >
+                  <i className="bi bi-plus-circle" aria-hidden="true" />
+                  <span>Nuevo almacen</span>
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
-      )}
-    </div>
+
+        <div className="card-body inv-warehouse-body">
+          {error ? (
+            <div className="alert alert-danger mb-0">
+              <i className="bi bi-exclamation-triangle-fill me-2" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          ) : null}
+
+          <div className="alert alert-info mt-3 mb-2" role="note">
+            {`${ALMACENES_NO_DELETE_MESSAGE} ${ALMACENES_INACTIVATION_POLICY_MESSAGE} ${ALMACENES_SUCURSAL_CHANGE_POLICY_MESSAGE}`}
+          </div>
+
+          <div className="inv-warehouse-results-meta">
+            Total Almacenes: <strong>{almacenes.length}</strong>
+          </div>
+
+          {cardsContent}
+
+          <div ref={movimientosRef}>
+            <MovimientosTab
+              openToast={openToast}
+              embedded
+              almacenes={almacenes}
+              sucursales={sucursales}
+              selectedAlmacenId={selectedAlmacenId}
+              onSelectAlmacen={setSelectedAlmacenId}
+              onMovimientoCreado={handleMovimientoCreado}
+            />
+          </div>
+        </div>
+      </div>
+
+      {createModal}
+      {detailModal}
+      {editModal}
+      {confirmDeleteModal}
+    </>
   );
 };
 

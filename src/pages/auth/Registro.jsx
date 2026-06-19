@@ -1,0 +1,398 @@
+﻿import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import clientePublicoService from '../../services/clientePublicoService';
+import logo from '../../assets/images/logo-sin-fondo.png';
+import bgImage from '../../assets/images/imagen-fondo.png';
+import { AnimatePresence, motion as Motion } from 'framer-motion';
+import { FiUser, FiMail, FiLock, FiEye, FiEyeOff, FiCheck } from 'react-icons/fi';
+import Select from 'react-select';
+import './Login.scss';
+
+const Registro = () => {
+  const navigate = useNavigate();
+
+  const [nombre, setNombre] = useState('');
+  const [apellido, setApellido] = useState('');
+  const [genero, setGenero] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [requiresVerification, setRequiresVerification] = useState(false);
+  const [verificationEmailSent, setVerificationEmailSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const generoOptions = useMemo(
+    () => [
+      { value: 'M', label: 'Masculino' },
+      { value: 'F', label: 'Femenino' },
+      { value: 'O', label: 'Otro' }
+    ],
+    []
+  );
+
+  const generoValue = useMemo(
+    () => generoOptions.find((option) => option.value === genero) || null,
+    [genero, generoOptions]
+  );
+
+  const generoSelectStyles = useMemo(
+    () => ({
+      control: (base, state) => ({
+        ...base,
+        minHeight: '50px',
+        borderRadius: '10px',
+        borderColor: state.isFocused ? 'rgba(212, 165, 116, 0.5)' : 'rgba(255, 255, 255, 0.14)',
+        backgroundColor: '#1a1108',
+        boxShadow: state.isFocused ? '0 0 0 3px rgba(212, 165, 116, 0.1)' : 'none',
+        paddingLeft: '2.75rem',
+        transition: 'border-color 0.25s, box-shadow 0.25s',
+        '&:hover': {
+          borderColor: 'rgba(212, 165, 116, 0.5)'
+        }
+      }),
+      valueContainer: (base) => ({
+        ...base,
+        padding: '0 0.35rem 0 0'
+      }),
+      singleValue: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.85)'
+      }),
+      placeholder: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.22)'
+      }),
+      input: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.85)'
+      }),
+      indicatorSeparator: (base) => ({
+        ...base,
+        backgroundColor: 'rgba(255, 255, 255, 0.12)'
+      }),
+      dropdownIndicator: (base, state) => ({
+        ...base,
+        color: state.isFocused ? 'rgba(240, 200, 150, 0.9)' : 'rgba(255, 255, 255, 0.45)',
+        '&:hover': {
+          color: 'rgba(240, 200, 150, 0.95)'
+        }
+      }),
+      clearIndicator: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.45)',
+        '&:hover': {
+          color: '#f0c896'
+        }
+      }),
+      menu: (base) => ({
+        ...base,
+        backgroundColor: '#1a1108',
+        border: '1px solid rgba(255, 255, 255, 0.14)',
+        borderRadius: '10px',
+        overflow: 'hidden',
+        boxShadow: '0 10px 24px rgba(0, 0, 0, 0.35)'
+      }),
+      option: (base, state) => ({
+        ...base,
+        color: state.isSelected ? '#0e0704' : 'rgba(255, 255, 255, 0.85)',
+        backgroundColor: state.isSelected
+          ? '#d4a574'
+          : state.isFocused
+            ? 'rgba(212, 165, 116, 0.22)'
+            : '#1a1108',
+        cursor: 'pointer'
+      }),
+      noOptionsMessage: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.55)'
+      })
+    }),
+    []
+  );
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMsg('');
+    setRequiresVerification(false);
+    setVerificationEmailSent(false);
+
+    if (!nombre.trim() || !apellido.trim() || !genero.trim() || !email.trim() || !password.trim()) {
+      setError('Todos los campos son obligatorios (Nombre, Apellido, Género, Correo y Contraseña).');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+
+    if (password.length < 10) {
+      setError('La contraseña debe tener al menos 10 caracteres.');
+      return;
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      setError('La contraseña debe incluir al menos una letra mayúscula.');
+      return;
+    }
+
+    if (!/[0-9]/.test(password)) {
+      setError('La contraseña debe incluir al menos un número.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        email: email.trim().toLowerCase(),
+        clave: password,
+        nombre: nombre.trim(),
+        apellido: apellido.trim(),
+        genero: genero.trim()
+      };
+
+      const response = await clientePublicoService.register(payload);
+      const verificationRequired = Boolean(
+        response?.requiresVerification ?? response?.data?.requiresVerification
+      );
+      const emailSent = Boolean(
+        response?.verificationEmailSent ?? response?.data?.verificationEmailSent
+      );
+      const backendMessage = response?.message || response?.data?.message || '';
+
+      setRequiresVerification(verificationRequired);
+      setVerificationEmailSent(emailSent);
+
+      if (verificationRequired && emailSent) {
+        setSuccessMsg(
+          `Te hemos enviado un correo de verificación a ${payload.email}. Revisa tu bandeja de entrada para activar tu cuenta.`
+        );
+      } else if (verificationRequired) {
+        setSuccessMsg(
+          `Tu cuenta fue creada, pero no se pudo enviar el correo de verificacion a ${payload.email}. Podras solicitar un reintento cuando el flujo este disponible.`
+        );
+      } else {
+        setSuccessMsg(backendMessage || 'Registro exitoso.');
+      }
+    } catch (err) {
+      const apiMessage =
+        err?.message ||
+        err?.data?.message ||
+        err?.data?.error ||
+        'Error al crear la cuenta';
+      setError(apiMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-root">
+      <div className="panel-left">
+        <img src={bgImage} alt="" className="bg-food" />
+        <div className="vignette" />
+        <div className="side-fade" />
+        <div className="left-content">
+          <div className="brand">
+            <div className="logo-ring">
+              <div className="halo" />
+              <div className="ring" />
+              <img src={logo} alt="Jonny's" className="logo-img" />
+            </div>
+            <div className="brand-text">
+              <span className="brand-sub">RESTAURANTE</span>
+              <h1 className="brand-name">JONNY'S</h1>
+              <h2 className="brand-sub2">SMARTORDER</h2>
+              <div className="gold-line" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Motion.aside
+        className="panel-right"
+        initial={{ opacity: 0, x: 24 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <div className="form-header">
+          <h2>Crea tu cuenta</h2>
+          <p>Regístrate para hacer tus pedidos en línea</p>
+        </div>
+
+        {successMsg ? (
+          <Motion.div
+            className="verification-sent"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.35 }}
+          >
+            <div className="verification-icon">
+              <FiCheck size={32} />
+            </div>
+            <h3>{requiresVerification && verificationEmailSent ? '¡Revisa tu correo!' : '¡Cuenta creada!'}</h3>
+            <p>{successMsg}</p>
+            <Motion.button
+              type="button"
+              className="btn-cta"
+              onClick={() => navigate('/auth/login')}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              style={{ marginTop: '1.5rem' }}
+            >
+              IR AL LOGIN  →
+            </Motion.button>
+          </Motion.div>
+        ) : (
+          <form onSubmit={handleSubmit} className="login-form">
+            <div className="fields-row">
+              <div className="field">
+                <label>NOMBRE</label>
+                <div className="input-wrap">
+                  <FiUser className="field-icon" />
+                  <input
+                    id="register-nombre"
+                    type="text"
+                    placeholder="María"
+                    value={nombre}
+                    onChange={(e) => setNombre(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label>APELLIDO</label>
+                <div className="input-wrap">
+                  <FiUser className="field-icon" />
+                  <input
+                    id="register-apellido"
+                    type="text"
+                    placeholder="Sánchez"
+                    value={apellido}
+                    onChange={(e) => setApellido(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="field">
+              <label>GENERO</label>
+              <div className="input-wrap input-wrap--select">
+                <FiUser className="field-icon" />
+                <Select
+                  id="register-genero"
+                  inputId="register-genero"
+                  className="auth-gender-select"
+                  classNamePrefix="auth-gender-select"
+                  options={generoOptions}
+                  value={generoValue}
+                  onChange={(option) => setGenero(option?.value || '')}
+                  isSearchable={false}
+                  isClearable
+                  placeholder="Selecciona genero"
+                  styles={generoSelectStyles}
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <label>CORREO ELECTRÓNICO</label>
+              <div className="input-wrap">
+                <FiMail className="field-icon" />
+                <input
+                  id="register-email"
+                  type="email"
+                  placeholder="tucorreo@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <label>CONTRASEÑA</label>
+              <div className="input-wrap">
+                <FiLock className="field-icon" />
+                <input
+                  id="register-password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Mín. 10 chars, Mayúscula y Número"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="eye-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <FiEyeOff /> : <FiEye />}
+                </button>
+              </div>
+            </div>
+
+            <div className="field">
+              <label>CONFIRMAR CONTRASEÑA</label>
+              <div className="input-wrap">
+                <FiLock className="field-icon" />
+                <input
+                  id="register-confirm-password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Repite tu contraseña"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+            </div>
+
+            <AnimatePresence>
+              {error && (
+                <Motion.div
+                  className="error-msg"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                >
+                  {error}
+                </Motion.div>
+              )}
+            </AnimatePresence>
+
+            <Motion.button
+              type="submit"
+              className="btn-cta"
+              disabled={loading}
+              whileHover={!loading ? { y: -1 } : {}}
+              whileTap={!loading ? { scale: 0.98 } : {}}
+            >
+              {loading ? (
+                <span className="loading-inner">
+                  <span className="spin" /> Creando cuenta...
+                </span>
+              ) : (
+                'CREAR CUENTA  →'
+              )}
+            </Motion.button>
+
+            <p className="login-switch">
+              ¿Ya tienes cuenta?{' '}
+              <button type="button" className="link-btn" onClick={() => navigate('/auth/login')}>
+                Inicia sesión
+              </button>
+            </p>
+          </form>
+        )}
+      </Motion.aside>
+    </div>
+  );
+};
+
+export default Registro;
+

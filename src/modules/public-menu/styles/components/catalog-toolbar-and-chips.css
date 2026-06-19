@@ -1,0 +1,350 @@
+/* Banner de sucursal, toolbar de catalogo, buscador y chips. */
+
+.pm-branch-banner {
+  position: sticky;
+  top: 4.7rem;
+  z-index: 9;
+  border: 1px solid rgba(138, 95, 62, 0.32);
+  border-radius: 999px;
+  background: rgba(255, 246, 233, 0.9);
+  color: #2e2f35;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.83rem;
+}
+
+.pm-branch-banner__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.pm-branch-banner__change {
+  border-radius: 999px;
+  font-size: 0.76rem;
+  white-space: nowrap;
+  min-height: 34px;
+}
+
+.pm-catalog-header {
+  position: sticky;
+  top: 7.9rem;
+  z-index: 8;
+  border: 1px solid rgba(180, 140, 103, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 248, 236, 0.95);
+  backdrop-filter: blur(5px);
+  padding: 0.75rem;
+}
+
+.pm-catalog-header__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pm-catalog-header__title {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 700;
+  font-family: var(--pm-display);
+}
+
+.pm-catalog-header__count {
+  font-size: 0.76rem;
+  color: #4d5057;
+  background: rgba(14, 17, 23, 0.08);
+  border-radius: 999px;
+  padding: 0.18rem 0.5rem;
+}
+
+.pm-catalog-header__meta,
+.pm-catalog-header__availability {
+  margin: 0.2rem 0 0;
+  color: #4f5560;
+  font-size: 0.8rem;
+}
+
+.pm-search-input {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(172, 129, 90, 0.4);
+  border-radius: 999px;
+  background: #fffdf8;
+  padding: 0.4rem 0.6rem;
+  box-shadow: var(--pm-shadow);
+}
+
+.pm-search-input__icon {
+  color: #727780;
+  font-size: 0.95rem;
+}
+
+.pm-search-input__field {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #1f2430;
+  font-size: 0.92rem;
+}
+
+.pm-search-input__clear {
+  border: 0;
+  background: transparent;
+  color: #727780;
+  line-height: 1;
+}
+
+.pm-category-chips {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.8rem 1.2rem;
+  overflow: visible;
+  padding: 0.95rem 1.2rem;
+  border-radius: 14px;
+  border: 1px solid rgba(120, 95, 80, 0.6);
+  background: #5a5048;
+  box-shadow: 0 14px 24px rgba(33, 20, 12, 0.2);
+}
+
+.pm-category-chip {
+  width: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.5rem 0.7rem 0.8rem;
+  white-space: nowrap;
+
+  /* 🔥 TAMAÑO GRANDE */
+  font-size: 1.35rem;
+
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: color 0.2s ease, transform 0.2s ease;
+  position: relative;
+}
+
+.pm-category-chip.is-selected {
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.pm-category-chip:focus-visible {
+  outline: 2px solid rgba(123, 67, 34, 0.45);
+  outline-offset: 2px;
+}
+
+.pm-category-chip.is-selected::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.2rem;
+  height: 3px;
+  border-radius: 999px;
+  background: #e53935;
+}
+
+/* Showcase principal estilo home comercial: barra categorias + carrusel protagonista. */
+.pm-menu-showcase {
+  display: grid;
+  gap: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 12px 24px rgba(22, 14, 10, 0.2);
+}
+
+.pm-menu-showcase .pm-category-chips {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 0.3rem;
+  padding: 0.7rem 0.9rem;
+  border: 0;
+  border-radius: 0;
+  background: #5e5750;
+  box-shadow: none;
+  border-bottom: 4px solid #e42c2c;
+}
+
+.pm-menu-showcase .pm-category-chip {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.95);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+
+  /* 🔥 MÁS GRANDE TODAVÍA */
+  font-size: 1.5rem;
+
+  font-weight: 900;
+  padding: 0.6rem 0.8rem 1rem;
+  white-space: nowrap;
+}
+
+.pm-menu-showcase .pm-category-chip.is-selected {
+  color: #ffffff;
+}
+
+.pm-menu-showcase .pm-category-chip.is-selected::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.12rem;
+  height: 3px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.pm-catalog-carousel {
+  position: relative;
+}
+
+.pm-catalog-carousel__viewport {
+  position: relative;
+  min-height: 320px;
+  background: #2e1b12;
+}
+
+.pm-catalog-carousel__slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 420ms ease;
+  pointer-events: none;
+}
+
+.pm-catalog-carousel__slide.is-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pm-catalog-carousel__image,
+.pm-catalog-carousel__placeholder {
+  width: 100%;
+  min-height: 320px;
+  max-height: 420px;
+  object-fit: cover;
+  display: block;
+}
+
+.pm-catalog-carousel__placeholder {
+  background: linear-gradient(120deg, #5d3927, #8f5737);
+}
+
+.pm-catalog-carousel__overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(17, 10, 7, 0.06) 0%, rgba(16, 10, 7, 0.56) 100%),
+    linear-gradient(0deg, rgba(255, 61, 117, 0.22), rgba(255, 61, 117, 0.22));
+}
+
+.pm-catalog-carousel__copy {
+  position: absolute;
+  left: 1.2rem;
+  right: 1.2rem;
+  bottom: 1rem;
+  z-index: 1;
+  color: #fff6ee;
+  text-shadow: 0 3px 10px rgba(14, 8, 5, 0.45);
+}
+
+.pm-catalog-carousel__title {
+  margin: 0;
+  font-size: clamp(1.2rem, 4vw, 2.3rem);
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.pm-catalog-carousel__subtitle {
+  margin: 0.34rem 0 0;
+  font-size: 0.92rem;
+  color: rgba(255, 241, 229, 0.95);
+}
+
+.pm-catalog-carousel__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(12, 7, 5, 0.34);
+  color: #fff9f3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pm-catalog-carousel__arrow--prev {
+  left: 0.7rem;
+}
+
+.pm-catalog-carousel__arrow--next {
+  right: 0.7rem;
+}
+
+.pm-catalog-carousel__dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.7rem;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.pm-catalog-carousel__dot {
+  width: 9px;
+  height: 9px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 243, 231, 0.52);
+  transition: width 180ms ease, background-color 180ms ease;
+}
+
+.pm-catalog-carousel__dot.is-active {
+  width: 18px;
+  background: #ffffff;
+}
+
+
+@media (max-width: 720px) {
+  .pm-category-chips {
+    gap: 0.7rem 0.9rem;
+    padding: 0.85rem 0.9rem;
+  }
+
+  .pm-catalog-carousel__viewport,
+  .pm-catalog-carousel__image,
+  .pm-catalog-carousel__placeholder {
+    min-height: 220px;
+  }
+}
+
+/* 🔥 OVERRIDE FINAL - CATEGORÍAS GRANDES */
+.pm-category-chip {
+  font-size: 1.6rem !important;
+  font-weight: 900 !important;
+  padding: 0.6rem 0.9rem 1rem !important;
+}
+
+.pm-menu-showcase .pm-category-chip {
+  font-size: 1.8rem !important;
+  font-weight: 900 !important;
+}

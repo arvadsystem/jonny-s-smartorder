@@ -1,0 +1,557 @@
+.email-campaigns-page {
+  --email-shell-border: rgba(157, 150, 112, 0.34);
+  --email-soft-bg: rgba(243, 241, 216, 0.48);
+}
+
+.email-campaigns-module .inv-prod-header {
+  gap: 14px;
+}
+
+.email-campaigns-header-actions {
+  gap: 8px;
+}
+
+.email-campaigns-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 250px;
+  max-width: 360px;
+  flex: 1 1 260px;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.36rem 0.68rem;
+}
+
+.email-campaigns-search i {
+  color: rgba(82, 44, 34, 0.68);
+}
+
+.email-campaigns-search input {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  width: 100%;
+  min-width: 0;
+  font-size: 0.86rem;
+}
+
+.email-campaigns-status-select {
+  min-width: 170px;
+  max-width: 220px;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.email-campaigns-kpis {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.email-campaigns-kpi {
+  min-height: 72px;
+}
+
+.email-campaigns-body {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.email-campaigns-results-meta {
+  margin-bottom: 0;
+}
+
+.email-campaigns-table-shell {
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  overflow: hidden;
+}
+
+.email-campaigns-empty {
+  min-height: 230px;
+  display: grid;
+  place-content: center;
+  gap: 0.7rem;
+  text-align: center;
+  background: linear-gradient(170deg, rgba(250, 249, 238, 0.9), rgba(245, 242, 212, 0.76));
+}
+
+.email-campaigns-empty .btn {
+  justify-self: center;
+}
+
+.email-campaigns-table {
+  margin-bottom: 0;
+}
+
+.email-campaigns-table tbody td {
+  padding: 0.66rem 0.58rem;
+  font-size: 0.84rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.email-campaigns-table thead th {
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5b342b;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.email-campaigns-table tbody tr {
+  transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.email-campaigns-table-desktop {
+  margin-top: 0.15rem;
+}
+
+.email-campaigns-table.inv-warehouse-moves__table {
+  min-width: 860px;
+}
+
+.email-campaigns-table.inv-warehouse-moves__table tbody tr.is-selected td {
+  background: rgba(244, 235, 214, 0.72) !important;
+}
+
+.email-campaigns-col-result {
+  width: 9.5rem;
+}
+
+.email-campaigns-col-actions {
+  width: 14.5rem;
+}
+
+.email-campaigns-table-main {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.email-campaigns-table-main .inv-warehouse-moves__item-main {
+  font-weight: 600;
+}
+
+.email-campaigns-table-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+.email-campaigns-table-action {
+  min-height: 34px;
+  padding-inline: 0.66rem !important;
+  font-size: 0.76rem !important;
+  font-weight: 700 !important;
+}
+
+.email-campaigns-results-cell {
+  display: grid;
+  gap: 0.14rem;
+  font-size: 0.82rem;
+  color: rgba(82, 44, 34, 0.82);
+}
+
+.email-campaigns-mobile-list {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.email-campaigns-mobile-card {
+  padding: 0.58rem 0.62rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.email-campaigns-mobile-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.email-campaigns-mobile-title-wrap {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.email-campaigns-mobile-title-wrap strong {
+  font-size: 0.87rem;
+  color: #17080a;
+  line-height: 1.2;
+}
+
+.email-campaigns-mobile-title-wrap span {
+  font-size: 0.76rem;
+  color: rgba(82, 44, 34, 0.74);
+  line-height: 1.24;
+}
+
+.email-campaigns-mobile-details {
+  display: grid;
+  gap: 0.27rem;
+  margin-top: 0;
+  margin-bottom: 0.08rem;
+}
+
+.email-campaigns-mobile-details .personas-page__card-row {
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.email-campaigns-mobile-footer {
+  align-items: center;
+}
+
+.email-campaigns-mobile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.28rem;
+}
+
+.email-campaigns-mobile-actions .inv-catpro-action-compact {
+  width: auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 0.42rem !important;
+  gap: 0.22rem;
+}
+
+.email-campaigns-mobile-actions .inv-catpro-action-label {
+  max-width: 96px;
+  opacity: 1;
+  margin-left: 0.12rem;
+  font-size: 0.6rem;
+}
+
+.email-campaigns-form-modal {
+  max-width: min(960px, calc(100vw - 1.5rem));
+}
+
+.email-campaigns-audience-note {
+  border: 1px dashed rgba(157, 150, 112, 0.58);
+  border-radius: 10px;
+  background: rgba(248, 246, 226, 0.75);
+  padding: 0.54rem 0.68rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.83rem;
+  color: rgba(82, 44, 34, 0.86);
+}
+
+.email-campaigns-detail-dialog {
+  max-width: min(940px, calc(100vw - 1rem));
+}
+
+.email-campaigns-detail-modal .modal-content {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.email-campaigns-detail-modal .modal-body {
+  padding: 0.9rem 0.95rem 0.75rem;
+}
+
+.email-campaigns-detail-modal .modal-footer {
+  padding: 0.65rem 0.95rem;
+}
+
+.email-campaigns-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 0.9rem;
+}
+
+.email-campaigns-detail-modal .inv-warehouse-detail-modal__hero {
+  animation: email-campaigns-pop-in 220ms ease;
+}
+
+.email-campaigns-detail-modal .inv-warehouse-detail-modal__hero-main .inv-warehouse-detail-modal__eyebrow {
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.email-campaigns-detail-modal .inv-warehouse-detail-modal__hero-main strong {
+  font-size: 1.52rem;
+  line-height: 1.08;
+}
+
+.email-campaigns-detail-modal .inv-warehouse-detail-modal__hero-main p {
+  font-size: 1rem;
+  color: rgba(82, 44, 34, 0.8);
+}
+
+.email-campaigns-html {
+  min-height: 220px;
+  resize: vertical;
+}
+
+.email-campaigns-detail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.email-campaigns-detail-item {
+  border: 1px solid rgba(157, 150, 112, 0.34);
+  border-radius: 10px;
+  padding: 0.42rem 0.58rem;
+  background: rgba(255, 255, 255, 0.8);
+  display: grid;
+  gap: 0.12rem;
+  animation: email-campaigns-pop-in 220ms ease;
+}
+
+.email-campaigns-detail-item__label {
+  font-size: 0.7rem;
+  color: rgba(82, 44, 34, 0.72);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.email-campaigns-detail-item__value {
+  font-size: 0.82rem;
+  color: #17080a;
+  line-height: 1.2;
+}
+
+.email-campaigns-detail-hint {
+  grid-column: 1 / -1;
+  border: 1px dashed rgba(157, 150, 112, 0.46);
+  border-radius: 10px;
+  padding: 0.44rem 0.58rem;
+  background: rgba(248, 246, 226, 0.72);
+  color: rgba(82, 44, 34, 0.88);
+  font-size: 0.8rem;
+}
+
+.email-campaigns-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #fff;
+  max-height: 180px;
+  font-size: 0.86rem;
+  overflow: auto;
+  border: 1px solid rgba(157, 150, 112, 0.32) !important;
+}
+
+.email-campaigns-block-title {
+  font-size: 1rem;
+  color: #17080a;
+  letter-spacing: 0.01em;
+}
+
+.email-campaigns-preview-html {
+  font-size: 0.96rem;
+  line-height: 1.45;
+  color: #2d1b13;
+}
+
+.email-campaigns-preview-html > *:last-child {
+  margin-bottom: 0;
+}
+
+.email-campaigns-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.email-campaigns-summary-box {
+  border: 1px solid var(--email-shell-border);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.62rem;
+  background: #fff;
+  animation: email-campaigns-pop-in 220ms ease;
+}
+
+.email-campaigns-summary-label {
+  font-size: 0.7rem;
+  color: rgba(82, 44, 34, 0.68);
+}
+
+.email-campaigns-summary-value {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #17080a;
+}
+
+.email-campaigns-recipients-table td {
+  vertical-align: middle;
+  padding-block: 0.42rem;
+  font-size: 0.8rem;
+}
+
+.email-campaigns-recipients-table thead th {
+  font-size: 0.72rem;
+}
+
+.email-campaigns-recipients-table tbody tr {
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.email-campaigns-recipients-table tbody tr:hover {
+  background: rgba(244, 235, 214, 0.4);
+}
+
+.email-campaigns-recipients-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  font-size: 0.84rem;
+  color: rgba(82, 44, 34, 0.82);
+}
+
+.email-campaigns-recipients-head-main {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.email-campaigns-recipients-head-main small {
+  color: rgba(82, 44, 34, 0.7);
+  font-size: 0.74rem;
+}
+
+.email-campaigns-pagination {
+  padding: 0.7rem 0.8rem 0.78rem;
+  border-top: 1px solid rgba(157, 150, 112, 0.22);
+  background: rgba(255, 254, 247, 0.92);
+}
+
+@keyframes email-campaigns-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1199.98px) {
+  .email-campaigns-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .email-campaigns-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 991.98px) {
+  .email-campaigns-header-actions {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .email-campaigns-search {
+    grid-column: 1 / -1;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .email-campaigns-status-select {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  .email-campaigns-detail-list {
+    grid-template-columns: 1fr;
+  }
+
+  .email-campaigns-detail-modal .inv-warehouse-detail-modal__hero-main strong {
+    font-size: 1.28rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .email-campaigns-page {
+    padding: 0.85rem !important;
+  }
+
+  .email-campaigns-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .email-campaigns-kpi {
+    min-height: 52px;
+  }
+
+  .email-campaigns-kpi .inv-prod-kpi-spark {
+    display: none;
+  }
+
+  .email-campaigns-table-actions {
+    justify-content: flex-start;
+  }
+
+  .email-campaigns-mobile-list {
+    padding: 0.42rem;
+    gap: 0.4rem;
+  }
+
+  .email-campaigns-mobile-card {
+    padding: 0.48rem 0.55rem;
+  }
+
+  .email-campaigns-mobile-details .personas-page__card-row {
+    font-size: 0.72rem;
+  }
+
+  .email-campaigns-mobile-actions {
+    justify-content: flex-start;
+  }
+
+  .email-campaigns-mobile-actions .inv-catpro-action-compact {
+    height: 28px;
+    padding: 0 0.38rem !important;
+  }
+
+  .email-campaigns-mobile-actions .inv-catpro-action-label {
+    max-width: 90px;
+    font-size: 0.58rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .email-campaigns-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .email-campaigns-kpi {
+    min-height: 48px;
+  }
+
+  .email-campaigns-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .email-campaigns-table-main {
+    min-width: 140px;
+  }
+
+  .email-campaigns-recipients-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

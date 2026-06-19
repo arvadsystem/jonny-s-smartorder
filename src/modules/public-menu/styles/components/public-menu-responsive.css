@@ -1,0 +1,352 @@
+/* Reglas responsivas del modulo public-menu. */
+
+@media (max-width: 767.98px) {
+  .pm-catalog-screen {
+    padding-bottom: 6.2rem;
+  }
+
+  .pm-shell__content {
+    /* Layout mobile casi full-bleed para evitar sensacion de columna angosta. */
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0.68rem 0.35rem 1.35rem;
+  }
+
+  .pm-header__row {
+    /* Header centrado entre icono back y acciones para mejor armonia visual. */
+    display: grid;
+    grid-template-columns: 2rem 1fr auto;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .pm-header__actions {
+    width: auto;
+    margin-left: 0;
+    margin-top: 0;
+  }
+
+  .pm-shell__header-actions {
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .pm-shell__header-btn {
+    width: 2.05rem;
+    min-width: 2.05rem;
+    min-height: 2.05rem;
+    padding: 0;
+    font-size: 0.82rem;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .pm-shell__header-btn span {
+    display: none;
+  }
+
+  .pm-header__title-wrap {
+    text-align: center;
+    width: auto;
+    padding: 0 0.2rem;
+  }
+
+  .pm-header__title {
+    font-size: 1.08rem;
+  }
+
+  .pm-header__subtitle {
+    font-size: 0.86rem;
+    line-height: 1.32;
+  }
+
+  .pm-header__meta {
+    display: none;
+  }
+
+  .pm-branch-banner,
+  .pm-catalog-header {
+    position: static;
+  }
+
+  .pm-branch-screen {
+    padding-inline: 0.4rem;
+  }
+
+  .pm-branch-showcase {
+    border-radius: 16px;
+  }
+
+  .pm-jonny-experience {
+    margin-top: 0.72rem;
+  }
+
+  .pm-jonny-experience__card {
+    grid-template-columns: 1fr;
+    border-radius: 18px;
+  }
+
+  .pm-jonny-experience__intro,
+  .pm-jonny-experience__item {
+    padding: 1rem;
+  }
+
+  .pm-jonny-experience__item {
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    border-left: 0;
+    border-top: 1px solid rgba(143, 93, 54, 0.14);
+  }
+
+  .pm-jonny-experience__item p {
+    grid-column: 2;
+  }
+
+  .pm-jonny-experience__contact-list {
+    grid-column: 2;
+    justify-items: center;
+    justify-self: center;
+    max-width: none;
+  }
+
+  .pm-jonny-experience__contact-line,
+  .pm-jonny-experience__contact-empty {
+    text-align: center;
+    justify-content: center;
+  }
+
+  .pm-jonny-experience__social {
+    border-left: 0;
+    border-top: 1px solid rgba(143, 93, 54, 0.14);
+    padding: 1rem;
+  }
+
+  .pm-branch-hours-alert {
+    align-items: flex-start;
+    border-radius: 14px;
+    margin-top: 0.65rem;
+    padding: 0.75rem 0.82rem;
+  }
+
+  .pm-branch-hours-alert__icon {
+    width: 2.1rem;
+    height: 2.1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pm-category-splash,
+  .pm-category-splash__ring,
+  .pm-category-splash__logo,
+  .pm-category-content,
+  .pm-skeleton__hero,
+  .pm-skeleton__toolbar,
+  .pm-skeleton-card__media,
+  .pm-skeleton-card__line,
+  .pm-skeleton-card__button {
+    animation: none !important;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .pm-branch-screen {
+    padding-inline: 0.2rem;
+  }
+
+  .pm-shell__content {
+    /* Margen horizontal minimo en telefono. */
+    padding: 0.58rem 0.22rem 1.25rem;
+  }
+
+  .pm-header__row {
+    padding: 0.75rem 0.82rem;
+  }
+
+  .pm-header__title {
+    font-size: 1.04rem;
+  }
+
+  .pm-header__subtitle {
+    font-size: 0.84rem;
+  }
+
+  .pm-shell__header-btn {
+    min-height: 35px;
+    font-size: 0.78rem;
+    padding: 0.34rem 0.45rem;
+  }
+
+  /* Reducimos ruido visual ocultando meta larga de sucursal en moviles pequenos. */
+  .pm-header__meta {
+    display: none;
+  }
+
+  .pm-screen__title {
+    font-size: 1.05rem;
+  }
+
+  .pm-branch-hero-carousel__viewport {
+    min-height: 252px;
+  }
+
+  .pm-branch-screen__hero-content {
+    max-width: 100%;
+    gap: 0.36rem;
+  }
+
+  .pm-branch-screen__hero-title {
+    font-size: 1.22rem;
+  }
+
+  .pm-branch-hero-carousel__arrow {
+    width: 39px;
+    height: 39px;
+  }
+
+  .pm-option-card {
+    padding: 0.9rem;
+  }
+
+  .pm-branch-card__media {
+    margin: -0.9rem -0.9rem 0.75rem;
+    min-height: 168px;
+  }
+
+  .pm-branch-card__image {
+    height: 168px;
+  }
+
+  .pm-branch-banner__change {
+    width: 100%;
+  }
+
+  .pm-product-card {
+    padding: 0.65rem;
+  }
+
+  .pm-product-card__image,
+  .pm-product-card__placeholder,
+  .pm-product-card__media {
+    min-height: 150px;
+    height: 150px;
+  }
+
+  .pm-cart-sheet__item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.45rem;
+  }
+
+  .pm-cart-sheet__item-side {
+    width: 100%;
+    justify-items: start;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  .pm-shell__content {
+    padding: 0.52rem 0.14rem 1.2rem;
+  }
+
+  .pm-sticky-bar__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .pm-sticky-bar {
+    padding: 0.65rem 0.75rem 0.85rem;
+  }
+
+  .pm-branch-order-selector__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 768px) {
+  .pm-skeleton__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pm-branch-order-selector__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pm-sticky-bar {
+    left: 50%;
+    right: auto;
+    width: 680px;
+    transform: translateX(-50%);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-bottom: 0;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+  }
+
+  .pm-branch-confirm-card__actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pm-product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pm-screen__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pm-branch-screen .pm-screen__list {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+
+  .pm-branch-hero-carousel__viewport {
+    min-height: 380px;
+  }
+
+  .pm-detail-sheet {
+    border-radius: 18px 18px 0 0;
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pm-shell__content {
+    width: min(100%, 1180px);
+  }
+
+  /* Mantiene el catalogo en ancho completo tambien en escritorio grande. */
+  .pm-shell__content.pm-shell__content--catalog {
+    width: 100%;
+    max-width: none;
+    padding-inline: clamp(0.85rem, 2vw, 1.8rem);
+  }
+
+  .pm-product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pm-skeleton__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pm-branch-hero-carousel__viewport {
+    min-height: 430px;
+  }
+
+  .pm-branch-screen {
+    padding-inline: clamp(1rem, 2.2vw, 2.6rem);
+  }
+}
+
+@media (min-width: 1280px) {
+  .pm-screen__list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pm-branch-screen .pm-screen__list {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+}

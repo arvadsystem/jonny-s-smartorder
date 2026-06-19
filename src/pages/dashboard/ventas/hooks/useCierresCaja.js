@@ -1,0 +1,566 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import cajasService from '../../../../services/cajasService';
+import {
+  buildCierresStats,
+  extractCajasApiMessage,
+  normalizeCajaCatalogos,
+  normalizeSesion,
+  normalizeSesionActiva,
+  normalizeSesionDetalle
+} from '../utils/cajasHelpers';
+
+const initialCatalogos = Object.freeze({
+  cajas: [],
+  estados_sesion: [],
+  roles_participacion: [],
+  tipos_movimiento: [],
+  metodos_pago: [],
+  resoluciones_cierre: [],
+  tipos_arqueo: []
+});
+
+export function useCierresCaja() {
+  const [catalogos, setCatalogos] = useState(initialCatalogos);
+  const [sesionActiva, setSesionActiva] = useState(null);
+  const [sesiones, setSesiones] = useState([]);
+  const [loadingCatalogos, setLoadingCatalogos] = useState(false);
+  const [loadingSesiones, setLoadingSesiones] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [toast, setToast] = useState({
+    show: false,
+    title: '',
+    message: '',
+    variant: 'success'
+  });
+
+  const openToast = useCallback((title, message, variant = 'success') => {
+    setToast({ show: true, title, message, variant });
+  }, []);
+
+  const openConflictToast = useCallback((errorResponse, fallbackMessage) => {
+    const message = extractCajasApiMessage(errorResponse, fallbackMessage);
+    const isConflict = Number(errorResponse?.status) === 409;
+    const conflictCode = String(errorResponse?.code || '').trim().toUpperCase();
+    const isAssignmentConflict = conflictCode === 'VENTAS_CAJAS_ASSIGN_USER_ACTIVE_DUPLICATE';
+
+    if (isConflict || isAssignmentConflict) {
+      openToast('CONFLICTO DE ASIGNACIÓN', message, 'danger');
+      return;
+    }
+    openToast('ERROR', message, 'danger');
+  }, [openToast]);
+
+  const closeToast = useCallback(() => {
+    setToast((current) => ({ ...current, show: false }));
+  }, []);
+
+  useEffect(() => {
+    if (!toast.show) return undefined;
+    const timer = setTimeout(() => {
+      setToast((current) => ({ ...current, show: false }));
+    }, 3200);
+    return () => clearTimeout(timer);
+  }, [toast.show]);
+
+  const loadCatalogos = useCallback(
+    async (params = {}) => {
+      setLoadingCatalogos(true);
+      try {
+        const response = await cajasService.getCatalogos(params);
+        setCatalogos(normalizeCajaCatalogos(response));
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo cargar la configuracion operativa de cajas.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setLoadingCatalogos(false);
+      }
+    },
+    [openToast]
+  );
+
+  const loadSesionActiva = useCallback(
+    async (params = {}) => {
+      try {
+        const response = await cajasService.getSesionActiva(params);
+        const normalized = normalizeSesionActiva(response);
+        setSesionActiva(normalized);
+        return normalized;
+      } catch (errorResponse) {
+        setSesionActiva(null);
+        throw errorResponse;
+      }
+    },
+    []
+  );
+
+  const loadSesiones = useCallback(
+    async (params = {}) => {
+      setLoadingSesiones(true);
+      setError('');
+      try {
+        const response = await cajasService.listSesiones(params);
+        const normalized = (Array.isArray(response) ? response : []).map(normalizeSesion);
+        setSesiones(normalized);
+        return normalized;
+      } catch (errorResponse) {
+        const message = extractCajasApiMessage(
+          errorResponse,
+          'No se pudo cargar el historial de sesiones de caja.'
+        );
+        setSesiones([]);
+        setError(message);
+        openToast('ERROR', message, 'danger');
+        throw errorResponse;
+      } finally {
+        setLoadingSesiones(false);
+      }
+    },
+    [openToast]
+  );
+
+  const getSesionDetalle = useCallback(
+    async (idSesionCaja, options = {}) => {
+      setDetailLoading(true);
+      try {
+        const response = await cajasService.getSesionReporte(idSesionCaja, {
+          contexto: options.contexto || options.context || undefined,
+          ...(options.force ? { _ts: Date.now() } : {})
+        });
+        return normalizeSesionDetalle(response);
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo cargar el detalle de la sesión.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [openToast]
+  );
+
+  const openSesion = useCallback(
+    async (payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.openSesion(payload);
+        openToast(
+          'SESIÓN ABIERTA',
+          response?.message || 'La sesión de caja se inició correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo abrir la sesión de caja.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const listUsuariosOperativos = useCallback(
+    async (params = {}) => {
+      try {
+        return await cajasService.listUsuariosOperativos(params);
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo cargar el listado de usuarios operativos.'),
+          'danger'
+        );
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
+  const listCajaCatalogo = useCallback(
+    async (params = {}) => {
+      try {
+        return await cajasService.listCajaCatalogo(params);
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo cargar el catalogo de cajas.'),
+          'danger'
+        );
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
+  const listCajaAsignaciones = useCallback(
+    async (params = {}) => {
+      try {
+        return await cajasService.listAsignaciones(params);
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudieron cargar las asignaciones de cajas.'),
+          'danger'
+        );
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
+  const createCajaCatalogo = useCallback(
+    async (payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.createCajaCatalogo(payload);
+        openToast(
+          'CAJA CREADA',
+          response?.message || 'La caja se creo correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openConflictToast(errorResponse, 'No se pudo crear la caja.');
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openConflictToast, openToast]
+  );
+
+  const createCajaAsignacion = useCallback(
+    async (payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.createAsignacion(payload);
+        openToast(
+          'ASIGNACIÓN CREADA',
+          response?.message || 'La asignación se registró correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openConflictToast(errorResponse, 'No se pudo registrar la asignación.');
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openConflictToast, openToast]
+  );
+
+  const updateCajaAsignacion = useCallback(
+    async (idAsignacion, payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.updateAsignacion(idAsignacion, payload);
+        openToast(
+          'ASIGNACIÓN ACTUALIZADA',
+          response?.message || 'La asignación se actualizó correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo actualizar la asignación.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const inactivateCajaAsignacion = useCallback(
+    async (idAsignacion) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.inactivateAsignacion(idAsignacion);
+        openToast(
+          'ASIGNACIÓN INACTIVADA',
+          response?.message || 'La asignación se inactivó correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo inactivar la asignación.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const closeSesion = useCallback(
+    async (idSesionCaja, payload, options = {}) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.closeSesion(idSesionCaja, payload);
+        openToast(
+          'CIERRE REGISTRADO',
+          response?.message || 'El cierre de caja se registro correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        if (!options?.silent) {
+          openToast(
+            'ERROR',
+            extractCajasApiMessage(errorResponse, 'No se pudo registrar el cierre de caja.'),
+            'danger'
+          );
+        }
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const previewCloseSesion = useCallback(
+    async (idSesionCaja, payload, options = {}) => {
+      try {
+        return await cajasService.previewCloseSesion(idSesionCaja, payload);
+      } catch (errorResponse) {
+        if (!options?.silent) {
+          openToast(
+            'ERROR',
+            extractCajasApiMessage(errorResponse, 'No se pudo calcular la vista previa del cierre.'),
+            'danger'
+          );
+        }
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
+  const validateCloseSesion = useCallback(
+    async (idSesionCaja, payload, options = {}) => {
+      try {
+        const response = await cajasService.validarCierreSesion(idSesionCaja, payload);
+        if (!options?.silent) {
+          openToast('DIFERENCIAS REVISADAS', 'Diferencias revisadas.', 'success');
+        }
+        return response;
+      } catch (errorResponse) {
+        if (!options?.silent) {
+          openToast(
+            'ERROR',
+            extractCajasApiMessage(errorResponse, 'No se pudo revisar las diferencias.'),
+            'danger'
+          );
+        }
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
+  const createMiSesionEgreso = useCallback(
+    async (payload, options = {}) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.registrarMiSesionEgreso(payload);
+        if (!options?.silent) {
+          openToast(
+            'EGRESO REGISTRADO',
+            response?.message || 'Egreso registrado correctamente.',
+            'success'
+          );
+        }
+        return response;
+      } catch (errorResponse) {
+        if (!options?.silent) {
+          openToast(
+            'ERROR',
+            extractCajasApiMessage(errorResponse, 'No se pudo registrar el egreso.'),
+            'danger'
+          );
+        }
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const createMiSesionIngreso = useCallback(
+    async (payload, options = {}) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.registrarMiSesionIngreso(payload);
+        if (!options?.silent) {
+          openToast(
+            'INGRESO REGISTRADO',
+            'Ingreso registrado correctamente.',
+            'success'
+          );
+        }
+        return response;
+      } catch (errorResponse) {
+        if (!options?.silent) {
+          openToast(
+            'ERROR',
+            extractCajasApiMessage(errorResponse, 'No se pudo registrar el ingreso.'),
+            'danger'
+          );
+        }
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const createMiSesionMovimientoManual = useCallback(
+    async (tipo, payload, options = {}) => {
+      if (tipo === 'EGRESO') {
+        return createMiSesionEgreso(payload, options);
+      }
+      return createMiSesionIngreso(payload, options);
+    },
+    [createMiSesionEgreso, createMiSesionIngreso]
+  );
+
+  const editCierre = useCallback(
+    async (idCierreCaja, payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.editCierre(idCierreCaja, payload);
+        openToast(
+          'CIERRE ACTUALIZADO',
+          response?.message || 'El cierre de caja se actualizo correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo editar el cierre de caja.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const resolveCloseDifference = useCallback(
+    async (idCierreCaja, payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.resolveCloseDifference(idCierreCaja, payload);
+        openToast(
+          'DIFERENCIA RESUELTA',
+          response?.message || 'La diferencia de cierre se resolvio correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo resolver la diferencia del cierre.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const createArqueo = useCallback(
+    async (idSesionCaja, payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.createArqueo(idSesionCaja, payload);
+        openToast(
+          'ARQUEO REGISTRADO',
+          response?.message || 'El arqueo se registro correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo registrar el arqueo.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const stats = useMemo(
+    () => buildCierresStats({ sesiones, sesionActiva }),
+    [sesionActiva, sesiones]
+  );
+
+  return {
+    catalogos,
+    sesionActiva,
+    sesiones,
+    stats,
+    loadingCatalogos,
+    loadingSesiones,
+    detailLoading,
+    saving,
+    error,
+    toast,
+    openToast,
+    closeToast,
+    loadCatalogos,
+    loadSesionActiva,
+    loadSesiones,
+    listUsuariosOperativos,
+    listCajaCatalogo,
+    listCajaAsignaciones,
+    getSesionDetalle,
+    openSesion,
+    createCajaCatalogo,
+    createCajaAsignacion,
+    updateCajaAsignacion,
+    inactivateCajaAsignacion,
+    closeSesion,
+    previewCloseSesion,
+    validateCloseSesion,
+    createMiSesionIngreso,
+    createMiSesionEgreso,
+    createMiSesionMovimientoManual,
+    editCierre,
+    resolveCloseDifference,
+    createArqueo
+  };
+}

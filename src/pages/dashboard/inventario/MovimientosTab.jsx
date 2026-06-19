@@ -1,1261 +1,1748 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 
-const MovimientosTab = ({ openToast }) => {
-  // ==============================
-  // ESTADOS PRINCIPALES
-  // ==============================
+const parseEstado = (value) => {
+  if (value === true || value === 'true' || value === 1 || value === '1') return true;
+  if (value === false || value === 'false' || value === 0 || value === '0') return false;
+  return Boolean(value);
+};
+
+// NEW: normaliza fechas visibles del kardex en una sola funcion reutilizable.
+// WHY: la tabla y las cards mobile deben usar el mismo formato para no generar diferencias visuales.
+// IMPACT: solo presentacion; no altera requests ni contratos del endpoint.
+const formatKardexFecha = (value) => {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleString('es-HN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const formatRefLabel = (movimiento) => {
+  const origen = String(movimiento?.ref_origen ?? '').trim();
+  const refId =
+    movimiento?.id_ref === null || movimiento?.id_ref === undefined ? '' : String(movimiento?.id_ref).trim();
+
+  if (origen && refId) return `${origen} #${refId}`;
+  if (origen) return origen;
+  if (refId) return `#${refId}`;
+  return '-';
+};
+
+const getTipoBadgeClass = (tipo) => {
+  const normalized = String(tipo ?? '').toUpperCase();
+  if (normalized === 'ENTRADA') return 'is-entry';
+  if (normalized === 'SALIDA') return 'is-exit';
+  if (normalized === 'AJUSTE') return 'is-adjust';
+  return 'is-neutral';
+};
+
+const formatSaldoLabel = (movimiento) => {
+  if (movimiento?.es_legacy) return 'N/D';
+  return `${movimiento?.saldo_antes ?? 'N/D'} -> ${movimiento?.saldo_despues ?? 'N/D'}`;
+};
+
+const formatCantidadLabel = (movimiento) => {
+  const tipo = String(movimiento?.tipo ?? '').toUpperCase();
+  const impacto = Number(movimiento?.impacto);
+  const cantidad = Number(movimiento?.cantidad ?? 0);
+
+  if (Number.isFinite(impacto) && impacto !== 0) return `${impacto > 0 ? '+' : ''}${impacto}`;
+  if (tipo === 'AJUSTE') return `= ${cantidad}`;
+  if (!cantidad) return '-';
+  if (tipo === 'ENTRADA') return `+${cantidad}`;
+  if (tipo === 'SALIDA') return `-${cantidad}`;
+  return String(cantidad);
+};
+
+const formatSucursalOptionLabel = (sucursal, fallbackId = '') => {
+  const id = String(sucursal?.id_sucursal ?? fallbackId ?? '').trim();
+  if (!id) return 'Sucursal sin ID';
+
+  const nombre = String(sucursal?.nombre_sucursal ?? '').trim() || `Sucursal ${id}`;
+  return `${nombre}${parseEstado(sucursal?.estado) ? '' : ' (Inactiva)'}`;
+};
+
+const formatAlmacenOptionLabel = (almacen, sucursalesMap) => {
+  const nombreAlmacen = String(almacen?.nombre ?? '').trim() || `Almacen ${almacen?.id_almacen ?? ''}`;
+  const sucursal = sucursalesMap.get(String(almacen?.id_sucursal ?? '').trim());
+  const nombreSucursal = String(sucursal?.nombre_sucursal ?? '').trim() || `Sucursal ${almacen?.id_sucursal ?? '-'}`;
+  return `${nombreAlmacen} / ${nombreSucursal}`;
+};
+
+const formatItemOptionLabel = (item, fallbackLabel) => {
+  const nombre =
+    String(item?.nombre_producto ?? item?.nombre_insumo ?? '').trim() ||
+    `${fallbackLabel} ${item?.id_producto ?? item?.id_insumo ?? ''}`;
+  return `${nombre}${parseEstado(item?.estado) ? '' : ' (Inactivo)'}`;
+};
+
+const normalizeItemTipoFilter = (value) => {
+  if (value === 'producto') return 'Producto';
+  if (value === 'insumo') return 'Insumo';
+  return '';
+};
+
+const getItemId = (item, itemTipo) =>
+  itemTipo === 'producto' ? String(item?.id_producto ?? '').trim() : String(item?.id_insumo ?? '').trim();
+const getItemDisplayName = (item, itemTipo) => {
+  if (itemTipo === 'producto') {
+    return String(item?.nombre_producto ?? item?.nombre ?? '').trim() || `Producto ${item?.id_producto ?? ''}`;
+  }
+  return String(item?.nombre_insumo ?? item?.nombre ?? '').trim() || `Insumo ${item?.id_insumo ?? ''}`;
+};
+
+const MOVIMIENTOS_PAGE_SIZE = 10;
+const MOVIMIENTOS_REFERENCIAS_LIMIT = 300;
+const DEFAULT_KARDEX_PAGINATION = {
+  page: 1,
+  pageSize: MOVIMIENTOS_PAGE_SIZE,
+  total: 0,
+  totalPages: 1
+};
+const AJUSTE_STOCK_FINAL_HELP = 'En AJUSTE, la cantidad representa la existencia final del item en el almacen.';
+const MOVIMIENTO_DECIMAL_HELP = 'La cantidad debe ser un numero mayor que 0. Puede usar hasta 4 decimales.';
+const AJUSTE_DECIMAL_HELP = 'La existencia final debe ser un numero mayor o igual a 0. Puede usar hasta 4 decimales.';
+const REFERENCIAS_CONTEXT_MESSAGE = 'Selecciona un almacen y el tipo de item para cargar opciones.';
+const MOVIMIENTOS_SCOPE_BLOCKED_MESSAGE =
+  'No tienes acceso al recurso solicitado dentro de tu alcance de sucursal.';
+const MOVIMIENTOS_SCOPE_NOT_FOUND_MESSAGE =
+  'El recurso solicitado no esta disponible en tu alcance actual o no existe.';
+
+const resolveMovimientosRequestMessage = (error, fallbackMessage) => {
+  const status = Number(error?.status ?? 0);
+  const code = String(error?.code ?? error?.data?.code ?? '').trim().toUpperCase();
+  const apiMessage = String(error?.message ?? '').trim();
+
+  if (status === 403 || code === 'FORBIDDEN') {
+    return apiMessage || MOVIMIENTOS_SCOPE_BLOCKED_MESSAGE;
+  }
+
+  if (status === 404 && /almacen no encontrado/i.test(apiMessage)) {
+    return MOVIMIENTOS_SCOPE_NOT_FOUND_MESSAGE;
+  }
+
+  return apiMessage || fallbackMessage;
+};
+
+const normalizeReferenciaItems = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
+
+const normalizeKardexResponse = (payload, fallbackPagination = DEFAULT_KARDEX_PAGINATION) => {
+  const items = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.items)
+    ? payload.items
+    : Array.isArray(payload?.data)
+    ? payload.data
+    : [];
+
+  const paginationPayload = Array.isArray(payload) ? null : payload?.pagination;
+  const fallbackPage = Number(fallbackPagination?.page) || DEFAULT_KARDEX_PAGINATION.page;
+  const fallbackPageSize = Number(fallbackPagination?.pageSize) || MOVIMIENTOS_PAGE_SIZE;
+
+  const page = Math.max(1, Number(paginationPayload?.page ?? fallbackPage) || fallbackPage);
+  const pageSize = Math.max(
+    1,
+    Number(paginationPayload?.pageSize ?? paginationPayload?.limit ?? fallbackPageSize) || fallbackPageSize
+  );
+
+  const explicitTotal = Number(paginationPayload?.total);
+  const total = Number.isFinite(explicitTotal) && explicitTotal >= 0 ? explicitTotal : items.length;
+
+  const totalPagesFromPayload = Number(paginationPayload?.totalPages ?? paginationPayload?.total_pages);
+  const computedTotalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages =
+    Number.isFinite(totalPagesFromPayload) && totalPagesFromPayload > 0
+      ? Math.max(1, totalPagesFromPayload)
+      : computedTotalPages;
+
+  return {
+    items,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages
+    }
+  };
+};
+
+const MovimientosTab = ({
+  openToast,
+  embedded = false,
+  onMovimientoCreado,
+  almacenes = [],
+  sucursales = [],
+  selectedAlmacenId = '',
+  onSelectAlmacen,
+  presetFilters = {},
+  presetFiltersVersion = 0
+}) => {
+  const { can, canAny, loading: permisosLoading } = usePermisos();
+  const canVerMovimientos = can(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER);
+  const canCrearMovimientos = can(PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR);
+  const canAccessMovimientosTab = canAny([
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_EDITAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_ELIMINAR
+  ]);
+
   const [movimientos, setMovimientos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingRefs, setLoadingRefs] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // LISTAS PARA DROPDOWNS (FK)
-  const [almacenes, setAlmacenes] = useState([]);
   const [productos, setProductos] = useState([]);
   const [insumos, setInsumos] = useState([]);
-  const [loadingRefs, setLoadingRefs] = useState(false);
 
-  // ==============================
-  // MODAL CREAR (MÓVIL)
-  // ==============================
-  const [showCreateSheet, setShowCreateSheet] = useState(false);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
-  // ==============================
-  // FILTROS
-  // ==============================
   const [search, setSearch] = useState('');
-  const [tipoFiltro, setTipoFiltro] = useState('todos'); // todos | ENTRADA | SALIDA | AJUSTE
-  const [almacenFiltro, setAlmacenFiltro] = useState('todos'); // todos | id_almacen
-  const [itemFiltro, setItemFiltro] = useState('todos'); // todos | producto | insumo
-  const [desde, setDesde] = useState(''); // YYYY-MM-DD
-  const [hasta, setHasta] = useState(''); // YYYY-MM-DD
-
-  // ==============================
-  // FORM CREAR
-  // ==============================
-  const [form, setForm] = useState({
-    item_tipo: 'producto', // producto | insumo
-    id_producto: '',
-    id_insumo: '',
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [listPage, setListPage] = useState(1);
+  const [pagination, setPagination] = useState({ ...DEFAULT_KARDEX_PAGINATION });
+  const [tipoFiltro, setTipoFiltro] = useState('todos');
+  const [sucursalFiltro, setSucursalFiltro] = useState('');
+  const [almacenFiltro, setAlmacenFiltro] = useState('todos');
+  const [itemTipoFiltro, setItemTipoFiltro] = useState('todos');
+  const [itemFiltroId, setItemFiltroId] = useState('');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const [filterDraft, setFilterDraft] = useState({
     id_almacen: '',
+    tipo: 'todos',
+    item_tipo: 'todos',
+    id_item: '',
+    desde: '',
+    hasta: ''
+  });
+
+  const [form, setForm] = useState({
     tipo: 'ENTRADA',
+    id_almacen: '',
+    item_tipo: 'producto',
+    id_item: '',
     cantidad: '',
     ref_origen: '',
-    id_ref: '',
     descripcion: ''
   });
-
   const [createErrors, setCreateErrors] = useState({});
+  const [itemSearch, setItemSearch] = useState('');
+  const [isItemDropdownOpen, setIsItemDropdownOpen] = useState(false);
 
-  // ==============================
-  // EDITAR
-  // ==============================
-  const [editId, setEditId] = useState(null);
-  const [editForm, setEditForm] = useState(null);
-  const [editErrors, setEditErrors] = useState({});
+  const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
+  const kardexRequestIdRef = useRef(0);
+  const kardexFiltersKeyRef = useRef('');
+  const referenciasRequestIdRef = useRef(0);
+  const referenciasCacheRef = useRef(new Map());
+  const referenciasInFlightRef = useRef(new Set());
+  const itemComboboxRef = useRef(null);
 
-  // ==============================
-  // MODAL CONFIRMAR ELIMINAR
-  // ==============================
-  const [confirmModal, setConfirmModal] = useState({
-    show: false,
-    idToDelete: null,
-    titulo: ''
-  });
-
-  const openConfirmDelete = (id, titulo) => {
-    setConfirmModal({ show: true, idToDelete: id, titulo: titulo || '' });
+  const safeToast = (title, message, variant = 'success') => {
+    if (typeof openToast === 'function') openToast(title, message, variant);
   };
 
-  const closeConfirmDelete = () => {
-    setConfirmModal({ show: false, idToDelete: null, titulo: '' });
-  };
+  const sucursalesMap = useMemo(() => {
+    const map = new Map();
+    for (const sucursal of Array.isArray(sucursales) ? sucursales : []) {
+      const key = String(sucursal?.id_sucursal ?? '').trim();
+      if (!key) continue;
+      map.set(key, sucursal);
+    }
+    return map;
+  }, [sucursales]);
 
-  // ==============================
-  // HELPERS
-  // ==============================
-  const blockNonIntegerKeys = (e) => {
-    const blocked = ['.', ',', 'e', 'E', '+', '-'];
-    if (blocked.includes(e.key)) e.preventDefault();
-  };
-
-  const sanitizeInteger = (value) => String(value ?? '').replace(/[^\d]/g, '');
-
-  const toDateOnly = (value) => {
-    if (!value) return '';
-    const s = String(value);
-    if (s.includes('T')) return s.split('T')[0];
-    // SI ES "2026-01-01 10:00:00", TOMAR SOLO FECHA
-    if (s.includes(' ')) return s.split(' ')[0];
-    return s;
-  };
-
-  const safeToast = (title, msg, variant) => {
-    if (typeof openToast === 'function') openToast(title, msg, variant);
-  };
-
-  // ==============================
-  // MAPAS ID -> LABEL
-  // ==============================
   const almacenesMap = useMemo(() => {
-    const m = new Map();
-    for (const a of almacenes) m.set(String(a?.id_almacen), a);
-    return m;
+    const map = new Map();
+    for (const almacen of Array.isArray(almacenes) ? almacenes : []) {
+      const key = String(almacen?.id_almacen ?? '').trim();
+      if (!key) continue;
+      map.set(key, almacen);
+    }
+    return map;
   }, [almacenes]);
 
-  const productosMap = useMemo(() => {
-    const m = new Map();
-    for (const p of productos) m.set(String(p?.id_producto), p);
-    return m;
-  }, [productos]);
+  const almacenesOperativos = useMemo(
+    () => (Array.isArray(almacenes) ? almacenes.filter((almacen) => parseEstado(almacen?.estado ?? true)) : []),
+    [almacenes]
+  );
 
-  const insumosMap = useMemo(() => {
-    const m = new Map();
-    for (const i of insumos) m.set(String(i?.id_insumo), i);
-    return m;
-  }, [insumos]);
-
-  const getAlmacenLabel = (id) => {
-    const a = almacenesMap.get(String(id));
-    if (!a) return String(id || '-');
-    // COMENTARIO EN MAYÚSCULAS: MISMO FORMATO QUE INSUMOS/PRODUCTOS (NOMBRE + SUCURSAL)
-    return `${a.nombre} (Sucursal ${a.id_sucursal})`;
-  };
-
-  const getItemLabel = (mov) => {
-    if (mov?.id_producto) {
-      const p = productosMap.get(String(mov.id_producto));
-      return p?.nombre_producto || `Producto #${mov.id_producto}`;
-    }
-    if (mov?.id_insumo) {
-      const i = insumosMap.get(String(mov.id_insumo));
-      return i?.nombre_insumo || `Insumo #${mov.id_insumo}`;
-    }
-    return '-';
-  };
-
-  const getItemTipo = (mov) => {
-    if (mov?.id_producto) return 'Producto';
-    if (mov?.id_insumo) return 'Insumo';
-    return '-';
-  };
-
-  // ==============================
-  // VALIDACIÓN MÍNIMA
-  // ==============================
-  const validarMovimiento = (data) => {
-    const errors = {};
-
-    const item_tipo = String(data?.item_tipo ?? 'producto');
-    const id_producto_raw = String(data?.id_producto ?? '').trim();
-    const id_insumo_raw = String(data?.id_insumo ?? '').trim();
-    const id_almacen_raw = String(data?.id_almacen ?? '').trim();
-
-    const tipo = String(data?.tipo ?? '').trim().toUpperCase();
-    const cantidad_raw = String(data?.cantidad ?? '').trim();
-
-    const ref_origen = String(data?.ref_origen ?? '').trim();
-    const id_ref_raw = String(data?.id_ref ?? '').trim();
-    const descripcion = String(data?.descripcion ?? '').trim();
-
-    const id_almacen = Number.parseInt(id_almacen_raw, 10);
-    const cantidad = Number.parseInt(cantidad_raw, 10);
-
-    const id_producto = id_producto_raw ? Number.parseInt(id_producto_raw, 10) : null;
-    const id_insumo = id_insumo_raw ? Number.parseInt(id_insumo_raw, 10) : null;
-
-    // TIPO
-    if (!['ENTRADA', 'SALIDA', 'AJUSTE'].includes(tipo)) {
-      errors.tipo = 'TIPO INVÁLIDO (ENTRADA/SALIDA/AJUSTE)';
+  const sucursalesDisponibles = useMemo(() => {
+    const ids = new Set();
+    for (const almacen of Array.isArray(almacenes) ? almacenes : []) {
+      const id = String(almacen?.id_sucursal ?? '').trim();
+      if (!id) continue;
+      ids.add(id);
     }
 
-    // CANTIDAD ENTERA > 0
-    if (!cantidad_raw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
-    else if (!/^\d+$/.test(cantidad_raw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
-    else if (Number.isNaN(cantidad) || cantidad <= 0) errors.cantidad = 'DEBE SER UN ENTERO > 0';
+    return Array.from(ids)
+      .sort((left, right) => Number(left) - Number(right))
+      .map((id) => ({
+        id,
+        label: formatSucursalOptionLabel(sucursalesMap.get(id), id)
+      }));
+  }, [almacenes, sucursalesMap]);
 
-    // ALMACÉN
-    if (!id_almacen_raw) errors.id_almacen = 'EL ALMACÉN ES OBLIGATORIO';
-    else if (Number.isNaN(id_almacen) || id_almacen <= 0) errors.id_almacen = 'ALMACÉN INVÁLIDO';
+  const selectedWarehouseFromParent =
+    String(selectedAlmacenId ?? '').trim() && String(selectedAlmacenId ?? '').trim() !== 'todos'
+      ? almacenesMap.get(String(selectedAlmacenId).trim()) || null
+      : null;
 
-    // ITEM: PRODUCTO O INSUMO
-    if (item_tipo === 'producto') {
-      if (!id_producto_raw) errors.id_producto = 'SELECCIONA UN PRODUCTO';
-      else if (Number.isNaN(id_producto) || id_producto <= 0) errors.id_producto = 'PRODUCTO INVÁLIDO';
-    } else {
-      if (!id_insumo_raw) errors.id_insumo = 'SELECCIONA UN INSUMO';
-      else if (Number.isNaN(id_insumo) || id_insumo <= 0) errors.id_insumo = 'INSUMO INVÁLIDO';
+  const defaultSucursalId = useMemo(() => {
+    if (selectedWarehouseFromParent?.id_sucursal) return String(selectedWarehouseFromParent.id_sucursal);
+    return sucursalesDisponibles[0]?.id ?? '';
+  }, [selectedWarehouseFromParent?.id_sucursal, sucursalesDisponibles]);
+
+  const baseSucursalId = useMemo(() => {
+    const presetSucursal = String(presetFilters?.id_sucursal ?? '').trim();
+    if (presetSucursal && sucursalesDisponibles.some((option) => option.id === presetSucursal)) return presetSucursal;
+    return defaultSucursalId;
+  }, [defaultSucursalId, presetFilters?.id_sucursal, sucursalesDisponibles]);
+
+  const baseAlmacenId = useMemo(() => {
+    const presetAlmacen = String(presetFilters?.id_almacen ?? 'todos').trim() || 'todos';
+    if (presetAlmacen !== 'todos' && almacenesMap.has(presetAlmacen)) return presetAlmacen;
+    return selectedWarehouseFromParent ? String(selectedWarehouseFromParent.id_almacen) : 'todos';
+  }, [almacenesMap, presetFilters?.id_almacen, selectedWarehouseFromParent]);
+
+  const baseTipoFiltro = useMemo(() => {
+    const safeTipo = String(presetFilters?.tipo ?? 'todos').trim() || 'todos';
+    return ['todos', 'ENTRADA', 'SALIDA', 'AJUSTE'].includes(safeTipo) ? safeTipo : 'todos';
+  }, [presetFilters?.tipo]);
+
+  const almacenesFiltroOptions = useMemo(() => {
+    return (Array.isArray(almacenes) ? [...almacenes] : [])
+      .filter((almacen) => (sucursalFiltro ? String(almacen?.id_sucursal ?? '') === String(sucursalFiltro) : true))
+      .sort((left, right) => Number(left?.id_almacen ?? 0) - Number(right?.id_almacen ?? 0));
+  }, [almacenes, sucursalFiltro]);
+
+  const productosFiltroOptions = useMemo(() => {
+    return (Array.isArray(productos) ? [...productos] : [])
+      .filter((producto) => (almacenFiltro === 'todos' ? true : String(producto?.id_almacen ?? '') === String(almacenFiltro)))
+      .sort((left, right) =>
+        String(left?.nombre_producto ?? '').localeCompare(String(right?.nombre_producto ?? ''), 'es')
+      );
+  }, [almacenFiltro, productos]);
+
+  const insumosFiltroOptions = useMemo(() => {
+    return (Array.isArray(insumos) ? [...insumos] : [])
+      .filter((insumo) => (almacenFiltro === 'todos' ? true : String(insumo?.id_almacen ?? '') === String(almacenFiltro)))
+      .sort((left, right) =>
+        String(left?.nombre_insumo ?? '').localeCompare(String(right?.nombre_insumo ?? ''), 'es')
+      );
+  }, [almacenFiltro, insumos]);
+
+  const itemFiltroOptions = useMemo(() => {
+    if (itemTipoFiltro === 'producto') return productosFiltroOptions;
+    if (itemTipoFiltro === 'insumo') return insumosFiltroOptions;
+    return [];
+  }, [insumosFiltroOptions, itemTipoFiltro, productosFiltroOptions]);
+
+  const filterDraftItemOptions = useMemo(() => {
+    const draftWarehouseId = String(filterDraft.id_almacen ?? '').trim();
+    if (!draftWarehouseId || filterDraft.item_tipo === 'todos') return [];
+
+    const source = filterDraft.item_tipo === 'producto' ? productos : insumos;
+
+    return (Array.isArray(source) ? [...source] : [])
+      .filter((item) => String(item?.id_almacen ?? '') === draftWarehouseId)
+      .sort((left, right) =>
+        String(left?.nombre_producto ?? left?.nombre_insumo ?? '').localeCompare(
+          String(right?.nombre_producto ?? right?.nombre_insumo ?? ''),
+          'es'
+        )
+      );
+  }, [filterDraft.id_almacen, filterDraft.item_tipo, insumos, productos]);
+
+  const formItemOptions = useMemo(() => {
+    const almacenId = String(form.id_almacen ?? '').trim();
+    const source = form.item_tipo === 'producto' ? productos : insumos;
+
+    return (Array.isArray(source) ? [...source] : [])
+      .filter((item) => String(item?.id_almacen ?? '') === almacenId)
+      .sort((left, right) =>
+        String(left?.nombre_producto ?? left?.nombre_insumo ?? '').localeCompare(
+          String(right?.nombre_producto ?? right?.nombre_insumo ?? ''),
+          'es'
+        )
+      );
+  }, [form.id_almacen, form.item_tipo, insumos, productos]);
+  const formItemActiveOptions = useMemo(
+    () => formItemOptions.filter((item) => parseEstado(item?.estado ?? true)),
+    [formItemOptions]
+  );
+  const filteredCreateItemOptions = useMemo(() => {
+    const term = String(itemSearch || '').trim().toLowerCase();
+    const source = formItemActiveOptions;
+    if (!term) return source;
+    return source.filter((item) => getItemDisplayName(item, form.item_tipo).toLowerCase().includes(term));
+  }, [form.item_tipo, formItemActiveOptions, itemSearch]);
+  const selectedCreateItem = useMemo(
+    () => formItemActiveOptions.find((item) => getItemId(item, form.item_tipo) === String(form.id_item ?? '').trim()) || null,
+    [form.id_item, form.item_tipo, formItemActiveOptions]
+  );
+  const createItemInputValue = useMemo(() => {
+    if (itemSearch) return itemSearch;
+    if (selectedCreateItem) return getItemDisplayName(selectedCreateItem, form.item_tipo);
+    return '';
+  }, [form.item_tipo, itemSearch, selectedCreateItem]);
+
+  const selectedAlmacen = useMemo(() => {
+    const safeId = String(almacenFiltro ?? '').trim();
+    if (!safeId || safeId === 'todos') return null;
+    return almacenesMap.get(safeId) || null;
+  }, [almacenFiltro, almacenesMap]);
+
+  const lockedFilterWarehouse = useMemo(() => {
+    const selectedKey = String(selectedAlmacenId ?? '').trim();
+    if (selectedKey && almacenesMap.has(selectedKey)) return almacenesMap.get(selectedKey) || null;
+
+    const currentKey = String(almacenFiltro ?? '').trim();
+    if (currentKey && currentKey !== 'todos') return almacenesMap.get(currentKey) || null;
+
+    return null;
+  }, [almacenFiltro, almacenesMap, selectedAlmacenId]);
+
+  const scopeLabel = useMemo(() => {
+    if (selectedAlmacen) return String(selectedAlmacen?.nombre ?? '').trim() || `Almacen #${selectedAlmacen?.id_almacen ?? '-'}`;
+    if (sucursalFiltro) return formatSucursalOptionLabel(sucursalesMap.get(String(sucursalFiltro).trim()), sucursalFiltro);
+    return 'Todos los almacenes';
+  }, [selectedAlmacen, sucursalFiltro, sucursalesMap]);
+
+  const kardexFiltersRequest = useMemo(
+    () => ({
+      id_sucursal: sucursalFiltro || undefined,
+      id_almacen: almacenFiltro === 'todos' ? undefined : almacenFiltro,
+      tipo: tipoFiltro === 'todos' ? undefined : tipoFiltro,
+      item_tipo: itemTipoFiltro === 'todos' ? undefined : normalizeItemTipoFilter(itemTipoFiltro),
+      id_item: itemFiltroId || undefined,
+      desde: desde || undefined,
+      hasta: hasta || undefined,
+      q: debouncedSearch || undefined
+    }),
+    [almacenFiltro, debouncedSearch, desde, hasta, itemFiltroId, itemTipoFiltro, sucursalFiltro, tipoFiltro]
+  );
+
+  const kardexRequest = useMemo(
+    () => ({
+      ...kardexFiltersRequest,
+      page: listPage,
+      pageSize: MOVIMIENTOS_PAGE_SIZE
+    }),
+    [kardexFiltersRequest, listPage]
+  );
+
+  const hasActiveListadoFilters = useMemo(
+    () =>
+      search.trim() !== '' ||
+      tipoFiltro !== 'todos' ||
+      itemTipoFiltro !== 'todos' ||
+      itemFiltroId !== '' ||
+      desde !== '' ||
+      hasta !== '',
+    [desde, hasta, itemFiltroId, itemTipoFiltro, search, tipoFiltro]
+  );
+
+  const listTotalPages = useMemo(
+    () => Math.max(1, Number(pagination?.totalPages ?? 1) || 1),
+    [pagination?.totalPages]
+  );
+
+  const paginatedMovimientos = movimientos;
+
+  const listPageWindow = useMemo(() => {
+    const total = Number(pagination?.total ?? 0);
+    const pageSize = Number(pagination?.pageSize ?? MOVIMIENTOS_PAGE_SIZE) || MOVIMIENTOS_PAGE_SIZE;
+    if (!movimientos.length || total <= 0) return '0-0';
+    const start = (listPage - 1) * pageSize + 1;
+    const end = Math.min(total, start + movimientos.length - 1);
+    return `${start}-${end}`;
+  }, [listPage, movimientos.length, pagination?.pageSize, pagination?.total]);
+
+  const visiblePageNumbers = useMemo(() => {
+    if (listTotalPages <= 5) return Array.from({ length: listTotalPages }, (_, index) => index + 1);
+
+    let start = Math.max(1, listPage - 2);
+    let end = Math.min(listTotalPages, start + 4);
+    start = Math.max(1, end - 4);
+
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+  }, [listPage, listTotalPages]);
+
+  const auxModalOpen = showCreateModal || showFiltersModal;
+  const setReferenciasByTipo = (itemTipo, rows) => {
+    if (itemTipo === 'producto') {
+      setProductos(Array.isArray(rows) ? rows : []);
+      return;
     }
-
-    // REF ORIGEN OPCIONAL
-    if (ref_origen && ref_origen.length > 30) errors.ref_origen = 'MÁXIMO 30 CARACTERES';
-
-    // ID_REF OPCIONAL ENTERO
-    if (id_ref_raw && !/^\d+$/.test(id_ref_raw)) errors.id_ref = 'ID REF DEBE SER ENTERO';
-
-    // DESCRIPCIÓN OPCIONAL
-    if (descripcion && descripcion.length > 150) errors.descripcion = 'MÁXIMO 150 CARACTERES';
-
-    const ok = Object.keys(errors).length === 0;
-
-    // COMENTARIO EN MAYÚSCULAS: PAYLOAD LIMPIO (SIN NULLS EN OPCIONALES)
-    const cleaned = {
-      tipo,
-      cantidad,
-      id_almacen
-    };
-
-    if (item_tipo === 'producto') cleaned.id_producto = id_producto;
-    else cleaned.id_insumo = id_insumo;
-
-    if (ref_origen) cleaned.ref_origen = ref_origen;
-    if (id_ref_raw) cleaned.id_ref = Number.parseInt(id_ref_raw, 10);
-    if (descripcion) cleaned.descripcion = descripcion;
-
-    return { ok, errors, cleaned };
+    setInsumos(Array.isArray(rows) ? rows : []);
   };
 
-  // ==============================
-  // CARGAS
-  // ==============================
-  const cargarRefs = async () => {
-    setLoadingRefs(true);
-    try {
-      const [a, p, i] = await Promise.all([
-        inventarioService.getAlmacenes(),
-        inventarioService.getProductos(),
-        inventarioService.getInsumos()
-      ]);
+  const clearCreateErrors = (...fields) => {
+    if (!fields.length) return;
+    setCreateErrors((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const field of fields) {
+        if (Object.prototype.hasOwnProperty.call(next, field)) {
+          delete next[field];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  };
 
-      setAlmacenes(Array.isArray(a) ? a : []);
-      setProductos(Array.isArray(p) ? p : []);
-      setInsumos(Array.isArray(i) ? i : []);
-    } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO REFERENCIAS';
-      setError(msg);
-      safeToast('ERROR', msg, 'danger');
-    } finally {
+  const cargarReferenciasContextuales = async ({ itemTipo, idAlmacen }) => {
+    const normalizedItemTipo = itemTipo === 'insumo' ? 'insumo' : 'producto';
+    const normalizedAlmacen = String(idAlmacen ?? '').trim();
+
+    if (!normalizedAlmacen) {
+      setReferenciasByTipo(normalizedItemTipo, []);
       setLoadingRefs(false);
+      return;
+    }
+
+    const sucursalDelAlmacen = String(almacenesMap.get(normalizedAlmacen)?.id_sucursal ?? '').trim();
+    const cacheKey = `${normalizedItemTipo}|${normalizedAlmacen}|${sucursalDelAlmacen}`;
+    if (referenciasCacheRef.current.has(cacheKey)) {
+      setReferenciasByTipo(normalizedItemTipo, referenciasCacheRef.current.get(cacheKey));
+      setLoadingRefs(false);
+      return;
+    }
+
+    if (referenciasInFlightRef.current.has(cacheKey)) {
+      return;
+    }
+
+    referenciasInFlightRef.current.add(cacheKey);
+    const requestId = ++referenciasRequestIdRef.current;
+    setLoadingRefs(true);
+
+    try {
+      const payload = await inventarioService.getMovimientosReferencias({
+        item_tipo: normalizedItemTipo,
+        id_almacen: normalizedAlmacen,
+        id_sucursal: sucursalDelAlmacen || undefined,
+        limit: MOVIMIENTOS_REFERENCIAS_LIMIT
+      });
+      if (requestId !== referenciasRequestIdRef.current) return;
+
+      const rows = normalizeReferenciaItems(payload);
+      const onlyActive = rows.filter((row) => parseEstado(row?.estado ?? true));
+      referenciasCacheRef.current.set(cacheKey, onlyActive);
+      setReferenciasByTipo(normalizedItemTipo, onlyActive);
+    } catch (requestError) {
+      if (requestId !== referenciasRequestIdRef.current) return;
+      const message = resolveMovimientosRequestMessage(
+        requestError,
+        'No se pudieron cargar las referencias para este contexto.'
+      );
+      safeToast('ERROR', message, 'danger');
+    } finally {
+      referenciasInFlightRef.current.delete(cacheKey);
+      if (requestId === referenciasRequestIdRef.current) {
+        setLoadingRefs(false);
+      }
     }
   };
 
-  const cargarMovimientos = async () => {
+  const cargarKardex = async (request = kardexRequest) => {
+    if (!canVerMovimientos) {
+      setMovimientos([]);
+      setPagination({ ...DEFAULT_KARDEX_PAGINATION });
+      setLoading(false);
+      return;
+    }
+
+    const requestId = ++kardexRequestIdRef.current;
     setLoading(true);
     setError('');
+
     try {
-      const data = await inventarioService.getMovimientosInventario();
-      setMovimientos(Array.isArray(data) ? data : []);
-    } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO MOVIMIENTOS';
-      setError(msg);
-      safeToast('ERROR', msg, 'danger');
+      const payload = await inventarioService.getKardex(request);
+      if (requestId !== kardexRequestIdRef.current) return;
+      const normalized = normalizeKardexResponse(payload, {
+        page: Number(request?.page ?? listPage) || 1,
+        pageSize: Number(request?.pageSize ?? MOVIMIENTOS_PAGE_SIZE) || MOVIMIENTOS_PAGE_SIZE,
+        total: 0,
+        totalPages: 1
+      });
+
+      setMovimientos(normalized.items);
+      setPagination(normalized.pagination);
+    } catch (requestError) {
+      if (requestId !== kardexRequestIdRef.current) return;
+      const message = resolveMovimientosRequestMessage(requestError, 'ERROR CARGANDO KARDEX');
+      setError(message);
+      safeToast('ERROR', message, 'danger');
     } finally {
-      setLoading(false);
+      if (requestId === kardexRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    // COMENTARIO EN MAYÚSCULAS: CARGAR LISTAS FK + MOVIMIENTOS AL ENTRAR AL TAB
-    cargarRefs();
-    cargarMovimientos();
+    // FIX IMPORTANTE: debounce de busqueda para no disparar requests por cada tecla en kardex.
+    if (typeof window === 'undefined') {
+      setDebouncedSearch(search.trim());
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [search]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !auxModalOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [auxModalOpen]);
+
+  useEffect(() => {
+    if (!canVerMovimientos || !canCrearMovimientos) {
+      setProductos([]);
+      setInsumos([]);
+      referenciasRequestIdRef.current += 1;
+      referenciasCacheRef.current.clear();
+      referenciasInFlightRef.current.clear();
+      setLoadingRefs(false);
+      return;
+    }
+  }, [canCrearMovimientos, canVerMovimientos]);
+
+  useEffect(() => {
+    if (!canVerMovimientos || !canCrearMovimientos) return;
+
+    if (showCreateModal) {
+      const itemTipo = String(form.item_tipo ?? '').trim().toLowerCase();
+      const idAlmacen = String(form.id_almacen ?? '').trim();
+      if (['producto', 'insumo'].includes(itemTipo) && idAlmacen) {
+        cargarReferenciasContextuales({ itemTipo, idAlmacen });
+      } else {
+        setLoadingRefs(false);
+      }
+      return;
+    }
+
+    if (showFiltersModal) {
+      const itemTipo = String(filterDraft.item_tipo ?? '').trim().toLowerCase();
+      const idAlmacen = String(filterDraft.id_almacen ?? '').trim();
+      if (['producto', 'insumo'].includes(itemTipo) && idAlmacen) {
+        cargarReferenciasContextuales({ itemTipo, idAlmacen });
+      } else {
+        setLoadingRefs(false);
+      }
+      return;
+    }
+
+    referenciasRequestIdRef.current += 1;
+    referenciasInFlightRef.current.clear();
+    setLoadingRefs(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    canCrearMovimientos,
+    canVerMovimientos,
+    filterDraft.id_almacen,
+    filterDraft.item_tipo,
+    form.id_almacen,
+    form.item_tipo,
+    showCreateModal,
+    showFiltersModal
+  ]);
+
+  useEffect(() => () => {
+    kardexRequestIdRef.current += 1;
+    referenciasRequestIdRef.current += 1;
+    referenciasInFlightRef.current.clear();
   }, []);
 
-  // ==============================
-  // CREAR
-  // ==============================
+  useEffect(() => {
+    if (!canVerMovimientos) {
+      setMovimientos([]);
+      setPagination({ ...DEFAULT_KARDEX_PAGINATION });
+      kardexFiltersKeyRef.current = '';
+      setLoading(false);
+      return;
+    }
+
+    const nextFiltersKey = JSON.stringify(kardexFiltersRequest);
+    if (kardexFiltersKeyRef.current !== nextFiltersKey) {
+      kardexFiltersKeyRef.current = nextFiltersKey;
+      if (listPage !== 1) {
+        setListPage(1);
+        return;
+      }
+    }
+
+    cargarKardex(kardexRequest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canVerMovimientos, kardexFiltersRequest, kardexRequest, listPage]);
+
+  useEffect(() => {
+    if (!sucursalFiltro && defaultSucursalId) setSucursalFiltro(defaultSucursalId);
+  }, [defaultSucursalId, sucursalFiltro]);
+
+  useEffect(() => {
+    setListPage((current) => Math.min(current, listTotalPages));
+  }, [listTotalPages]);
+
+  useEffect(() => {
+    if (!baseSucursalId) return;
+
+    const nextAlmacen =
+      String(baseAlmacenId ?? 'todos').trim() !== 'todos' && almacenesMap.has(String(baseAlmacenId).trim())
+        ? String(baseAlmacenId).trim()
+        : 'todos';
+
+    setSucursalFiltro(baseSucursalId);
+    setAlmacenFiltro(nextAlmacen);
+    setTipoFiltro(baseTipoFiltro);
+  }, [almacenesMap, baseAlmacenId, baseSucursalId, baseTipoFiltro, presetFiltersVersion]);
+
+  useEffect(() => {
+    const normalizedSelected = String(selectedAlmacenId ?? '').trim();
+    if (!normalizedSelected) return;
+
+    if (normalizedSelected === 'todos') {
+      setAlmacenFiltro('todos');
+      return;
+    }
+
+    const selected = almacenesMap.get(normalizedSelected);
+    if (!selected) return;
+
+    setAlmacenFiltro(normalizedSelected);
+    if (selected?.id_sucursal) setSucursalFiltro(String(selected.id_sucursal));
+  }, [selectedAlmacenId, almacenesMap]);
+
+  useEffect(() => {
+    if (!showFiltersModal) return;
+    if (!lockedFilterWarehouse?.id_almacen) return;
+
+    setFilterDraft((current) => ({
+      ...current,
+      id_almacen: String(lockedFilterWarehouse.id_almacen)
+    }));
+  }, [lockedFilterWarehouse?.id_almacen, showFiltersModal]);
+
+  useEffect(() => {
+    if (almacenFiltro === 'todos') return;
+
+    const stillExists = almacenesFiltroOptions.some(
+      (almacen) => String(almacen?.id_almacen ?? '') === String(almacenFiltro)
+    );
+
+    if (!stillExists) {
+      setAlmacenFiltro('todos');
+      if (typeof onSelectAlmacen === 'function') onSelectAlmacen('todos');
+    }
+  }, [almacenFiltro, almacenesFiltroOptions, onSelectAlmacen]);
+
+  useEffect(() => {
+    if (itemTipoFiltro === 'todos') {
+      if (itemFiltroId) setItemFiltroId('');
+      return;
+    }
+
+    if (itemFiltroId && itemFiltroOptions.length === 0) return;
+
+    if (
+      itemFiltroId &&
+      !itemFiltroOptions.some((item) => getItemId(item, itemTipoFiltro) === String(itemFiltroId ?? '').trim())
+    ) {
+      setItemFiltroId('');
+    }
+  }, [itemFiltroId, itemFiltroOptions, itemTipoFiltro]);
+
+  useEffect(() => {
+    setItemSearch('');
+    setIsItemDropdownOpen(false);
+  }, [form.item_tipo, form.id_almacen]);
+
+  useEffect(() => {
+    if (!isItemDropdownOpen || typeof document === 'undefined') return undefined;
+    const handleOutsideClick = (event) => {
+      if (!itemComboboxRef.current) return;
+      if (!itemComboboxRef.current.contains(event.target)) setIsItemDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isItemDropdownOpen]);
+
+  useEffect(() => {
+    if (filterDraft.item_tipo === 'todos') {
+      if (filterDraft.id_item) {
+        setFilterDraft((current) => ({ ...current, id_item: '' }));
+      }
+      return;
+    }
+
+    if (
+      filterDraft.id_item &&
+      !filterDraftItemOptions.some(
+        (item) => getItemId(item, filterDraft.item_tipo) === String(filterDraft.id_item ?? '').trim()
+      )
+    ) {
+      setFilterDraft((current) => ({ ...current, id_item: '' }));
+    }
+  }, [filterDraft.id_item, filterDraft.item_tipo, filterDraftItemOptions]);
+
+  useEffect(() => {
+    if (!form.id_item) return;
+
+    const selectedStillExists = formItemOptions.some(
+      (item) => getItemId(item, form.item_tipo) === String(form.id_item ?? '').trim()
+    );
+
+    if (!selectedStillExists) {
+      setForm((current) => ({ ...current, id_item: '' }));
+    }
+  }, [form.id_item, form.item_tipo, formItemOptions]);
+
+  const isCreateItemContextReady = Boolean(String(form.id_almacen ?? '').trim()) && ['producto', 'insumo'].includes(form.item_tipo);
+  const createItemPlaceholder = !isCreateItemContextReady
+    ? REFERENCIAS_CONTEXT_MESSAGE
+    : loadingRefs
+    ? 'Cargando items del contexto seleccionado...'
+    : form.item_tipo === 'producto'
+    ? 'Seleccione producto'
+    : 'Seleccione insumo';
+
   const resetForm = () => {
+    const preferredAlmacenId =
+      almacenFiltro !== 'todos'
+        ? String(almacenFiltro)
+        : selectedWarehouseFromParent
+        ? String(selectedWarehouseFromParent.id_almacen)
+        : '';
+
     setForm({
-      item_tipo: 'producto',
-      id_producto: '',
-      id_insumo: '',
-      id_almacen: '',
       tipo: 'ENTRADA',
+      id_almacen: preferredAlmacenId,
+      item_tipo: 'producto',
+      id_item: '',
       cantidad: '',
       ref_origen: '',
-      id_ref: '',
       descripcion: ''
     });
+    setItemSearch('');
+    setIsItemDropdownOpen(false);
     setCreateErrors({});
+    setLoadingRefs(false);
   };
 
-  const onCrear = async (e) => {
-    e.preventDefault();
+  const openCreateModal = () => {
+    if (!canCrearMovimientos) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear movimientos de inventario.', 'warning');
+      return;
+    }
+    resetForm();
+    setShowCreateModal(true);
+  };
+
+  const validarMovimiento = (data) => {
+    const errors = {};
+    const tipo = String(data?.tipo ?? '').trim().toUpperCase();
+    const idAlmacenRaw = String(data?.id_almacen ?? '').trim();
+    const itemTipo = String(data?.item_tipo ?? 'producto').trim().toLowerCase();
+    const idItemRaw = String(data?.id_item ?? '').trim();
+    const cantidadRaw = String(data?.cantidad ?? '').trim();
+    const refOrigen = String(data?.ref_origen ?? '').trim();
+    const descripcion = String(data?.descripcion ?? '').trim();
+
+    const idAlmacen = Number.parseInt(idAlmacenRaw, 10);
+    const idItem = Number.parseInt(idItemRaw, 10);
+    const cantidad = Number(cantidadRaw);
+
+    if (!['ENTRADA', 'SALIDA', 'AJUSTE'].includes(tipo)) errors.tipo = 'SELECCIONA UN TIPO VALIDO.';
+    if (!idAlmacenRaw) errors.id_almacen = 'EL ALMACEN ES OBLIGATORIO.';
+    else if (Number.isNaN(idAlmacen) || idAlmacen <= 0) errors.id_almacen = 'SELECCIONA UN ALMACEN VALIDO.';
+    else if (!almacenesOperativos.some((almacen) => Number(almacen?.id_almacen) === Number(idAlmacen))) {
+      errors.id_almacen = 'EL ALMACEN SELECCIONADO ESTA INACTIVO.';
+    }
+
+    if (!['producto', 'insumo'].includes(itemTipo)) errors.item_tipo = 'SELECCIONA UN TIPO DE ITEM VALIDO.';
+    if (!idItemRaw) errors.id_item = 'SELECCIONA UN ITEM.';
+    else if (Number.isNaN(idItem) || idItem <= 0) errors.id_item = 'SELECCIONA UN ITEM VALIDO.';
+
+    if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA.';
+    // AM: Validacion decimal con maximo 4 decimales segun tipo de movimiento.
+    else if (!/^\d+(\.\d{1,4})?$/.test(cantidadRaw)) {
+      errors.cantidad = (tipo === 'AJUSTE' ? AJUSTE_DECIMAL_HELP : MOVIMIENTO_DECIMAL_HELP).toUpperCase();
+    } else if (!Number.isFinite(cantidad) || (tipo === 'AJUSTE' ? cantidad < 0 : cantidad <= 0)) {
+      errors.cantidad =
+        tipo === 'AJUSTE'
+          ? 'LA EXISTENCIA FINAL DEBE SER UN NUMERO MAYOR O IGUAL A 0.'
+          : 'LA CANTIDAD DEBE SER UN NUMERO MAYOR A 0.';
+    }
+
+    const itemSeleccionado =
+      itemTipo === 'producto'
+        ? productos.find((producto) => Number(producto?.id_producto ?? 0) === idItem)
+        : insumos.find((insumo) => Number(insumo?.id_insumo ?? 0) === idItem);
+
+    if (!itemSeleccionado && !errors.id_item) errors.id_item = 'EL ITEM SELECCIONADO NO EXISTE.';
+    else if (
+      itemSeleccionado &&
+      Number(itemSeleccionado?.id_almacen ?? 0) !== Number(idAlmacen ?? 0) &&
+      !errors.id_almacen
+    ) {
+      errors.id_item = 'EL ITEM NO CORRESPONDE AL ALMACEN SELECCIONADO.';
+    }
+
+    return {
+      ok: Object.keys(errors).length === 0,
+      errors,
+      cleaned: {
+        tipo,
+        cantidad,
+        id_almacen: idAlmacen,
+        ...(itemTipo === 'producto' ? { id_producto: idItem } : { id_insumo: idItem }),
+        ...(refOrigen ? { ref_origen: refOrigen } : {}),
+        ...(descripcion ? { descripcion } : {})
+      }
+    };
+  };
+
+  const onCrear = async (event) => {
+    event.preventDefault();
+    if (!canCrearMovimientos) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear movimientos de inventario.', 'warning');
+      return;
+    }
+    const validated = validarMovimiento(form);
+    setCreateErrors(validated.errors);
+    if (!validated.ok) return;
+
+    setSaving(true);
     setError('');
 
-    const v = validarMovimiento(form);
-    setCreateErrors(v.errors);
-    if (!v.ok) return;
-
     try {
-      await inventarioService.crearMovimientoInventario(v.cleaned);
+      await inventarioService.crearMovimientoInventario(validated.cleaned);
+      await cargarKardex(kardexRequest);
+      if (typeof onMovimientoCreado === 'function') await onMovimientoCreado(validated.cleaned);
       resetForm();
-      setShowCreateSheet(false);
-      await cargarMovimientos();
-      safeToast('CREADO', 'EL MOVIMIENTO SE REGISTRÓ CORRECTAMENTE.', 'success');
-    } catch (e2) {
-      const msg = e2?.message || 'ERROR CREANDO MOVIMIENTO';
-      setError(msg);
-      safeToast('ERROR', msg, 'danger');
+      setShowCreateModal(false);
+      safeToast('CREADO', 'EL MOVIMIENTO SE REGISTRO CORRECTAMENTE.', 'success');
+    } catch (requestError) {
+      const message = resolveMovimientosRequestMessage(requestError, 'ERROR CREANDO MOVIMIENTO');
+      setError(message);
+      safeToast('ERROR', message, 'danger');
+    } finally {
+      setSaving(false);
     }
   };
 
-  // ==============================
-  // EDITAR
-  // ==============================
-  const iniciarEdicion = (m) => {
-    setError('');
-    setEditErrors({});
-    setEditId(m.id_movimiento);
+  const openFiltersModal = () => {
+    const lockedWarehouseId =
+      String(selectedAlmacenId ?? '').trim() && String(selectedAlmacenId ?? '').trim() !== 'todos'
+        ? String(selectedAlmacenId).trim()
+        : String(almacenFiltro ?? '').trim() && String(almacenFiltro ?? '').trim() !== 'todos'
+        ? String(almacenFiltro).trim()
+        : '';
 
-    // COMENTARIO EN MAYÚSCULAS: DETERMINAR SI ES PRODUCTO O INSUMO PARA EL FORM
-    const item_tipo = m?.id_producto ? 'producto' : 'insumo';
+    setFilterDraft({
+      id_almacen: lockedWarehouseId,
+      tipo: String(tipoFiltro ?? 'todos').trim() || 'todos',
+      item_tipo: String(itemTipoFiltro ?? 'todos').trim() || 'todos',
+      id_item: String(itemFiltroId ?? '').trim(),
+      desde: String(desde ?? '').trim(),
+      hasta: String(hasta ?? '').trim()
+    });
+    setShowFiltersModal(true);
+  };
 
-    setEditForm({
-      item_tipo,
-      id_producto: String(m?.id_producto ?? ''),
-      id_insumo: String(m?.id_insumo ?? ''),
-      id_almacen: String(m?.id_almacen ?? ''),
-      tipo: String(m?.tipo ?? 'ENTRADA').toUpperCase(),
-      cantidad: String(m?.cantidad ?? ''),
-      ref_origen: String(m?.ref_origen ?? ''),
-      id_ref: String(m?.id_ref ?? ''),
-      descripcion: String(m?.descripcion ?? '')
+  const resetFilterDraft = () => {
+    const lockedWarehouseId =
+      String(selectedAlmacenId ?? '').trim() && String(selectedAlmacenId ?? '').trim() !== 'todos'
+        ? String(selectedAlmacenId).trim()
+        : lockedFilterWarehouse?.id_almacen
+        ? String(lockedFilterWarehouse.id_almacen)
+        : '';
+
+    setFilterDraft({
+      id_almacen: lockedWarehouseId,
+      tipo: 'todos',
+      item_tipo: 'todos',
+      id_item: '',
+      desde: '',
+      hasta: ''
     });
   };
 
-  const cancelarEdicion = () => {
-    setEditId(null);
-    setEditForm(null);
-    setEditErrors({});
+  const clearListadoFilters = () => {
+    setSearch('');
+    setTipoFiltro('todos');
+    setItemTipoFiltro('todos');
+    setItemFiltroId('');
+    setDesde('');
+    setHasta('');
+    resetFilterDraft();
   };
 
-  const guardarEdicion = async () => {
-    if (!editId || !editForm) return;
-    setError('');
+  const applyFilterDraft = (event) => {
+    event.preventDefault();
 
-    const v = validarMovimiento(editForm);
-    setEditErrors(v.errors);
-    if (!v.ok) return;
-
-    try {
-      const actual = movimientos.find((x) => x.id_movimiento === editId);
-      if (!actual) {
-        safeToast('ERROR', 'NO SE ENCONTRÓ EL MOVIMIENTO A EDITAR.', 'danger');
-        cancelarEdicion();
-        return;
-      }
-
-      // COMENTARIO EN MAYÚSCULAS: ENVIAR SOLO CAMPOS QUE CAMBIARON (PATRÓN REUTILIZABLE)
-      const cambios = [];
-
-      const actual_tipo = String(actual?.tipo ?? '').toUpperCase();
-      const actual_cantidad = Number.parseInt(String(actual?.cantidad ?? ''), 10);
-      const actual_almacen = Number.parseInt(String(actual?.id_almacen ?? ''), 10);
-
-      const actual_prod = actual?.id_producto ? Number.parseInt(String(actual.id_producto), 10) : null;
-      const actual_ins = actual?.id_insumo ? Number.parseInt(String(actual.id_insumo), 10) : null;
-
-      const actual_ref_origen = String(actual?.ref_origen ?? '').trim();
-      const actual_id_ref = actual?.id_ref !== null && actual?.id_ref !== undefined ? String(actual.id_ref) : '';
-      const actual_desc = String(actual?.descripcion ?? '').trim();
-
-      if (v.cleaned.tipo !== actual_tipo) cambios.push(['tipo', v.cleaned.tipo]);
-      if (v.cleaned.cantidad !== actual_cantidad) cambios.push(['cantidad', v.cleaned.cantidad]);
-      if (v.cleaned.id_almacen !== actual_almacen) cambios.push(['id_almacen', v.cleaned.id_almacen]);
-
-      // ITEM (PRODUCTO/INSUMO)
-      if (v.cleaned.id_producto) {
-        if (actual_prod !== v.cleaned.id_producto) cambios.push(['id_producto', v.cleaned.id_producto]);
-        if (actual_ins !== null) cambios.push(['id_insumo', '']); // COMENTARIO EN MAYÚSCULAS: LIMPIAR EL OTRO FK
-      } else if (v.cleaned.id_insumo) {
-        if (actual_ins !== v.cleaned.id_insumo) cambios.push(['id_insumo', v.cleaned.id_insumo]);
-        if (actual_prod !== null) cambios.push(['id_producto', '']); // COMENTARIO EN MAYÚSCULAS: LIMPIAR EL OTRO FK
-      }
-
-      // OPCIONALES
-      if ((v.cleaned.ref_origen || '') !== actual_ref_origen) cambios.push(['ref_origen', v.cleaned.ref_origen || '']);
-      if (String(v.cleaned.id_ref ?? '') !== actual_id_ref) cambios.push(['id_ref', v.cleaned.id_ref ?? '']);
-      if ((v.cleaned.descripcion || '') !== actual_desc) cambios.push(['descripcion', v.cleaned.descripcion || '']);
-
-      if (cambios.length === 0) {
-        safeToast('SIN CAMBIOS', 'NO HAY CAMBIOS PARA GUARDAR.', 'info');
-        cancelarEdicion();
-        return;
-      }
-
-      for (const [campo, valor] of cambios) {
-        await inventarioService.actualizarMovimientoInventarioCampo(editId, campo, valor);
-      }
-
-      cancelarEdicion();
-      await cargarMovimientos();
-      safeToast('ACTUALIZADO', 'EL MOVIMIENTO SE ACTUALIZÓ CORRECTAMENTE.', 'success');
-    } catch (e2) {
-      const msg = e2?.message || 'ERROR ACTUALIZANDO MOVIMIENTO';
-      setError(msg);
-      safeToast('ERROR', msg, 'danger');
-    }
+    setTipoFiltro(String(filterDraft.tipo ?? 'todos').trim() || 'todos');
+    setItemTipoFiltro(String(filterDraft.item_tipo ?? 'todos').trim() || 'todos');
+    setItemFiltroId(String(filterDraft.id_item ?? '').trim());
+    setDesde(String(filterDraft.desde ?? '').trim());
+    setHasta(String(filterDraft.hasta ?? '').trim());
+    setShowFiltersModal(false);
   };
 
-  // ==============================
-  // ELIMINAR
-  // ==============================
-  const eliminarConfirmado = async () => {
-    const id = confirmModal.idToDelete;
-    if (!id) return;
-
-    setError('');
-    try {
-      await inventarioService.eliminarMovimientoInventario(id);
-      closeConfirmDelete();
-      await cargarMovimientos();
-      safeToast('ELIMINADO', 'EL MOVIMIENTO SE ELIMINÓ CORRECTAMENTE.', 'success');
-    } catch (e) {
-      closeConfirmDelete();
-      const msg = e?.message || 'ERROR ELIMINANDO MOVIMIENTO';
-      setError(msg);
-      safeToast('ERROR', msg, 'danger');
-    }
-  };
-
-  // ==============================
-  // FILTRADO + ORDEN
-  // ==============================
-  const movimientosFiltrados = useMemo(() => {
-    const lista = [...movimientos].sort((a, b) => (b.id_movimiento ?? 0) - (a.id_movimiento ?? 0));
-
-    const s = search.trim().toLowerCase();
-    const d = desde ? new Date(`${desde}T00:00:00`) : null;
-    const h = hasta ? new Date(`${hasta}T23:59:59`) : null;
-
-    return lista.filter((m) => {
-      const itemLabel = getItemLabel(m);
-      const almLabel = getAlmacenLabel(m.id_almacen);
-
-      const texto = `${itemLabel} ${almLabel} ${m.tipo ?? ''} ${m.ref_origen ?? ''} ${m.descripcion ?? ''}`.toLowerCase();
-      const matchTexto = s ? texto.includes(s) : true;
-
-      const matchTipo = tipoFiltro === 'todos' ? true : String(m.tipo ?? '').toUpperCase() === tipoFiltro;
-
-      const matchAlmacen =
-        almacenFiltro === 'todos' ? true : String(m.id_almacen ?? '') === String(almacenFiltro);
-
-      const isProd = !!m.id_producto;
-      const matchItem =
-        itemFiltro === 'todos'
-          ? true
-          : itemFiltro === 'producto'
-          ? isProd
-          : !isProd;
-
-      // FECHAS
-      const fechaStr = String(m.fecha_mov ?? '');
-      const fechaOnly = toDateOnly(fechaStr);
-      const fechaDate = fechaOnly ? new Date(`${fechaOnly}T12:00:00`) : null;
-
-      const matchDesde = d && fechaDate ? fechaDate >= d : true;
-      const matchHasta = h && fechaDate ? fechaDate <= h : true;
-
-      return matchTexto && matchTipo && matchAlmacen && matchItem && matchDesde && matchHasta;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [movimientos, search, tipoFiltro, almacenFiltro, itemFiltro, desde, hasta, almacenesMap, productosMap, insumosMap]);
-
-  return (
-    <div className="card shadow-sm mb-3">
-      <div className="card-header fw-semibold d-flex align-items-center justify-content-between">
-        <span>Movimientos (Kardex)</span>
-
-        <button
-          type="button"
-          className="btn btn-sm btn-primary d-md-none"
-          onClick={() => setShowCreateSheet(true)}
-        >
-          + Agregar
-        </button>
-      </div>
-
-      <div className="card-body">
-        {error && <div className="alert alert-danger">{error}</div>}
-
-        {/* ==============================
-            FORM CREAR (DESKTOP/TABLET)
-            ============================== */}
-        <div className="d-none d-md-block">
-          <form onSubmit={onCrear} className="row g-2 mb-3">
-            <div className="col-12 col-md-2">
-              <label className="form-label mb-1">Item</label>
-              <select
-                className="form-select"
-                value={form.item_tipo}
-                onChange={(e) =>
-                  setForm((s) => ({
-                    ...s,
-                    item_tipo: e.target.value,
-                    id_producto: '',
-                    id_insumo: ''
-                  }))
-                }
+  const filtersModal =
+    modalPortalTarget && showFiltersModal
+      ? createPortal(
+          <div className="inv-prod-pmodal inv-prod-pmodal--filters show" aria-hidden={!showFiltersModal}>
+            <div className="inv-prod-pmodal__overlay" onClick={() => setShowFiltersModal(false)} />
+            <div className="inv-prod-pmodal__viewport">
+              <div
+                className="inv-prod-pmodal__panel inv-prod-pmodal__panel--filters"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="inv-warehouse-moves-filters-title"
+                onClick={(event) => event.stopPropagation()}
               >
-                <option value="producto">Producto</option>
-                <option value="insumo">Insumo</option>
-              </select>
-            </div>
+                <form className="inv-prod-pmodal__form-shell" onSubmit={applyFilterDraft}>
+                  <div className="inv-prod-pmodal__body inv-prod-pmodal__body--filters">
+                    <div className="inv-ins-create-hero inv-ins-filter-hero">
+                      <button
+                        type="button"
+                        className="inv-prod-drawer-close inv-ins-create-hero__close"
+                        onClick={() => setShowFiltersModal(false)}
+                        aria-label="Cerrar filtros de movimientos"
+                      >
+                        <i className="bi bi-x-lg" aria-hidden="true" />
+                      </button>
 
-            <div className="col-12 col-md-3">
-              <label className="form-label mb-1">{form.item_tipo === 'producto' ? 'Producto' : 'Insumo'}</label>
+                      <div className="inv-ins-create-hero__icon">
+                        <i className="bi bi-funnel" aria-hidden="true" />
+                      </div>
 
-              {form.item_tipo === 'producto' ? (
-                <>
-                  <select
-                    className={`form-select ${createErrors.id_producto ? 'is-invalid' : ''}`}
-                    value={form.id_producto}
-                    onChange={(e) => setForm((s) => ({ ...s, id_producto: e.target.value }))}
-                    disabled={loadingRefs}
-                  >
-                    <option value="">{loadingRefs ? 'Cargando...' : 'Seleccione producto'}</option>
-                    {productos.map((p) => (
-                      <option key={p.id_producto} value={p.id_producto}>
-                        {p.nombre_producto}
-                      </option>
-                    ))}
-                  </select>
-                  {createErrors.id_producto && <div className="invalid-feedback">{createErrors.id_producto}</div>}
-                </>
-              ) : (
-                <>
-                  <select
-                    className={`form-select ${createErrors.id_insumo ? 'is-invalid' : ''}`}
-                    value={form.id_insumo}
-                    onChange={(e) => setForm((s) => ({ ...s, id_insumo: e.target.value }))}
-                    disabled={loadingRefs}
-                  >
-                    <option value="">{loadingRefs ? 'Cargando...' : 'Seleccione insumo'}</option>
-                    {insumos.map((i) => (
-                      <option key={i.id_insumo} value={i.id_insumo}>
-                        {i.nombre_insumo}
-                      </option>
-                    ))}
-                  </select>
-                  {createErrors.id_insumo && <div className="invalid-feedback">{createErrors.id_insumo}</div>}
-                </>
-              )}
-            </div>
+                      <div className="inv-ins-create-hero__copy">
+                        <div className="inv-ins-create-hero__kicker">Vista De Filtros</div>
+                        <div id="inv-warehouse-moves-filters-title" className="inv-ins-create-hero__title">
+                          Ajusta el listado del kardex
+                        </div>
+                        <div className="inv-ins-create-hero__text">
+                          El almacen se fija desde la card seleccionada y el resto del filtro se aplica al listado de
+                          movimientos.
+                        </div>
+                      </div>
+                    </div>
 
-            <div className="col-12 col-md-2">
-              <label className="form-label mb-1">Almacén</label>
-              <select
-                className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
-                value={form.id_almacen}
-                onChange={(e) => setForm((s) => ({ ...s, id_almacen: e.target.value }))}
-                disabled={loadingRefs}
-              >
-                <option value="">{loadingRefs ? 'Cargando...' : 'Seleccione almacén'}</option>
-                {almacenes.map((a) => (
-                  <option key={a.id_almacen} value={a.id_almacen}>
-                    {a.nombre} (Sucursal {a.id_sucursal})
-                  </option>
-                ))}
-              </select>
-              {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
-            </div>
-
-            <div className="col-6 col-md-2">
-              <label className="form-label mb-1">Tipo</label>
-              <select
-                className={`form-select ${createErrors.tipo ? 'is-invalid' : ''}`}
-                value={form.tipo}
-                onChange={(e) => setForm((s) => ({ ...s, tipo: e.target.value }))}
-              >
-                <option value="ENTRADA">ENTRADA</option>
-                <option value="SALIDA">SALIDA</option>
-                <option value="AJUSTE">AJUSTE</option>
-              </select>
-              {createErrors.tipo && <div className="invalid-feedback">{createErrors.tipo}</div>}
-            </div>
-
-            <div className="col-6 col-md-1">
-              <label className="form-label mb-1">Cantidad</label>
-              <input
-                className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
-                type="number"
-                step="1"
-                min="1"
-                inputMode="numeric"
-                value={form.cantidad}
-                onKeyDown={blockNonIntegerKeys}
-                onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                required
-              />
-              {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
-            </div>
-
-            <div className="col-12 col-md-2">
-              <label className="form-label mb-1">Ref. origen (opcional)</label>
-              <input
-                className={`form-control ${createErrors.ref_origen ? 'is-invalid' : ''}`}
-                placeholder="Ej: COMPRA / VENTA / AJUSTE"
-                value={form.ref_origen}
-                onChange={(e) => setForm((s) => ({ ...s, ref_origen: e.target.value }))}
-              />
-              {createErrors.ref_origen && <div className="invalid-feedback">{createErrors.ref_origen}</div>}
-            </div>
-
-            <div className="col-12 col-md-1">
-              <label className="form-label mb-1">ID Ref (opcional)</label>
-              <input
-                className={`form-control ${createErrors.id_ref ? 'is-invalid' : ''}`}
-                type="number"
-                step="1"
-                min="1"
-                inputMode="numeric"
-                value={form.id_ref}
-                onKeyDown={blockNonIntegerKeys}
-                onChange={(e) => setForm((s) => ({ ...s, id_ref: sanitizeInteger(e.target.value) }))}
-              />
-              {createErrors.id_ref && <div className="invalid-feedback">{createErrors.id_ref}</div>}
-            </div>
-
-            <div className="col-12 col-md-3">
-              <label className="form-label mb-1">Descripción (opcional)</label>
-              <input
-                className={`form-control ${createErrors.descripcion ? 'is-invalid' : ''}`}
-                placeholder="Ej: Ajuste por inventario físico"
-                value={form.descripcion}
-                onChange={(e) => setForm((s) => ({ ...s, descripcion: e.target.value }))}
-              />
-              {createErrors.descripcion && <div className="invalid-feedback">{createErrors.descripcion}</div>}
-            </div>
-
-            <div className="col-12 col-md-2 d-grid align-items-end">
-              <button className="btn btn-primary" type="submit">
-                Crear
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* ==============================
-            FILTROS
-            ============================== */}
-        <div className="row g-2 mb-3">
-          <div className="col-12 col-md-4">
-            <input
-              className="form-control"
-              placeholder="Buscar por item, almacén, tipo, ref o descripción..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="col-6 col-md-2">
-            <select className="form-select" value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)}>
-              <option value="todos">Todos</option>
-              <option value="ENTRADA">ENTRADA</option>
-              <option value="SALIDA">SALIDA</option>
-              <option value="AJUSTE">AJUSTE</option>
-            </select>
-          </div>
-
-          <div className="col-6 col-md-2">
-            <select
-              className="form-select"
-              value={almacenFiltro}
-              onChange={(e) => setAlmacenFiltro(e.target.value)}
-              disabled={loadingRefs}
-            >
-              <option value="todos">Todos almacenes</option>
-              {almacenes.map((a) => (
-                <option key={a.id_almacen} value={a.id_almacen}>
-                  {a.nombre} (Suc {a.id_sucursal})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-6 col-md-2">
-            <select className="form-select" value={itemFiltro} onChange={(e) => setItemFiltro(e.target.value)}>
-              <option value="todos">Todos items</option>
-              <option value="producto">Productos</option>
-              <option value="insumo">Insumos</option>
-            </select>
-          </div>
-
-          <div className="col-6 col-md-2">
-            <button
-              className="btn btn-outline-secondary w-100"
-              type="button"
-              onClick={() => {
-                setSearch('');
-                setTipoFiltro('todos');
-                setAlmacenFiltro('todos');
-                setItemFiltro('todos');
-                setDesde('');
-                setHasta('');
-              }}
-            >
-              Limpiar
-            </button>
-          </div>
-
-          <div className="col-6 col-md-2">
-            <label className="form-label mb-1">Desde</label>
-            <input className="form-control" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
-          </div>
-
-          <div className="col-6 col-md-2">
-            <label className="form-label mb-1">Hasta</label>
-            <input className="form-control" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
-          </div>
-        </div>
-
-        {/* ==============================
-            MOBILE: CARDS
-            ============================== */}
-        <div className="d-md-none">
-          {loading ? (
-            <div className="text-muted">Cargando...</div>
-          ) : movimientosFiltrados.length === 0 ? (
-            <div className="text-muted">Sin datos</div>
-          ) : (
-            <div className="d-flex flex-column gap-2">
-              {movimientosFiltrados.map((m, index) => {
-                const isEditing = editId === m.id_movimiento;
-
-                return (
-                  <div key={m.id_movimiento} className="card border">
-                    <div className="card-body">
-                      <div className="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                          <div className="text-muted small">No. {index + 1}</div>
-                          <div className="fw-bold">{isEditing ? 'EDITANDO' : getItemLabel(m)}</div>
-                          <div className="text-muted small">
-                            {getItemTipo(m)} • {String(m.tipo || '').toUpperCase()} • {toDateOnly(m.fecha_mov)}
+                    <div className="inv-prod-pmodal__sections inv-prod-pmodal__sections--filters">
+                      <section className="inv-prod-pmodal__section">
+                        <div className="inv-prod-pmodal__section-head">
+                          <div className="inv-prod-pmodal__section-title">Filtros del listado</div>
+                          <div className="inv-prod-pmodal__section-sub">
+                            Usa el almacen activo, filtra por tipo, item, detalle y rango de fechas.
                           </div>
                         </div>
-                      </div>
 
-                      <div className="row g-2">
-                        <div className="col-12">
-                          <div className="small text-muted">Almacén</div>
-                          {isEditing ? (
-                            <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.id_almacen ? 'is-invalid' : ''}`}
-                                value={editForm.id_almacen}
-                                onChange={(e) => setEditForm((s) => ({ ...s, id_almacen: e.target.value }))}
-                                disabled={loadingRefs}
-                              >
-                                <option value="">{loadingRefs ? 'Cargando...' : 'Seleccione almacén'}</option>
-                                {almacenes.map((a) => (
-                                  <option key={a.id_almacen} value={a.id_almacen}>
-                                    {a.nombre} (Sucursal {a.id_sucursal})
-                                  </option>
-                                ))}
-                              </select>
-                              {editErrors.id_almacen && <div className="invalid-feedback">{editErrors.id_almacen}</div>}
-                            </>
-                          ) : (
-                            <div>{getAlmacenLabel(m.id_almacen)}</div>
-                          )}
-                        </div>
+                        <div className="row g-3">
+                          <div className="col-12">
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-almacen">Almacen</label>
+                            <select id="inv-moves-filter-almacen" className="form-select" value={filterDraft.id_almacen} disabled>
+                              <option value={filterDraft.id_almacen || ''}>
+                                {lockedFilterWarehouse
+                                  ? formatAlmacenOptionLabel(lockedFilterWarehouse, sucursalesMap)
+                                  : 'Selecciona una card de almacen'}
+                              </option>
+                            </select>
+                          </div>
 
-                        <div className="col-6">
-                          <div className="small text-muted">Tipo</div>
-                          {isEditing ? (
-                            <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.tipo ? 'is-invalid' : ''}`}
-                                value={editForm.tipo}
-                                onChange={(e) => setEditForm((s) => ({ ...s, tipo: e.target.value }))}
-                              >
-                                <option value="ENTRADA">ENTRADA</option>
-                                <option value="SALIDA">SALIDA</option>
-                                <option value="AJUSTE">AJUSTE</option>
-                              </select>
-                              {editErrors.tipo && <div className="invalid-feedback">{editErrors.tipo}</div>}
-                            </>
-                          ) : (
-                            <div className="fw-semibold">{String(m.tipo || '').toUpperCase()}</div>
-                          )}
-                        </div>
+                          <div className="col-12 col-md-4">
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-tipo">Tipo</label>
+                            <select
+                              id="inv-moves-filter-tipo"
+                              className="form-select"
+                              value={filterDraft.tipo}
+                              onChange={(event) =>
+                                setFilterDraft((current) => ({ ...current, tipo: event.target.value }))
+                              }
+                            >
+                              <option value="todos">Todos</option>
+                              <option value="ENTRADA">ENTRADA</option>
+                              <option value="SALIDA">SALIDA</option>
+                              <option value="AJUSTE">AJUSTE</option>
+                            </select>
+                          </div>
 
-                        <div className="col-6">
-                          <div className="small text-muted">Cantidad</div>
-                          {isEditing ? (
-                            <>
-                              <input
-                                className={`form-control form-control-sm ${editErrors.cantidad ? 'is-invalid' : ''}`}
-                                type="number"
-                                step="1"
-                                min="1"
-                                inputMode="numeric"
-                                value={editForm.cantidad}
-                                onKeyDown={blockNonIntegerKeys}
-                                onChange={(e) =>
-                                  setEditForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))
-                                }
-                              />
-                              {editErrors.cantidad && <div className="invalid-feedback">{editErrors.cantidad}</div>}
-                            </>
-                          ) : (
-                            <div className="fw-semibold">{m.cantidad}</div>
-                          )}
-                        </div>
+                          <div className="col-12 col-md-4">
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-item-tipo">Item</label>
+                            <select
+                              id="inv-moves-filter-item-tipo"
+                              className="form-select"
+                              value={filterDraft.item_tipo}
+                              onChange={(event) =>
+                                setFilterDraft((current) => ({
+                                  ...current,
+                                  item_tipo: event.target.value,
+                                  id_item: ''
+                                }))
+                              }
+                            >
+                              <option value="todos">Todos los items</option>
+                              <option value="producto">Productos</option>
+                              <option value="insumo">Insumos</option>
+                            </select>
+                          </div>
 
-                        <div className="col-12">
-                          <div className="small text-muted">Ref/Descripción</div>
-                          {isEditing ? (
-                            <>
-                              <input
-                                className={`form-control form-control-sm ${editErrors.ref_origen ? 'is-invalid' : ''}`}
-                                placeholder="Ref origen (opcional)"
-                                value={editForm.ref_origen}
-                                onChange={(e) => setEditForm((s) => ({ ...s, ref_origen: e.target.value }))}
-                              />
-                              {editErrors.ref_origen && <div className="invalid-feedback">{editErrors.ref_origen}</div>}
+                          <div className="col-12 col-md-4">
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-item-detalle">Detalle de item</label>
+                            <select
+                              id="inv-moves-filter-item-detalle"
+                              className="form-select"
+                              value={filterDraft.id_item}
+                              onChange={(event) =>
+                                setFilterDraft((current) => ({ ...current, id_item: event.target.value }))
+                              }
+                              disabled={filterDraft.item_tipo === 'todos' || !filterDraft.id_almacen || loadingRefs}
+                            >
+                              <option value="">
+                                {filterDraft.item_tipo === 'todos'
+                                  ? 'Seleccione primero un item'
+                                  : !filterDraft.id_almacen
+                                  ? REFERENCIAS_CONTEXT_MESSAGE
+                                  : loadingRefs
+                                  ? 'Cargando opciones del almacen...'
+                                  : filterDraft.item_tipo === 'producto'
+                                  ? 'Todos los productos'
+                                  : 'Todos los insumos'}
+                              </option>
+                              {filterDraftItemOptions.map((item) => (
+                                <option
+                                  key={getItemId(item, filterDraft.item_tipo)}
+                                  value={getItemId(item, filterDraft.item_tipo)}
+                                >
+                                  {formatItemOptionLabel(
+                                    item,
+                                    filterDraft.item_tipo === 'producto' ? 'Producto' : 'Insumo'
+                                  )}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                              <input
-                                className={`form-control form-control-sm mt-2 ${editErrors.descripcion ? 'is-invalid' : ''}`}
-                                placeholder="Descripción (opcional)"
-                                value={editForm.descripcion}
-                                onChange={(e) => setEditForm((s) => ({ ...s, descripcion: e.target.value }))}
-                              />
-                              {editErrors.descripcion && <div className="invalid-feedback">{editErrors.descripcion}</div>}
-                            </>
-                          ) : (
-                            <div className="text-muted">
-                              {(m.ref_origen || '').trim() || '-'} • {(m.descripcion || '').trim() || '-'}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                          <div className="col-12 col-md-6">
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-desde">Desde</label>
+                            <input
+                              id="inv-moves-filter-desde"
+                              className="form-control"
+                              type="date"
+                              value={filterDraft.desde}
+                              onChange={(event) =>
+                                setFilterDraft((current) => ({ ...current, desde: event.target.value }))
+                              }
+                            />
+                          </div>
 
-                      {isEditing ? (
-                        <div className="d-grid gap-2 mt-3">
-                          <button className="btn btn-success" type="button" onClick={guardarEdicion}>
-                            Guardar
-                          </button>
-                          <button className="btn btn-secondary" type="button" onClick={cancelarEdicion}>
-                            Cancelar
-                          </button>
+                          <div className="col-12 col-md-6">
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-hasta">Hasta</label>
+                            <input
+                              id="inv-moves-filter-hasta"
+                              className="form-control"
+                              type="date"
+                              value={filterDraft.hasta}
+                              onChange={(event) =>
+                                setFilterDraft((current) => ({ ...current, hasta: event.target.value }))
+                              }
+                            />
+                          </div>
                         </div>
-                      ) : (
-                        <div className="d-grid gap-2 mt-3">
-                          <button className="btn btn-outline-primary" type="button" onClick={() => iniciarEdicion(m)}>
-                            Editar
-                          </button>
-                          <button
-                            className="btn btn-outline-danger"
-                            type="button"
-                            onClick={() => openConfirmDelete(m.id_movimiento, getItemLabel(m))}
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      )}
+                      </section>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
 
-        {/* ==============================
-            DESKTOP: TABLE
-            ============================== */}
-        <div className="d-none d-md-block">
-          <div className="table-responsive">
-            <table className="table table-sm table-striped align-middle">
-              <thead>
-                <tr>
-                  <th style={{ width: 70 }}>No.</th>
-                  <th>Item</th>
-                  <th style={{ width: 110 }}>Tipo</th>
-                  <th style={{ width: 110 }}>Cantidad</th>
-                  <th style={{ width: 240 }}>Almacén</th>
-                  <th style={{ width: 120 }}>Fecha</th>
-                  <th style={{ width: 140 }}>Ref</th>
-                  <th>Descripción</th>
-                  <th style={{ width: 220 }}>Acciones</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="9">Cargando...</td></tr>
-                ) : movimientosFiltrados.length === 0 ? (
-                  <tr><td colSpan="9">Sin datos</td></tr>
-                ) : (
-                  movimientosFiltrados.map((m, index) => {
-                    const isEditing = editId === m.id_movimiento;
-
-                    return (
-                      <tr key={m.id_movimiento}>
-                        <td className="text-muted">{index + 1}</td>
-
-                        <td>
-                          <div className="fw-semibold">{getItemLabel(m)}</div>
-                          <div className="text-muted small">{getItemTipo(m)}</div>
-                        </td>
-
-                        <td>
-                          {isEditing ? (
-                            <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.tipo ? 'is-invalid' : ''}`}
-                                value={editForm.tipo}
-                                onChange={(e) => setEditForm((s) => ({ ...s, tipo: e.target.value }))}
-                              >
-                                <option value="ENTRADA">ENTRADA</option>
-                                <option value="SALIDA">SALIDA</option>
-                                <option value="AJUSTE">AJUSTE</option>
-                              </select>
-                              {editErrors.tipo && <div className="invalid-feedback">{editErrors.tipo}</div>}
-                            </>
-                          ) : (
-                            <span className="fw-semibold">{String(m.tipo || '').toUpperCase()}</span>
-                          )}
-                        </td>
-
-                        <td>
-                          {isEditing ? (
-                            <>
-                              <input
-                                className={`form-control form-control-sm ${editErrors.cantidad ? 'is-invalid' : ''}`}
-                                type="number"
-                                step="1"
-                                min="1"
-                                inputMode="numeric"
-                                value={editForm.cantidad}
-                                onKeyDown={blockNonIntegerKeys}
-                                onChange={(e) =>
-                                  setEditForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))
-                                }
-                              />
-                              {editErrors.cantidad && <div className="invalid-feedback">{editErrors.cantidad}</div>}
-                            </>
-                          ) : (
-                            <span className="fw-semibold">{m.cantidad}</span>
-                          )}
-                        </td>
-
-                        <td>
-                          {isEditing ? (
-                            <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.id_almacen ? 'is-invalid' : ''}`}
-                                value={editForm.id_almacen}
-                                onChange={(e) => setEditForm((s) => ({ ...s, id_almacen: e.target.value }))}
-                                disabled={loadingRefs}
-                              >
-                                <option value="">{loadingRefs ? 'Cargando...' : 'Seleccione almacén'}</option>
-                                {almacenes.map((a) => (
-                                  <option key={a.id_almacen} value={a.id_almacen}>
-                                    {a.nombre} (Sucursal {a.id_sucursal})
-                                  </option>
-                                ))}
-                              </select>
-                              {editErrors.id_almacen && <div className="invalid-feedback">{editErrors.id_almacen}</div>}
-                            </>
-                          ) : (
-                            getAlmacenLabel(m.id_almacen)
-                          )}
-                        </td>
-
-                        <td>{toDateOnly(m.fecha_mov) || '-'}</td>
-
-                        <td>
-                          {isEditing ? (
-                            <>
-                              <input
-                                className={`form-control form-control-sm ${editErrors.ref_origen ? 'is-invalid' : ''}`}
-                                value={editForm.ref_origen}
-                                onChange={(e) => setEditForm((s) => ({ ...s, ref_origen: e.target.value }))}
-                              />
-                              {editErrors.ref_origen && <div className="invalid-feedback">{editErrors.ref_origen}</div>}
-                            </>
-                          ) : (
-                            (m.ref_origen || '-')
-                          )}
-                        </td>
-
-                        <td>
-                          {isEditing ? (
-                            <>
-                              <input
-                                className={`form-control form-control-sm ${editErrors.descripcion ? 'is-invalid' : ''}`}
-                                value={editForm.descripcion}
-                                onChange={(e) => setEditForm((s) => ({ ...s, descripcion: e.target.value }))}
-                              />
-                              {editErrors.descripcion && <div className="invalid-feedback">{editErrors.descripcion}</div>}
-                            </>
-                          ) : (
-                            (m.descripcion || '-')
-                          )}
-                        </td>
-
-                        <td>
-                          {isEditing ? (
-                            <div className="d-flex gap-2">
-                              <button className="btn btn-sm btn-success" type="button" onClick={guardarEdicion}>
-                                Guardar
-                              </button>
-                              <button className="btn btn-sm btn-secondary" type="button" onClick={cancelarEdicion}>
-                                Cancelar
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="d-flex gap-2">
-                              <button className="btn btn-sm btn-outline-primary" type="button" onClick={() => iniciarEdicion(m)}>
-                                Editar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger"
-                                type="button"
-                                onClick={() => openConfirmDelete(m.id_movimiento, getItemLabel(m))}
-                              >
-                                Eliminar
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* ==============================
-          MODAL CREAR (MÓVIL CENTRADO)
-          ============================== */}
-      {showCreateSheet && (
-        <div
-          className="modal fade show"
-          style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2500 }}
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowCreateSheet(false)}
-        >
-          <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content shadow">
-              <div className="modal-header d-flex align-items-center justify-content-between">
-                <div className="fw-semibold">Agregar movimiento</div>
-                <button type="button" className="btn btn-sm btn-light" onClick={() => setShowCreateSheet(false)}>
-                  ✕
-                </button>
-              </div>
-
-              <div className="modal-body">
-                <form onSubmit={onCrear} className="row g-2">
-                  <div className="col-12">
-                    <label className="form-label mb-1">Item</label>
-                    <select
-                      className="form-select"
-                      value={form.item_tipo}
-                      onChange={(e) =>
-                        setForm((s) => ({
-                          ...s,
-                          item_tipo: e.target.value,
-                          id_producto: '',
-                          id_insumo: ''
-                        }))
-                      }
-                    >
-                      <option value="producto">Producto</option>
-                      <option value="insumo">Insumo</option>
-                    </select>
-                  </div>
-
-                  <div className="col-12">
-                    <label className="form-label mb-1">{form.item_tipo === 'producto' ? 'Producto' : 'Insumo'}</label>
-
-                    {form.item_tipo === 'producto' ? (
-                      <>
-                        <select
-                          className={`form-select ${createErrors.id_producto ? 'is-invalid' : ''}`}
-                          value={form.id_producto}
-                          onChange={(e) => setForm((s) => ({ ...s, id_producto: e.target.value }))}
-                          disabled={loadingRefs}
-                        >
-                          <option value="">{loadingRefs ? 'Cargando...' : 'Seleccione producto'}</option>
-                          {productos.map((p) => (
-                            <option key={p.id_producto} value={p.id_producto}>
-                              {p.nombre_producto}
-                            </option>
-                          ))}
-                        </select>
-                        {createErrors.id_producto && <div className="invalid-feedback">{createErrors.id_producto}</div>}
-                      </>
-                    ) : (
-                      <>
-                        <select
-                          className={`form-select ${createErrors.id_insumo ? 'is-invalid' : ''}`}
-                          value={form.id_insumo}
-                          onChange={(e) => setForm((s) => ({ ...s, id_insumo: e.target.value }))}
-                          disabled={loadingRefs}
-                        >
-                          <option value="">{loadingRefs ? 'Cargando...' : 'Seleccione insumo'}</option>
-                          {insumos.map((i) => (
-                            <option key={i.id_insumo} value={i.id_insumo}>
-                              {i.nombre_insumo}
-                            </option>
-                          ))}
-                        </select>
-                        {createErrors.id_insumo && <div className="invalid-feedback">{createErrors.id_insumo}</div>}
-                      </>
-                    )}
-                  </div>
-
-                  <div className="col-12">
-                    <label className="form-label mb-1">Almacén</label>
-                    <select
-                      className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
-                      value={form.id_almacen}
-                      onChange={(e) => setForm((s) => ({ ...s, id_almacen: e.target.value }))}
-                      disabled={loadingRefs}
-                    >
-                      <option value="">{loadingRefs ? 'Cargando...' : 'Seleccione almacén'}</option>
-                      {almacenes.map((a) => (
-                        <option key={a.id_almacen} value={a.id_almacen}>
-                          {a.nombre} (Sucursal {a.id_sucursal})
-                        </option>
-                      ))}
-                    </select>
-                    {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
-                  </div>
-
-                  <div className="col-6">
-                    <label className="form-label mb-1">Tipo</label>
-                    <select
-                      className={`form-select ${createErrors.tipo ? 'is-invalid' : ''}`}
-                      value={form.tipo}
-                      onChange={(e) => setForm((s) => ({ ...s, tipo: e.target.value }))}
-                    >
-                      <option value="ENTRADA">ENTRADA</option>
-                      <option value="SALIDA">SALIDA</option>
-                      <option value="AJUSTE">AJUSTE</option>
-                    </select>
-                    {createErrors.tipo && <div className="invalid-feedback">{createErrors.tipo}</div>}
-                  </div>
-
-                  <div className="col-6">
-                    <label className="form-label mb-1">Cantidad</label>
-                    <input
-                      className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
-                      type="number"
-                      step="1"
-                      min="1"
-                      inputMode="numeric"
-                      value={form.cantidad}
-                      onKeyDown={blockNonIntegerKeys}
-                      onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                      required
-                    />
-                    {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
-                  </div>
-
-                  <div className="col-12">
-                    <label className="form-label mb-1">Ref. origen (opcional)</label>
-                    <input
-                      className={`form-control ${createErrors.ref_origen ? 'is-invalid' : ''}`}
-                      placeholder="Ej: COMPRA / VENTA / AJUSTE"
-                      value={form.ref_origen}
-                      onChange={(e) => setForm((s) => ({ ...s, ref_origen: e.target.value }))}
-                    />
-                    {createErrors.ref_origen && <div className="invalid-feedback">{createErrors.ref_origen}</div>}
-                  </div>
-
-                  <div className="col-12">
-                    <label className="form-label mb-1">ID Ref (opcional)</label>
-                    <input
-                      className={`form-control ${createErrors.id_ref ? 'is-invalid' : ''}`}
-                      type="number"
-                      step="1"
-                      min="1"
-                      inputMode="numeric"
-                      value={form.id_ref}
-                      onKeyDown={blockNonIntegerKeys}
-                      onChange={(e) => setForm((s) => ({ ...s, id_ref: sanitizeInteger(e.target.value) }))}
-                    />
-                    {createErrors.id_ref && <div className="invalid-feedback">{createErrors.id_ref}</div>}
-                  </div>
-
-                  <div className="col-12">
-                    <label className="form-label mb-1">Descripción (opcional)</label>
-                    <input
-                      className={`form-control ${createErrors.descripcion ? 'is-invalid' : ''}`}
-                      placeholder="Ej: Ajuste por inventario físico"
-                      value={form.descripcion}
-                      onChange={(e) => setForm((s) => ({ ...s, descripcion: e.target.value }))}
-                    />
-                    {createErrors.descripcion && <div className="invalid-feedback">{createErrors.descripcion}</div>}
-                  </div>
-
-                  <div className="col-12 d-grid gap-2 mt-2">
-                    <button className="btn btn-primary" type="submit">
-                      Guardar
+                  <div className="inv-prod-pmodal__footer">
+                    <button type="button" className="btn inv-prod-btn-subtle" onClick={resetFilterDraft}>
+                      Limpiar
                     </button>
-                    <button className="btn btn-outline-secondary" type="button" onClick={() => setShowCreateSheet(false)}>
+                    <button type="button" className="btn inv-prod-btn-outline" onClick={() => setShowFiltersModal(false)}>
                       Cancelar
+                    </button>
+                    <button type="submit" className="btn inv-prod-btn-primary">
+                      Aplicar
                     </button>
                   </div>
                 </form>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          modalPortalTarget
+        )
+      : null;
 
-      {/* ==============================
-          MODAL CONFIRMAR ELIMINAR
-          ============================== */}
-      {confirmModal.show && (
-        <div
-          className="modal fade show"
-          style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2600 }}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content shadow">
-              <div className="modal-header bg-danger text-white">
-                <h5 className="modal-title">CONFIRMAR ELIMINACIÓN</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={closeConfirmDelete} />
-              </div>
+  const createModal =
+    canCrearMovimientos && modalPortalTarget && showCreateModal
+      ? createPortal(
+          <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showCreateModal}>
+            <div className="inv-prod-pmodal__overlay" onClick={() => setShowCreateModal(false)} />
+            <div className="inv-prod-pmodal__viewport">
+              <div
+                className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="inv-warehouse-move-create-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <form onSubmit={onCrear} className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create">
+                  <div className="inv-prod-pmodal__body">
+                    <div className="inv-ins-create-hero is-create">
+                      <button
+                        type="button"
+                        className="inv-prod-drawer-close inv-ins-create-hero__close"
+                        onClick={() => setShowCreateModal(false)}
+                        aria-label="Cerrar nuevo movimiento"
+                        disabled={saving}
+                      >
+                        <i className="bi bi-x-lg" aria-hidden="true" />
+                      </button>
 
-              <div className="modal-body">
-                <div className="d-flex gap-3">
-                  <div style={{ fontSize: 28 }}>⚠️</div>
-                  <div>
-                    <div className="fw-semibold">¿DESEAS ELIMINAR ESTE MOVIMIENTO?</div>
-                    <div className="text-muted">
-                      <span className="fw-bold">{confirmModal.titulo || '(SIN DETALLE)'}</span>
+                      <div className="inv-ins-create-hero__icon">
+                        <i className="bi bi-plus-circle-dotted" aria-hidden="true" />
+                      </div>
+
+                      <div className="inv-ins-create-hero__copy">
+                        <div className="inv-ins-create-hero__kicker">Nuevo Registro</div>
+                        <div id="inv-warehouse-move-create-title" className="inv-ins-create-hero__title">
+                          Alta rapida de movimiento
+                        </div>
+                        <div className="inv-ins-create-hero__text">
+                          Registra entradas, salidas o ajustes. En AJUSTE defines la existencia final del item.
+                        </div>
+                      </div>
+
+                      <div className="inv-ins-create-hero__chips">
+                        <span className="inv-ins-create-hero__chip">
+                          <i className="bi bi-arrow-left-right" aria-hidden="true" /> {form.tipo}
+                        </span>
+                        <span className="inv-ins-create-hero__chip">
+                          <i className="bi bi-box-seam" aria-hidden="true" /> {form.id_almacen || 'Sin almacen'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-muted small mt-2">ESTA ACCIÓN NO SE PUEDE DESHACER.</div>
-                  </div>
-                </div>
-              </div>
 
-              <div className="modal-footer">
-                <button className="btn btn-outline-secondary" type="button" onClick={closeConfirmDelete}>
-                  Cancelar
-                </button>
-                <button className="btn btn-danger" type="button" onClick={eliminarConfirmado}>
-                  Sí, eliminar
-                </button>
+                    <div className="inv-prod-pmodal__sections">
+                      <section className="inv-prod-pmodal__section">
+                        <div className="inv-prod-pmodal__section-head">
+                          <div className="inv-prod-pmodal__section-title">Contexto</div>
+                          <div className="inv-prod-pmodal__section-sub">Tipo de movimiento y almacen donde impactara el stock.</div>
+                        </div>
+
+                        <div className="row g-3">
+                          <div className="col-12 col-md-4">
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-tipo">Tipo</label>
+                            <select
+                              id="inv-moves-create-tipo"
+                              className={`form-select ${createErrors.tipo ? 'is-invalid' : ''}`}
+                              value={form.tipo}
+                              onChange={(event) => setForm((current) => ({ ...current, tipo: event.target.value }))}
+                              disabled={saving}
+                            >
+                              <option value="ENTRADA">ENTRADA</option>
+                              <option value="SALIDA">SALIDA</option>
+                              <option value="AJUSTE">AJUSTE</option>
+                            </select>
+                            {createErrors.tipo ? <div className="invalid-feedback">{createErrors.tipo}</div> : null}
+                          </div>
+
+                          <div className="col-12 col-md-8">
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-almacen">Almacen</label>
+                            <select
+                              id="inv-moves-create-almacen"
+                              className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
+                              value={form.id_almacen}
+                              onChange={(event) => {
+                                const nextAlmacen = event.target.value;
+                                setForm((current) => ({
+                                  ...current,
+                                  id_almacen: nextAlmacen,
+                                  id_item: ''
+                                }));
+                                setItemSearch('');
+                                setIsItemDropdownOpen(false);
+                                clearCreateErrors('id_almacen', 'id_item');
+                              }}
+                              disabled={saving}
+                            >
+                              <option value="">Seleccione almacen</option>
+                              {almacenesOperativos.map((almacen) => (
+                                <option key={almacen.id_almacen} value={almacen.id_almacen}>
+                                  {formatAlmacenOptionLabel(almacen, sucursalesMap)}
+                                </option>
+                              ))}
+                            </select>
+                            {createErrors.id_almacen ? <div className="invalid-feedback">{createErrors.id_almacen}</div> : null}
+                          </div>
+                        </div>
+                      </section>
+
+                      <section className="inv-prod-pmodal__section">
+                        <div className="inv-prod-pmodal__section-head">
+                          <div className="inv-prod-pmodal__section-title">Item y registro</div>
+                          <div className="inv-prod-pmodal__section-sub">
+                            {form.tipo === 'AJUSTE'
+                              ? 'Selecciona el item e indica la existencia final. El sistema ajusta automaticamente la diferencia.'
+                              : 'Selecciona el item, la cantidad y el contexto opcional del movimiento.'}
+                          </div>
+                        </div>
+
+                        <div className="row g-3">
+                          <div className="col-12 col-md-4">
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-item-tipo">Tipo de item</label>
+                            <select
+                              id="inv-moves-create-item-tipo"
+                              className={`form-select ${createErrors.item_tipo ? 'is-invalid' : ''}`}
+                              value={form.item_tipo}
+                              onChange={(event) => {
+                                const nextTipo = event.target.value;
+                                setForm((current) => ({
+                                  ...current,
+                                  item_tipo: nextTipo,
+                                  id_item: ''
+                                }));
+                                setItemSearch('');
+                                setIsItemDropdownOpen(false);
+                                clearCreateErrors('item_tipo', 'id_item');
+                              }}
+                              disabled={saving}
+                            >
+                              <option value="producto">Producto</option>
+                              <option value="insumo">Insumo</option>
+                            </select>
+                            {createErrors.item_tipo ? <div className="invalid-feedback">{createErrors.item_tipo}</div> : null}
+                          </div>
+
+                          <div className="col-12 col-md-8">
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-item">Item</label>
+                            <div ref={itemComboboxRef} className="position-relative">
+                              <div className="input-group">
+                                <input
+                                  id="inv-moves-create-item"
+                                  type="text"
+                                  className={`form-control ${createErrors.id_item ? 'is-invalid' : ''}`}
+                                  value={createItemInputValue}
+                                  onFocus={() => {
+                                    if (!loadingRefs && !saving && isCreateItemContextReady) setIsItemDropdownOpen(true);
+                                  }}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    setItemSearch(nextValue);
+                                    setIsItemDropdownOpen(true);
+                                    if (form.id_item) {
+                                      setForm((current) => ({ ...current, id_item: '' }));
+                                    }
+                                    clearCreateErrors('id_item');
+                                  }}
+                                  placeholder={
+                                    !isCreateItemContextReady
+                                      ? createItemPlaceholder
+                                      : form.item_tipo === 'producto'
+                                      ? 'Buscar producto...'
+                                      : 'Buscar insumo...'
+                                  }
+                                  autoComplete="off"
+                                  disabled={loadingRefs || saving || !isCreateItemContextReady}
+                                />
+                                {createItemInputValue ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline-secondary"
+                                    onClick={() => {
+                                      setItemSearch('');
+                                      setIsItemDropdownOpen(false);
+                                      setForm((current) => ({ ...current, id_item: '' }));
+                                      clearCreateErrors('id_item');
+                                    }}
+                                    disabled={loadingRefs || saving || !isCreateItemContextReady}
+                                    aria-label="Limpiar seleccion de item"
+                                  >
+                                    <i className="bi bi-x-lg" aria-hidden="true" />
+                                  </button>
+                                ) : null}
+                              </div>
+                              {isItemDropdownOpen && isCreateItemContextReady ? (
+                                <div
+                                  className="dropdown-menu show w-100 mt-1"
+                                  style={{ maxHeight: 220, overflowY: 'auto', zIndex: 1085 }}
+                                >
+                                  {filteredCreateItemOptions.length ? (
+                                    filteredCreateItemOptions.map((item) => {
+                                      const itemId = getItemId(item, form.item_tipo);
+                                      const itemName = getItemDisplayName(item, form.item_tipo);
+                                      return (
+                                        <button
+                                          key={itemId}
+                                          type="button"
+                                          className="dropdown-item"
+                                          onClick={() => {
+                                            setForm((current) => ({ ...current, id_item: itemId }));
+                                            setItemSearch(itemName);
+                                            setIsItemDropdownOpen(false);
+                                            clearCreateErrors('id_item');
+                                          }}
+                                        >
+                                          {itemName}
+                                        </button>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="dropdown-item-text text-muted">
+                                      {form.item_tipo === 'producto'
+                                        ? 'No se encontraron productos activos.'
+                                        : 'No se encontraron insumos activos.'}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                            {createErrors.id_item ? <div className="invalid-feedback">{createErrors.id_item}</div> : null}
+                            {!createErrors.id_item && !isCreateItemContextReady ? (
+                              <div className="form-text">{REFERENCIAS_CONTEXT_MESSAGE}</div>
+                            ) : null}
+                          </div>
+
+                          <div className="col-12 col-md-4">
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-cantidad">
+                              {form.tipo === 'AJUSTE' ? 'Existencia final' : 'Cantidad'}
+                            </label>
+                            <input
+                              id="inv-moves-create-cantidad"
+                              className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
+                              type="number"
+                              min="0"
+                              step="0.0001"
+                              inputMode="decimal"
+                              value={form.cantidad}
+                              onChange={(event) =>
+                                setForm((current) => ({
+                                  ...current,
+                                  cantidad: String(event.target.value)
+                                }))
+                              }
+                              disabled={saving}
+                              placeholder={form.tipo === 'AJUSTE' ? 'Ej: 25.5000 (stock final)' : 'Ej: 0.5000'}
+                            />
+                            {createErrors.cantidad ? <div className="invalid-feedback">{createErrors.cantidad}</div> : null}
+                            {!createErrors.cantidad ? (
+                              <div className="form-text">{form.tipo === 'AJUSTE' ? AJUSTE_DECIMAL_HELP : MOVIMIENTO_DECIMAL_HELP}</div>
+                            ) : null}
+                            {!createErrors.cantidad && form.tipo === 'AJUSTE' ? <div className="form-text">{AJUSTE_STOCK_FINAL_HELP}</div> : null}
+                          </div>
+
+                          <div className="col-12 col-md-8">
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-ref">Referencia</label>
+                            <input
+                              id="inv-moves-create-ref"
+                              className="form-control"
+                              value={form.ref_origen}
+                              onChange={(event) => setForm((current) => ({ ...current, ref_origen: event.target.value }))}
+                              placeholder="Ej: COMPRA, VENTA, AJUSTE MANUAL"
+                              disabled={saving}
+                            />
+                          </div>
+
+                          <div className="col-12">
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-observacion">Observacion</label>
+                            <textarea
+                              id="inv-moves-create-observacion"
+                              className="form-control"
+                              rows="3"
+                              value={form.descripcion}
+                              onChange={(event) => setForm((current) => ({ ...current, descripcion: event.target.value }))}
+                              placeholder="Contexto adicional para el kardex"
+                              disabled={saving}
+                            />
+                          </div>
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+
+                  <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+                    <button type="button" className="btn inv-prod-btn-subtle" onClick={resetForm} disabled={saving}>
+                      Limpiar
+                    </button>
+                    <button type="button" className="btn inv-prod-btn-outline" onClick={() => setShowCreateModal(false)} disabled={saving}>
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn inv-prod-btn-primary" disabled={saving}>
+                      {saving ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
+          </div>,
+          modalPortalTarget
+        )
+      : null;
+
+  if (permisosLoading) return null;
+
+  if (!canAccessMovimientosTab || !canVerMovimientos) {
+    return <SinPermiso permiso={PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER} />;
+  }
+
+  const rootClass = `inv-warehouse-moves ${embedded ? 'is-embedded' : ''}`;
+
+  return (
+    <>
+      <section className={rootClass}>
+        <div className="inv-warehouse-moves__header">
+          <div className="inv-warehouse-moves__header-top">
+            <div className="inv-warehouse-moves__title-wrap">
+              <div className="inv-warehouse-moves__title-row">
+                <i className="bi bi-arrow-left-right" aria-hidden="true" />
+                <h3 className="inv-warehouse-moves__title">{`Movimientos: ${scopeLabel}`}</h3>
+              </div>
+            </div>
+
+            <div className="inv-warehouse-moves__header-actions">
+              <button type="button" className="inv-prod-toolbar-btn" onClick={openFiltersModal}>
+                <i className="bi bi-funnel" aria-hidden="true" />
+                <span>Filtros</span>
+              </button>
+              {canCrearMovimientos ? (
+                <button type="button" className="inv-prod-toolbar-btn" onClick={openCreateModal}>
+                  <i className="bi bi-plus-circle-dotted" aria-hidden="true" />
+                  <span>Nuevo movimiento</span>
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="inv-warehouse-moves__search-row">
+            <label className="inv-ins-search inv-warehouse-moves__search" aria-label="Buscar movimientos">
+              <i className="bi bi-search" />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar item, referencia u observacion..."
+              />
+            </label>
+            {hasActiveListadoFilters ? (
+              <span className="inv-prod-active-filter-pill">
+                <span>Filtros activos</span>
+                <button
+                  type="button"
+                  className="inv-prod-active-filter-pill__clear"
+                  onClick={clearListadoFilters}
+                  aria-label="Limpiar filtros"
+                  title="Limpiar filtros"
+                >
+                  <i className="bi bi-x-lg" aria-hidden="true" />
+                </button>
+              </span>
+            ) : null}
           </div>
         </div>
-      )}
-    </div>
+
+        {error ? (
+          <div className="alert alert-danger inv-warehouse-moves__alert">
+            <i className="bi bi-exclamation-triangle-fill" aria-hidden="true" />
+            <span>{error}</span>
+          </div>
+        ) : null}
+
+        <div className="inv-warehouse-moves__table-shell">
+          {loading ? (
+            <div className="inv-warehouse-moves__empty">
+              <i className="bi bi-arrow-repeat" aria-hidden="true" />
+              <span>Cargando movimientos...</span>
+            </div>
+          ) : movimientos.length === 0 ? (
+            <div className="inv-warehouse-moves__empty">
+              <i className="bi bi-inbox" aria-hidden="true" />
+              <span>No hay movimientos para los filtros aplicados.</span>
+            </div>
+          ) : (
+            <>
+              <div className="inv-warehouse-moves__table-responsive d-none d-lg-block">
+                <table className="table inv-warehouse-moves__table align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th className="inv-warehouse-moves__col-date inv-warehouse-moves__cell-center">Fecha / hora</th>
+                      <th className="inv-warehouse-moves__col-type inv-warehouse-moves__cell-center">Tipo</th>
+                      <th className="inv-warehouse-moves__col-item inv-warehouse-moves__cell-item">Item</th>
+                      <th className="inv-warehouse-moves__col-qty inv-warehouse-moves__cell-center">Cantidad</th>
+                      <th className="inv-warehouse-moves__col-stock inv-warehouse-moves__cell-center">Stock</th>
+                      <th className="inv-warehouse-moves__col-ref inv-warehouse-moves__cell-center">Referencia</th>
+                      <th className="inv-warehouse-moves__col-note inv-warehouse-moves__cell-note">Observacion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedMovimientos.map((movimiento) => (
+                      <tr key={movimiento.id_movimiento} className="inv-warehouse-moves__row">
+                        <td className="inv-warehouse-moves__cell-center">
+                          <div className="inv-warehouse-moves__date">{formatKardexFecha(movimiento.fecha_mov)}</div>
+                        </td>
+                        <td className="inv-warehouse-moves__cell-center">
+                          <span className={`inv-warehouse-type-pill ${getTipoBadgeClass(movimiento.tipo)}`}>
+                            {String(movimiento.tipo ?? '-').toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="inv-warehouse-moves__cell-item">
+                          <div className="inv-warehouse-moves__item-cell">
+                            <div className="inv-warehouse-moves__item-main">{movimiento.item_nombre || '-'}</div>
+                            <div className="inv-warehouse-moves__item-sub">
+                              <span>{movimiento.item_tipo || '-'}</span>
+                              {movimiento.es_legacy ? <span>Legacy</span> : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td
+                          className={`inv-warehouse-moves__qty inv-warehouse-moves__cell-center ${getTipoBadgeClass(
+                            movimiento.tipo
+                          )}`}
+                        >
+                          {formatCantidadLabel(movimiento)}
+                        </td>
+                        <td className="inv-warehouse-moves__cell-center">
+                          <span className="inv-warehouse-moves__stock">{formatSaldoLabel(movimiento)}</span>
+                        </td>
+                        <td className="inv-warehouse-moves__cell-center">
+                          <span className="inv-warehouse-moves__ref">{formatRefLabel(movimiento)}</span>
+                        </td>
+                        <td className="inv-warehouse-moves__cell-note">
+                          <div className="inv-warehouse-moves__note-cell">
+                            <div className="inv-warehouse-moves__note">
+                              {String(movimiento.descripcion ?? '').trim() || 'Sin observacion'}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="inv-warehouse-moves__mobile-list d-lg-none">
+                {paginatedMovimientos.map((movimiento) => (
+                  <article key={movimiento.id_movimiento} className="inv-warehouse-moves__mobile-card">
+                    <div className="inv-warehouse-moves__mobile-head">
+                      <div>
+                        <strong>{movimiento.item_nombre || '-'}</strong>
+                        <span>{formatKardexFecha(movimiento.fecha_mov)}</span>
+                      </div>
+                      <span className={`inv-warehouse-type-pill ${getTipoBadgeClass(movimiento.tipo)}`}>
+                        {String(movimiento.tipo ?? '-').toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="inv-warehouse-moves__mobile-grid">
+                      <div>
+                        <span>Item</span>
+                        <strong>{movimiento.item_tipo || '-'}</strong>
+                      </div>
+                      <div>
+                        <span>Cantidad</span>
+                        <strong>{formatCantidadLabel(movimiento)}</strong>
+                      </div>
+                      <div>
+                        <span>Stock</span>
+                        <strong>{formatSaldoLabel(movimiento)}</strong>
+                      </div>
+                      <div>
+                        <span>Referencia</span>
+                        <strong>{formatRefLabel(movimiento)}</strong>
+                      </div>
+                    </div>
+                    <p className="inv-warehouse-moves__mobile-note">
+                      {String(movimiento.descripcion ?? '').trim() || 'Sin observacion'}
+                    </p>
+                  </article>
+                ))}
+              </div>
+
+              <div className="inv-warehouse-moves__pagination inv-ins-pagination">
+                <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
+                  {`Mostrando ${listPageWindow} de ${pagination.total}`}
+                </div>
+
+                <div className="inv-warehouse-moves__pagination-controls">
+                  <button
+                    type="button"
+                    className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                    onClick={() => setListPage((current) => Math.max(1, current - 1))}
+                    disabled={listPage === 1}
+                    aria-label="Pagina anterior"
+                  >
+                    <i className="bi bi-chevron-left" aria-hidden="true" />
+                    <span>Anterior</span>
+                  </button>
+
+                  <div className="inv-warehouse-moves__pagination-pages">
+                    {visiblePageNumbers.map((pageNumber) => (
+                      <button
+                        key={pageNumber}
+                        type="button"
+                        className={`inv-warehouse-moves__page-number ${pageNumber === listPage ? 'is-active' : ''}`.trim()}
+                        onClick={() => setListPage(pageNumber)}
+                        aria-label={`Ir a la pagina ${pageNumber}`}
+                        aria-current={pageNumber === listPage ? 'page' : undefined}
+                      >
+                        {pageNumber}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">
+                    {`Pagina ${listPage} de ${listTotalPages}`}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                    onClick={() => setListPage((current) => Math.min(listTotalPages, current + 1))}
+                    disabled={listPage === listTotalPages}
+                    aria-label="Pagina siguiente"
+                  >
+                    <span>Siguiente</span>
+                    <i className="bi bi-chevron-right" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {filtersModal}
+      {createModal}
+    </>
   );
 };
 
