@@ -6,12 +6,14 @@ import {
 
 export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) =>
   (Array.isArray(cart) ? cart : []).map((line) => {
+    const isSimpleProduct = line.kind === 'PRODUCTO';
     const payload = {
       cart_key: line.cartKey,
+      line_id: line.lineId || null,
       id_producto: line.id_producto,
       id_combo: line.id_combo,
       id_receta: line.id_receta,
-      cantidad: Number(line.cantidad)
+      cantidad: isSimpleProduct ? Number(line.cantidad) : 1
     };
     const lineDiscountId = Number(line.id_descuento_catalogo_linea || 0);
     if (canApplyDiscount && lineDiscountId > 0) {

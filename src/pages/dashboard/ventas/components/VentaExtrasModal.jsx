@@ -125,7 +125,11 @@ export default function VentaExtrasModal({
               const unavailable = option.disponible !== true;
               const soldOut = option.codigo_no_disponible === 'EXTRA_STOCK_INSUFICIENTE';
               return (
-                <div className={`ventas-extras-modal__card${unavailable ? ' is-unavailable' : ''}`} key={option.id_extra}>
+                <div
+                  className={`ventas-extras-modal__card${unavailable ? ' is-unavailable' : ''}`}
+                  key={option.id_extra}
+                  data-testid="ventas-extra-option"
+                >
                   <div>
                     <strong>{option.nombre}</strong>
                     <span>{money(option.precio)}</span>
@@ -139,11 +143,11 @@ export default function VentaExtrasModal({
                     </span>
                   ) : null}
                   <div className="ventas-create-modal__qty-control">
-                    <button type="button" onClick={() => setQuantity(option, qty - 1)} disabled={qty <= 0}>
+                    <button type="button" data-testid="ventas-extra-decrement" onClick={() => setQuantity(option, qty - 1)} disabled={qty <= 0}>
                       <i className="bi bi-dash" />
                     </button>
                     <span>{qty}</span>
-                    <button type="button" onClick={() => setQuantity(option, qty + 1)} disabled={unavailable}>
+                    <button type="button" data-testid="ventas-extra-increment" onClick={() => setQuantity(option, qty + 1)} disabled={unavailable}>
                       <i className="bi bi-plus-lg" />
                     </button>
                   </div>
@@ -161,7 +165,7 @@ export default function VentaExtrasModal({
             <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
               Cancelar
             </button>
-            <button type="button" className="btn btn-warning" onClick={() => onConfirm?.(current)} disabled={hasUnavailableSelection}>
+            <button type="button" className="btn btn-warning" data-testid="ventas-extras-confirmar" onClick={() => onConfirm?.(current)} disabled={hasUnavailableSelection}>
               Confirmar
             </button>
           </div>

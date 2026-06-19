@@ -291,6 +291,11 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                       key={`DESCUENTO-${kind}-${itemId}`}
                       className="vcp-card ventas-catalog-card-compact ventas-catalog-card-compact--discount"
                       onClick={() => composer.addCatalogItem(kind, row, [], discountAddOptions)}
+                      data-testid="ventas-catalog-card"
+                      data-catalog-kind={kind}
+                      data-catalog-id={itemId}
+                      data-catalog-name={itemName}
+                      data-catalog-stock={stockDisponible ?? ''}
                     >
                       <div className="vcp-card__media">
                         {badgeLabel ? (
@@ -332,6 +337,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                           <button
                             type="button"
                             className="vcp-card__add-btn"
+                            data-testid="ventas-catalog-add"
                             onClick={(event) => {
                               event.stopPropagation();
                               composer.addCatalogItem(kind, row, [], discountAddOptions);
@@ -391,6 +397,11 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                   if (isOutOfStock) return;
                   composer.addCatalogItem(kind, row);
                 }}
+                data-testid="ventas-catalog-card"
+                data-catalog-kind={kind}
+                data-catalog-id={itemId}
+                data-catalog-name={itemName}
+                data-catalog-stock={stockDisponible ?? ''}
               >
                 <div className="vcp-card__media">
                   {badgeLabel ? (
@@ -437,6 +448,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                     <button
                       type="button"
                       className="vcp-card__add-btn"
+                      data-testid="ventas-catalog-add"
                       onClick={(event) => {
                         event.stopPropagation();
                         if (isOutOfStock) return;

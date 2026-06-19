@@ -128,6 +128,7 @@ export default function VentaComplementosModal({
                       checked ? 'is-selected' : '',
                       !option.disponible ? 'is-disabled' : ''
                     ].filter(Boolean).join(' ')}
+                    data-testid="ventas-complemento-option"
                   >
                     <input
                       type="checkbox"
@@ -191,7 +192,7 @@ export default function VentaComplementosModal({
             <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
               Cancelar
             </button>
-            <button type="button" className="btn btn-warning" onClick={handleConfirm}>
+            <button type="button" className="btn btn-warning" data-testid="ventas-complementos-confirmar" onClick={handleConfirm}>
               {mode === 'EDIT' ? 'Guardar complementos' : 'Agregar al carrito'}
             </button>
           </div>

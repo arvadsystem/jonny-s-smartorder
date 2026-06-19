@@ -554,6 +554,7 @@ export default function VentaFinalizarOperacionModal({
             role="tab"
             aria-selected={activeTab === 'pagar'}
             className={activeTab === 'pagar' ? 'is-active' : ''}
+            data-testid="ventas-finalizar-tab-pagar"
             onClick={() => setActiveTab('pagar')}
           >
             <i className="bi bi-credit-card" /> Pagar ahora
@@ -563,6 +564,7 @@ export default function VentaFinalizarOperacionModal({
             role="tab"
             aria-selected={activeTab === 'pendiente'}
             className={activeTab === 'pendiente' ? 'is-active' : ''}
+            data-testid="ventas-finalizar-tab-pendiente"
             onClick={() => setActiveTab('pendiente')}
           >
             <i className="bi bi-clock-history" /> Pago pendiente
@@ -601,6 +603,7 @@ export default function VentaFinalizarOperacionModal({
                   <input
                     type="text"
                     value={contact.nombre_contacto}
+                    data-testid="ventas-pendiente-nombre-contacto"
                     placeholder="Ej. Angel Perez"
                     onChange={(event) => setContactField('nombre_contacto', event.target.value)}
                     required={requiresPendingContactName}
@@ -622,6 +625,7 @@ export default function VentaFinalizarOperacionModal({
                 <input
                   type="text"
                   value={contact.telefono_contacto}
+                  data-testid="ventas-contacto-telefono"
                   onChange={(event) => setContactField('telefono_contacto', event.target.value)}
                   required={activeTab === 'pendiente'}
                   aria-required={activeTab === 'pendiente'}
@@ -717,6 +721,7 @@ export default function VentaFinalizarOperacionModal({
                         type="text"
                         inputMode="decimal"
                         value={composer.cashReceived}
+                        data-testid="ventas-pago-monto-recibido"
                         placeholder="0.00"
                         onChange={handleCashReceivedChange}
                         className="ventas-finalizar-modal__money-input"
@@ -811,11 +816,11 @@ export default function VentaFinalizarOperacionModal({
             Cancelar
           </button>
           {activeTab === 'pagar' ? (
-            <button type="button" className="btn btn-primary" onClick={handlePaidSubmit} disabled={!composer.canSubmit || isSubmitting}>
+            <button type="button" className="btn btn-primary" data-testid="ventas-confirmar-pago" onClick={handlePaidSubmit} disabled={!composer.canSubmit || isSubmitting}>
               {paidSubmitting || saving ? 'Guardando...' : 'Confirmar pago y enviar pedido'}
             </button>
           ) : (
-            <button type="button" className="btn btn-primary" onClick={handlePendingSubmit} disabled={isSubmitting}>
+            <button type="button" className="btn btn-primary" data-testid="ventas-crear-pedido-pendiente" onClick={handlePendingSubmit} disabled={isSubmitting}>
               {pendingSubmitting || saving ? 'Creando...' : 'Crear pedido pendiente'}
             </button>
           )}

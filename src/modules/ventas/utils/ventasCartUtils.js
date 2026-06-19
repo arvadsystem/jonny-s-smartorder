@@ -57,8 +57,26 @@ export const getExtrasSubtotal = (value) =>
 export const getExtrasCount = (value) =>
   normalizeExtras(value).reduce((sum, entry) => sum + Number(entry.cantidad || 0), 0);
 
-export const buildCartKey = (kind, entityId, complementos = [], extras = []) =>
-  `${kind}:${entityId}:${buildComplementSignature(complementos)}:${buildExtrasSignature(extras)}`;
+let cartLineCounter = 0;
+
+export const isCustomizableVentaLineKind = (kind) => ['COMBO', 'RECETA'].includes(String(kind || '').toUpperCase());
+
+export const createCartLineId = () => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  cartLineCounter += 1;
+  const randomPart = Math.random().toString(36).slice(2, 12);
+  return `line_${Date.now().toString(36)}_${cartLineCounter.toString(36)}_${randomPart}`;
+};
+
+export const buildCartKey = (kind, entityId, complementos = [], extras = [], lineId = null) => {
+  const normalizedKind = String(kind || '').toUpperCase();
+  if (isCustomizableVentaLineKind(normalizedKind) && lineId) {
+    return `${normalizedKind}:line:${lineId}`;
+  }
+  return `${normalizedKind}:${entityId}:${buildComplementSignature(complementos)}:${buildExtrasSignature(extras)}`;
+};
 
 export const findLineIndex = (cart, cartKey) =>
   cart.findIndex((line) => String(line.cartKey) === String(cartKey));

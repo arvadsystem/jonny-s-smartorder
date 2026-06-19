@@ -2,12 +2,14 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 import {
   buildCartKey,
+  createCartLineId,
   filterBySearch,
   findLineIndex,
   getComboDepartmentIds,
   getExtrasCount,
   getExtrasSubtotal,
   getResultsLabel,
+  isCustomizableVentaLineKind,
   normalizeComplementIds,
   normalizeValidComplementIds,
   normalizeExtras,
@@ -155,6 +157,10 @@ const getLineComplementSelectionIssue = (line) => {
 };
 
 const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) => {
+  const normalizedKind = String(kind || '').toUpperCase();
+  const lineId = isCustomizableVentaLineKind(normalizedKind)
+    ? String(options?.lineId || createCartLineId())
+    : null;
   const comboTitle = row?.nombre_combo || row?.descripcion || 'Combo';
   const complementosDisponibles = (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
     .map((entry) => ({
@@ -179,6 +185,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
   if (kind === 'PRODUCTO') {
     return {
       cartKey: buildCartKey(kind, row.id_producto),
+      lineId,
       kind,
       entityId: row.id_producto,
       id_producto: row.id_producto,
@@ -205,7 +212,8 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
 
   if (kind === 'COMBO') {
     return {
-      cartKey: buildCartKey(kind, row.id_combo, complementosSeleccionados, []),
+      cartKey: buildCartKey(kind, row.id_combo, complementosSeleccionados, [], lineId),
+      lineId,
       kind,
       entityId: row.id_combo,
       id_producto: null,
@@ -231,7 +239,8 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
   }
 
   return {
-    cartKey: buildCartKey(kind, row.id_receta, complementosSeleccionados, []),
+    cartKey: buildCartKey(kind, row.id_receta, complementosSeleccionados, [], lineId),
+    lineId,
     kind,
     entityId: row.id_receta,
     id_producto: null,
@@ -389,18 +398,21 @@ export const useVentaComposer = ({
         const minimo = Number(catalogRow.minimo_complementos ?? 0) || 0;
         const maximo = Number(catalogRow.maximo_complementos ?? 0) || 0;
         const requiere = Boolean(catalogRow.requiere_complementos) || minimo > 0;
-        const nextCartKey = buildCartKey(line.kind, line.entityId, complementos, line.extras);
+        const lineId = line.lineId || createCartLineId();
+        const nextCartKey = buildCartKey(line.kind, line.entityId, complementos, line.extras, lineId);
         const lineChanged =
-          complementos.length !== normalizeComplementIds(line.complementos).length
+          !line.lineId
+          || nextCartKey !== line.cartKey
+          || complementos.length !== normalizeComplementIds(line.complementos).length
           || JSON.stringify(disponibles) !== JSON.stringify(line.complementos_disponibles || [])
           || minimo !== Number(line.minimo_complementos || 0)
           || maximo !== Number(line.maximo_complementos || 0)
-          || requiere !== Boolean(line.complementos_requiere)
-          || nextCartKey !== line.cartKey;
+          || requiere !== Boolean(line.complementos_requiere);
         if (!lineChanged) return line;
         changed = true;
         return {
           ...line,
+          lineId,
           complementos,
           complementos_disponibles: disponibles,
           complementos_requiere: requiere,
@@ -706,18 +718,16 @@ export const useVentaComposer = ({
         }
       }
 
-      const index = findLineIndex(nextCart, catalogLine.cartKey);
+      const index = kind === 'PRODUCTO' ? findLineIndex(nextCart, catalogLine.cartKey) : -1;
       if (index >= 0) {
         const currentLine = nextCart[index];
-        if (kind === 'PRODUCTO') {
-          const stockDisponible = Number(currentLine.stock_disponible ?? 0);
-          const nextQty = Number(currentLine.cantidad ?? 0) + 1;
-          if (nextQty > stockDisponible) {
-            return {
-              ...current,
-              submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
-            };
-          }
+        const stockDisponible = Number(currentLine.stock_disponible ?? 0);
+        const nextQty = Number(currentLine.cantidad ?? 0) + 1;
+        if (nextQty > stockDisponible) {
+          return {
+            ...current,
+            submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
+          };
         }
 
         const autoDiscount = canApplyDiscount && !currentLine.id_descuento_catalogo_linea
@@ -816,45 +826,23 @@ export const useVentaComposer = ({
         maximo_complementos: editedLine.maximo_complementos_original ?? editedLine.maximo_complementos,
         complementos_disponibles: editedLine.complementos_disponibles
       };
-      const rebuilt = buildCatalogLine(editedLine.kind, baseRow, ids, complementOptions);
+      const lineId = editedLine.lineId || createCartLineId();
+      const rebuilt = buildCatalogLine(editedLine.kind, baseRow, ids, {
+        ...complementOptions,
+        lineId
+      });
       rebuilt.extras = normalizeExtras(editedLine.extras);
-      rebuilt.cartKey = buildCartKey(editedLine.kind, editedLine.entityId, rebuilt.complementos, rebuilt.extras);
       setState((current) => {
-        const duplicateIndex = current.cart.findIndex(
-          (line) =>
-            line.cartKey === rebuilt.cartKey &&
-            line.cartKey !== complementModal.cartKey
-        );
-
-        if (duplicateIndex >= 0) {
-          return {
-            ...current,
-            cart: current.cart
-              .filter((line) => line.cartKey !== complementModal.cartKey)
-              .map((line) =>
-                line.cartKey === rebuilt.cartKey
-                  ? {
-                    ...line,
-                    cantidad: Number(line.cantidad ?? 0) + Number(editedLine.cantidad ?? 0),
-                    observacion: line.observacion || editedLine.observacion || '',
-                    complementos_incompletos_autorizados: Boolean(
-                      line.complementos_incompletos_autorizados || rebuilt.complementos_incompletos_autorizados
-                    )
-                  }
-                  : line
-              ),
-            incompleteComplementCartKey: '',
-            submitError: ''
-          };
-        }
-
+        const cartKey = editedLine.lineId ? (editedLine.cartKey || rebuilt.cartKey) : rebuilt.cartKey;
         return {
           ...current,
           cart: current.cart.map((line) =>
             line.cartKey === complementModal.cartKey
               ? {
                 ...line,
-                cartKey: rebuilt.cartKey,
+                lineId,
+                cartKey,
+                cantidad: 1,
                 complementos: rebuilt.complementos,
                 complementos_incompletos_autorizados: rebuilt.complementos_incompletos_autorizados
               }
@@ -904,10 +892,16 @@ export const useVentaComposer = ({
           }
 
           const adjustedExtras = normalizeExtras(candidate.extras);
+          const isCustomLine = isCustomizableVentaLineKind(candidate.kind);
+          const lineId = isCustomLine ? String(candidate.lineId || createCartLineId()) : null;
           return {
             ...candidate,
+            lineId,
+            cantidad: isCustomLine ? 1 : candidate.cantidad,
             extras: adjustedExtras,
-            cartKey: buildCartKey(candidate.kind, candidate.entityId, candidate.complementos, adjustedExtras)
+            cartKey: isCustomLine
+              ? (candidate.lineId ? candidate.cartKey : buildCartKey(candidate.kind, candidate.entityId, candidate.complementos, adjustedExtras, lineId))
+              : buildCartKey(candidate.kind, candidate.entityId, candidate.complementos, adjustedExtras)
           };
         })
         .filter((line) => Number(line.cantidad ?? 0) > 0);
@@ -1008,34 +1002,18 @@ export const useVentaComposer = ({
     setState((current) => {
       const currentLine = current.cart.find((line) => line.cartKey === extrasModal.cartKey);
       if (!currentLine) return current;
-      const nextCartKey = buildCartKey(currentLine.kind, currentLine.entityId, currentLine.complementos, nextExtras);
-      const duplicate = current.cart.find((line) => line.cartKey === nextCartKey && line.cartKey !== extrasModal.cartKey);
-      if (duplicate) {
-        const mergedQty = Number(duplicate.cantidad || 0) + Number(currentLine.cantidad || 0);
-        return {
-          ...current,
-          cart: current.cart
-            .filter((line) => line.cartKey !== extrasModal.cartKey)
-            .map((line) =>
-              line.cartKey === nextCartKey
-                ? {
-                  ...line,
-                  cantidad: mergedQty,
-                  extras: nextExtras,
-                  observacion: line.observacion || currentLine.observacion || ''
-                }
-                : line
-            ),
-          incompleteComplementCartKey: '',
-          submitError: ''
-        };
-      }
+      const lineId = currentLine.lineId || createCartLineId();
+      const nextCartKey = currentLine.lineId
+        ? currentLine.cartKey
+        : buildCartKey(currentLine.kind, currentLine.entityId, currentLine.complementos, nextExtras, lineId);
       return {
         ...current,
         cart: current.cart.map((line) =>
           line.cartKey === extrasModal.cartKey
             ? {
               ...line,
+              lineId,
+              cantidad: 1,
               extras: nextExtras,
               cartKey: nextCartKey
             }

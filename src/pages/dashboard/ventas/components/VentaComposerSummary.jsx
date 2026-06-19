@@ -95,8 +95,9 @@ export default function VentaComposerSummary({
               const lineTotal = composer.formatCurrency((line.precio_unitario * line.cantidad) + extrasSubtotal);
               const discountDetail = lineDiscountDetailsByKey.get(String(line.cartKey)) || null;
               const thumb = line.imagen_principal_url || null;
+              const isSimpleProduct = line.kind === 'PRODUCTO';
               const canIncrease =
-                line.kind !== 'PRODUCTO' || Number(line.cantidad ?? 0) < Number(line.stock_disponible ?? 0);
+                isSimpleProduct && Number(line.cantidad ?? 0) < Number(line.stock_disponible ?? 0);
               const hasKitchenNote = String(line.observacion || '').trim().length > 0;
               const noteExpanded = Boolean(expandedNotes[line.cartKey]);
               const complementIssue = typeof composer.getLineComplementSelectionIssue === 'function'
@@ -116,6 +117,9 @@ export default function VentaComposerSummary({
                     'ventas-cart__item',
                     isComplementIncomplete ? 'is-complement-incomplete' : ''
                   ].filter(Boolean).join(' ')}
+                  data-testid="ventas-cart-item"
+                  data-cart-kind={line.kind}
+                  data-cart-key={line.cartKey}
                 >
                   <div className="ventas-cart__item-thumb">
                     {thumb
@@ -141,34 +145,40 @@ export default function VentaComposerSummary({
                     )}
 
                     <div className="ventas-cart__item-row">
-                      <div className="ventas-create-modal__qty-control">
-                        <button
-                          type="button"
-                          aria-label={`Disminuir cantidad de ${line.nombre_item}`}
-                          onClick={() =>
-                            composer.updateLine(line.cartKey, (current) => ({
-                              ...current,
-                              cantidad: Number(current.cantidad ?? 0) - 1
-                            }))
-                          }
-                        >
-                          <i className="bi bi-dash" />
-                        </button>
-                        <span>{line.cantidad}</span>
-                        <button
-                          type="button"
-                          aria-label={`Aumentar cantidad de ${line.nombre_item}`}
-                          disabled={!canIncrease}
-                          onClick={() =>
-                            composer.updateLine(line.cartKey, (current) => ({
-                              ...current,
-                              cantidad: Number(current.cantidad ?? 0) + 1
-                            }))
-                          }
-                        >
-                          <i className="bi bi-plus-lg" />
-                        </button>
-                      </div>
+                      {isSimpleProduct ? (
+                        <div className="ventas-create-modal__qty-control" data-testid="ventas-cart-product-qty">
+                          <button
+                            type="button"
+                            aria-label={`Disminuir cantidad de ${line.nombre_item}`}
+                            onClick={() =>
+                              composer.updateLine(line.cartKey, (current) => ({
+                                ...current,
+                                cantidad: Number(current.cantidad ?? 0) - 1
+                              }))
+                            }
+                          >
+                            <i className="bi bi-dash" />
+                          </button>
+                          <span>{line.cantidad}</span>
+                          <button
+                            type="button"
+                            aria-label={`Aumentar cantidad de ${line.nombre_item}`}
+                            disabled={!canIncrease}
+                            onClick={() =>
+                              composer.updateLine(line.cartKey, (current) => ({
+                                ...current,
+                                cantidad: Number(current.cantidad ?? 0) + 1
+                              }))
+                            }
+                          >
+                            <i className="bi bi-plus-lg" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="ventas-create-modal__count-pill" data-testid="ventas-cart-custom-qty">
+                          1 unidad
+                        </span>
+                      )}
                       <strong className="ventas-create-modal__line-total">{lineTotal}</strong>
                       <button
                         type="button"
@@ -188,6 +198,7 @@ export default function VentaComposerSummary({
                             <button
                               type="button"
                               className={`ventas-cart__action-btn ${isComplementIncomplete ? 'is-attention' : ''}`}
+                              data-testid="ventas-cart-complementos"
                               onClick={() => composer.openComplementModalForLine(line.cartKey)}
                             >
                               <i className="bi bi-ui-checks-grid" aria-hidden="true" />
@@ -197,6 +208,7 @@ export default function VentaComposerSummary({
                           <button
                             type="button"
                             className={`ventas-cart__action-btn ${extrasCount > 0 ? 'is-active' : ''}`}
+                            data-testid="ventas-cart-extras"
                             onClick={() => composer.openExtrasModalForLine(line.cartKey)}
                           >
                             <i className="bi bi-plus-square-dotted" aria-hidden="true" />
@@ -205,6 +217,7 @@ export default function VentaComposerSummary({
                           <button
                             type="button"
                             className="ventas-cart__kitchen-note-toggle"
+                            data-testid="ventas-cart-observacion-toggle"
                             onClick={() =>
                               setExpandedNotes((current) => ({
                                 ...current,
@@ -222,6 +235,7 @@ export default function VentaComposerSummary({
                           <textarea
                             rows="2"
                             value={line.observacion || ''}
+                            data-testid="ventas-cart-observacion"
                             onChange={(event) =>
                               composer.updateLine(line.cartKey, (current) => ({
                                 ...current,
@@ -287,6 +301,7 @@ export default function VentaComposerSummary({
         <button
           type="button"
           className="ventas-create-modal__submit"
+          data-testid="ventas-cart-continuar"
           disabled={!composer.canContinue || saving}
           onClick={handleContinue}
         >
