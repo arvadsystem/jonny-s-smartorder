@@ -212,6 +212,24 @@
   margin-top: 0.12rem;
 }
 
+.roles-permisos-role-badge {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.34rem;
+  margin-top: 0.45rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.roles-permisos-role-badge--protected {
+  background: rgba(176, 133, 43, 0.12);
+  border: 1px solid rgba(176, 133, 43, 0.24);
+  color: #8b651d;
+}
+
 .roles-permisos-role-card.is-active .roles-permisos-role-card__name {
   color: #472c17;
 }
@@ -315,6 +333,73 @@
   gap: 0.5rem;
 }
 
+.roles-permisos-panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  margin-top: 0.55rem;
+}
+
+.roles-permisos-panel-chip {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
+  min-height: 28px;
+  padding: 0.18rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  background: rgba(249, 246, 239, 0.95);
+  color: #654333;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.roles-permisos-panel-chip--protected {
+  background: rgba(255, 246, 224, 0.88);
+  border-color: rgba(210, 178, 96, 0.34);
+  color: #815b18;
+}
+
+.roles-permisos-panel-chip--pending {
+  background: rgba(255, 241, 224, 0.92);
+  border-color: rgba(208, 133, 64, 0.28);
+  color: #9a5c17;
+}
+
+.roles-permisos-inline-notice {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.7rem;
+  margin-bottom: 0.75rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(210, 178, 96, 0.34);
+  background: linear-gradient(180deg, rgba(255, 250, 238, 0.96), rgba(255, 246, 224, 0.88));
+  color: #5b4324;
+}
+
+.roles-permisos-inline-notice i {
+  font-size: 1rem;
+  line-height: 1.2;
+  margin-top: 0.08rem;
+}
+
+.roles-permisos-inline-notice strong,
+.roles-permisos-inline-notice span {
+  display: block;
+}
+
+.roles-permisos-inline-notice strong {
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.roles-permisos-inline-notice span {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin-top: 0.16rem;
+}
+
 .roles-permisos-search-wrap {
   margin-bottom: 0.75rem;
 }
@@ -342,6 +427,44 @@
 
 .roles-permisos-search--roles {
   min-height: 42px;
+}
+
+.roles-permisos-filters {
+  display: grid;
+  gap: 0.72rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-bottom: 0.8rem;
+}
+
+.roles-permisos-filter {
+  color: #6d5a49;
+  display: grid;
+  font-size: 0.76rem;
+  font-weight: 700;
+  gap: 0.35rem;
+}
+
+.roles-permisos-filter-select {
+  min-width: 0;
+}
+
+.roles-permisos-filter-select .menu-salsas-receta-select__control {
+  min-height: 42px;
+}
+
+.roles-permisos-filter-select .menu-salsas-receta-select__value-container,
+.roles-permisos-filter-select .menu-salsas-receta-select__single-value,
+.roles-permisos-filter-select .menu-salsas-receta-select__placeholder,
+.roles-permisos-filter-select .menu-salsas-receta-select__input-container {
+  font-size: 0.95rem;
+}
+
+.roles-permisos-filter-select .menu-salsas-receta-select__menu-list {
+  padding-block: 0.35rem;
+}
+
+.roles-permisos-filter-select .menu-salsas-receta-select__option {
+  font-size: 0.94rem;
 }
 
 .roles-permisos-list {
@@ -376,6 +499,16 @@
   box-shadow: 0 10px 18px rgba(85, 60, 37, 0.1);
 }
 
+.roles-permisos-item--sensitive {
+  border-color: rgba(182, 132, 47, 0.42);
+  background: linear-gradient(180deg, #fffdfa 0%, #fff7ea 100%);
+}
+
+.roles-permisos-item--sensitive:hover {
+  border-color: rgba(176, 133, 43, 0.56);
+  box-shadow: 0 12px 22px rgba(140, 101, 32, 0.12);
+}
+
 .roles-permisos-item-main {
   display: flex;
   gap: 0.95rem;
@@ -400,6 +533,33 @@
 .roles-permisos-item-copy {
   min-width: 0;
   flex: 1;
+}
+
+.roles-permisos-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  margin-bottom: 0.42rem;
+}
+
+.roles-permisos-item-chip {
+  align-items: center;
+  background: rgba(107, 84, 68, 0.08);
+  border: 1px solid rgba(107, 84, 68, 0.1);
+  border-radius: 999px;
+  color: #654c3d;
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 800;
+  gap: 0.3rem;
+  line-height: 1;
+  padding: 0.24rem 0.5rem;
+}
+
+.roles-permisos-item-chip--sensitive {
+  background: rgba(176, 133, 43, 0.12);
+  border-color: rgba(176, 133, 43, 0.22);
+  color: #8b651d;
 }
 
 .roles-permisos-item-label {
@@ -540,6 +700,41 @@
   font-size: 0.78rem;
 }
 
+.roles-permisos-toolbar-btn,
+.roles-permisos-pagination-btn {
+  min-height: 38px;
+  border-radius: 12px !important;
+  border-color: rgba(197, 178, 154, 0.95) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #faf6ef 100%) !important;
+  color: #6a503e !important;
+  font-weight: 700 !important;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.roles-permisos-toolbar-btn:hover:not(:disabled),
+.roles-permisos-pagination-btn:hover:not(:disabled) {
+  border-color: rgba(184, 138, 90, 0.9) !important;
+  background: linear-gradient(180deg, #fffdf8 0%, #f6ecde 100%) !important;
+  box-shadow: 0 10px 18px rgba(90, 61, 34, 0.1);
+  color: #4a3426 !important;
+  transform: translateY(-1px);
+}
+
+.roles-permisos-toolbar-btn:focus-visible,
+.roles-permisos-pagination-btn:focus-visible {
+  box-shadow: 0 0 0 0.2rem rgba(184, 104, 33, 0.12) !important;
+  outline: 0 !important;
+}
+
+.roles-permisos-toolbar-btn:disabled,
+.roles-permisos-pagination-btn:disabled {
+  background: #f6f2ea !important;
+  border-color: rgba(216, 210, 198, 0.95) !important;
+  color: #a39586 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
 .roles-permisos-pagination-controls {
   align-items: center;
   display: flex;
@@ -554,8 +749,22 @@
   gap: 0.42rem;
 }
 
-.roles-permisos-limit .form-select {
+.roles-permisos-limit-select {
   min-width: 84px;
+}
+
+.roles-permisos-limit-select .menu-salsas-receta-select__control {
+  min-height: 36px;
+}
+
+.roles-permisos-limit-select .menu-salsas-receta-select__value-container {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.roles-permisos-limit-select .menu-salsas-receta-select__single-value,
+.roles-permisos-limit-select .menu-salsas-receta-select__placeholder {
+  font-size: 0.82rem;
 }
 
 .roles-permisos-pagination-actions {
@@ -567,9 +776,13 @@
 .roles-permisos-page-indicator {
   color: #5f5538;
   font-size: 0.78rem;
-  font-weight: 700;
-  min-width: 108px;
+  font-weight: 800;
+  min-width: 132px;
   text-align: center;
+  background: linear-gradient(180deg, #fff 0%, #fbf7ef 100%);
+  border: 1px solid rgba(228, 227, 209, 0.95);
+  border-radius: 12px;
+  padding: 0.55rem 0.75rem;
 }
 
 .roles-permisos-save-btn {
@@ -655,6 +868,60 @@
   flex-wrap: wrap;
   font-size: 0.8rem;
   gap: 0.5rem 1rem;
+}
+
+.roles-preview-panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.72rem;
+}
+
+.roles-preview-panel-chip {
+  align-items: center;
+  background: rgba(108, 84, 61, 0.08);
+  border: 1px solid rgba(108, 84, 61, 0.12);
+  border-radius: 999px;
+  color: #5a4639;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 700;
+  gap: 0.36rem;
+  line-height: 1;
+  padding: 0.35rem 0.62rem;
+}
+
+.roles-preview-panel-chip--protected {
+  background: rgba(176, 133, 43, 0.12);
+  border-color: rgba(176, 133, 43, 0.24);
+  color: #8b651d;
+}
+
+.roles-preview-inline-notice {
+  align-items: flex-start;
+  background: linear-gradient(180deg, rgba(255, 248, 232, 0.95), rgba(255, 244, 217, 0.95));
+  border: 1px solid rgba(207, 170, 84, 0.28);
+  border-radius: 12px;
+  color: #7a5b25;
+  display: flex;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+  padding: 0.72rem 0.82rem;
+}
+
+.roles-preview-inline-notice i {
+  color: #b07d1f;
+  font-size: 0.95rem;
+  margin-top: 0.1rem;
+}
+
+.roles-preview-inline-notice strong {
+  color: #6b4a12;
+}
+
+.roles-preview-inline-notice span {
+  font-size: 0.76rem;
+  line-height: 1.5;
 }
 
 .roles-preview-tabs {
@@ -1020,6 +1287,10 @@
     flex-wrap: wrap;
     justify-content: flex-end;
   }
+
+  .roles-permisos-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
@@ -1134,6 +1405,11 @@
     gap: 0.6rem;
   }
 
+  .roles-permisos-filters {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+
   .roles-permisos-mobile-back {
     display: inline-flex;
     align-items: center;
@@ -1170,12 +1446,15 @@
   }
 
   .roles-permisos-limit {
-    justify-content: space-between;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.38rem;
+    justify-content: flex-start;
     width: 100%;
   }
 
-  .roles-permisos-limit .form-select {
-    max-width: 106px;
+  .roles-permisos-limit-select {
+    max-width: 120px;
   }
 
   .roles-permisos-pagination-actions {
@@ -1230,6 +1509,36 @@
   }
 }
 
+@media (max-width: 576px) {
+  .roles-permisos-panel--permisos {
+    padding: 0.82rem;
+  }
+
+  .roles-permisos-panel-meta {
+    gap: 0.35rem;
+  }
+
+  .roles-permisos-panel-chip {
+    font-size: 0.7rem;
+  }
+
+  .roles-permisos-actions .btn,
+  .roles-permisos-pagination-actions .btn {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .roles-permisos-pagination-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .roles-permisos-page-indicator {
+    order: -1;
+    width: 100%;
+  }
+}
+
 /* Personas modals aligned to Inventario modal system */
 .roles-preview-backdrop {
   background: rgba(23, 8, 10, 0.24) !important;
@@ -1260,6 +1569,36 @@
 .roles-preview-meta {
   color: rgba(82, 44, 34, 0.72) !important;
   font-size: 0.76rem !important;
+}
+
+.roles-preview-panel-chip {
+  background: rgba(82, 44, 34, 0.08) !important;
+  border-color: rgba(82, 44, 34, 0.12) !important;
+  color: #5b382c !important;
+  font-size: 0.68rem !important;
+}
+
+.roles-preview-panel-chip--protected {
+  background: rgba(176, 133, 43, 0.14) !important;
+  border-color: rgba(176, 133, 43, 0.24) !important;
+  color: #8b651d !important;
+}
+
+.roles-preview-inline-notice {
+  background: linear-gradient(180deg, rgba(255, 248, 232, 0.92), rgba(252, 241, 205, 0.96)) !important;
+  border: 1px solid rgba(176, 133, 43, 0.24) !important;
+  border-radius: 12px !important;
+  color: #6e531f !important;
+  margin-top: 0.78rem !important;
+  padding: 0.72rem 0.8rem !important;
+}
+
+.roles-preview-inline-notice i {
+  color: #ab7a1d !important;
+}
+
+.roles-preview-inline-notice span {
+  font-size: 0.72rem !important;
 }
 
 .roles-preview-tab {
