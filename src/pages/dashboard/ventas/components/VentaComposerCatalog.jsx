@@ -280,7 +280,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                   const isProducto = kind === 'PRODUCTO';
                   const isCombo = kind === 'COMBO';
                   const itemId = isProducto ? row.id_producto : isCombo ? row.id_combo : row.id_receta;
-                  const itemName = isProducto ? row.nombre_producto : isCombo ? row.descripcion : row.nombre_receta;
+                  const itemName = isProducto ? row.nombre_producto : isCombo ? (row.nombre_combo || row.descripcion || 'Combo') : row.nombre_receta;
                   const imageSrc = resolveImageUrl(row);
                   const precio = Number(row.precio || 0);
                   const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
@@ -375,7 +375,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             const isCombo = composer.activeCatalog === 'COMBOS';
             const kind = isProducto ? 'PRODUCTO' : isCombo ? 'COMBO' : 'RECETA';
             const itemId = isProducto ? row.id_producto : isCombo ? row.id_combo : row.id_receta;
-            const itemName = isProducto ? row.nombre_producto : isCombo ? row.descripcion : row.nombre_receta;
+            const itemName = isProducto ? row.nombre_producto : isCombo ? (row.nombre_combo || row.descripcion || 'Combo') : row.nombre_receta;
             const imageSrc = resolveImageUrl(row);
             const precio = Number(row.precio || 0);
             const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;

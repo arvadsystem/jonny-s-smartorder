@@ -2,7 +2,6 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 import {
   buildCartKey,
-  clampExtrasToQuantity,
   filterBySearch,
   findLineIndex,
   getComboDepartmentIds,
@@ -156,6 +155,7 @@ const getLineComplementSelectionIssue = (line) => {
 };
 
 const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) => {
+  const comboTitle = row?.nombre_combo || row?.descripcion || 'Combo';
   const complementosDisponibles = (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
     .map((entry) => ({
       id_complemento: Number(entry?.id_complemento ?? 0) || null,
@@ -211,7 +211,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
       id_producto: null,
       id_combo: row.id_combo,
       id_receta: null,
-      nombre_item: row.descripcion,
+      nombre_item: comboTitle,
       categoria_label: 'Combos',
       descripcion_item: row.descripcion || 'Combo',
       precio_unitario: row.precio,
@@ -498,7 +498,7 @@ export const useVentaComposer = ({
         : getComboDepartmentIds(combo).some((id) => Number(id) === Number(categoryId))
     );
 
-    return filterBySearch(categoryFiltered, deferredSearch, ['descripcion']);
+    return filterBySearch(categoryFiltered, deferredSearch, ['nombre_combo', 'descripcion']);
   }, [combos, deferredSearch, state.activeCategory]);
 
   const filteredRecetas = useMemo(() => {
@@ -903,7 +903,7 @@ export const useVentaComposer = ({
             }
           }
 
-          const adjustedExtras = clampExtrasToQuantity(candidate.extras, candidate.cantidad);
+          const adjustedExtras = normalizeExtras(candidate.extras);
           return {
             ...candidate,
             extras: adjustedExtras,
@@ -1004,7 +1004,7 @@ export const useVentaComposer = ({
       return;
     }
 
-    const nextExtras = clampExtrasToQuantity(selectedExtras, extrasModal.row?.cantidad);
+    const nextExtras = normalizeExtras(selectedExtras);
     setState((current) => {
       const currentLine = current.cart.find((line) => line.cartKey === extrasModal.cartKey);
       if (!currentLine) return current;
@@ -1021,7 +1021,7 @@ export const useVentaComposer = ({
                 ? {
                   ...line,
                   cantidad: mergedQty,
-                  extras: clampExtrasToQuantity(nextExtras, mergedQty),
+                  extras: nextExtras,
                   observacion: line.observacion || currentLine.observacion || ''
                 }
                 : line

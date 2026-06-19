@@ -57,13 +57,6 @@ export const getExtrasSubtotal = (value) =>
 export const getExtrasCount = (value) =>
   normalizeExtras(value).reduce((sum, entry) => sum + Number(entry.cantidad || 0), 0);
 
-export const clampExtrasToQuantity = (extras, quantity) => {
-  const max = Math.max(0, Number(quantity || 0));
-  return normalizeExtras(extras)
-    .map((entry) => ({ ...entry, cantidad: Math.min(Number(entry.cantidad || 0), max) }))
-    .filter((entry) => entry.cantidad > 0);
-};
-
 export const buildCartKey = (kind, entityId, complementos = [], extras = []) =>
   `${kind}:${entityId}:${buildComplementSignature(complementos)}:${buildExtrasSignature(extras)}`;
 
