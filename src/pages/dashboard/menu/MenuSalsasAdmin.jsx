@@ -65,7 +65,10 @@ const isRowActive = (value) => {
 const DEFAULT_FORM = Object.freeze({
   nombre: '',
   nivel_picante: '1',
-  orden: ''
+  orden: '',
+  id_insumo: '',
+  cantidad_porcion: '2',
+  id_unidad_consumo: ''
 });
 
 const SPICY_LEVEL_LABELS = {
@@ -114,6 +117,7 @@ const MenuSalsasAdmin = () => {
 
   const [salsas, setSalsas] = useState([]);
   const [recetas, setRecetas] = useState([]);
+  const [insumos, setInsumos] = useState([]);
 
   const [form, setForm] = useState(DEFAULT_FORM);
   const [editingSalsaId, setEditingSalsaId] = useState(null);
@@ -152,6 +156,45 @@ const MenuSalsasAdmin = () => {
     })),
     [recetas]
   );
+  const insumoOptions = useMemo(() => {
+    const rows = Array.isArray(insumos) ? [...insumos] : [];
+    rows.sort((left, right) => {
+      const leftPreferred = String(left?.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 0 : 1;
+      const rightPreferred = String(right?.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 0 : 1;
+      if (leftPreferred !== rightPreferred) return leftPreferred - rightPreferred;
+      return String(left?.nombre || '').localeCompare(String(right?.nombre || ''), 'es', { sensitivity: 'base' });
+    });
+    return rows.map((insumo) => ({
+      value: String(insumo.id_insumo),
+      label: `${insumo.nombre}${insumo.categoria_nombre ? ` · ${insumo.categoria_nombre}` : ''}`,
+      searchText: `${insumo.id_insumo} ${insumo.nombre || ''} ${insumo.categoria_nombre || ''}`,
+      unidadId: insumo.id_unidad_medida ? String(insumo.id_unidad_medida) : '',
+      unidadLabel: String(insumo.unidad_simbolo || insumo.unidad_nombre || '').trim()
+    }));
+  }, [insumos]);
+  const selectedInsumoOption = useMemo(
+    () => insumoOptions.find((option) => String(option.value) === String(form.id_insumo)) || null,
+    [form.id_insumo, insumoOptions]
+  );
+  const unidadOptions = useMemo(() => {
+    const map = new Map();
+    for (const insumo of Array.isArray(insumos) ? insumos : []) {
+      const idUnidad = String(insumo?.id_unidad_medida || '').trim();
+      if (!idUnidad || map.has(idUnidad)) continue;
+      const label = String(insumo?.unidad_simbolo || insumo?.unidad_nombre || `Unidad ${idUnidad}`).trim();
+      map.set(idUnidad, { value: idUnidad, label });
+    }
+    return [...map.values()].sort((left, right) => left.label.localeCompare(right.label, 'es', { sensitivity: 'base' }));
+  }, [insumos]);
+  const inventoryWarning = useMemo(() => {
+    if (!form.id_insumo) return '';
+    if (!selectedInsumoOption?.unidadId) return 'El insumo seleccionado no tiene unidad base configurada.';
+    if (!form.id_unidad_consumo) return 'Selecciona la unidad de consumo para validar conversion en backend.';
+    if (selectedInsumoOption.unidadId !== String(form.id_unidad_consumo)) {
+      return 'Si la unidad no coincide con la base, debe existir una conversion activa en presentaciones.';
+    }
+    return '';
+  }, [form.id_insumo, form.id_unidad_consumo, selectedInsumoOption]);
   const filteredAssignableSalsas = useMemo(() => {
     const search = String(recipeSauceSearch || '').trim().toLowerCase();
     if (!search) return activeSalsas;
@@ -253,9 +296,10 @@ const MenuSalsasAdmin = () => {
         params.set('only_inactive', '1');
       }
 
-      const [salsasRows, recetasRows] = await Promise.all([
+      const [salsasRows, recetasRows, insumosRows] = await Promise.all([
         apiFetch(`/api/admin/salsas?${params.toString()}`, 'GET', null, { noCache: true }),
-        apiFetch('/api/admin/salsas/catalogos/recetas', 'GET', null, { noCache: true })
+        apiFetch('/api/admin/salsas/catalogos/recetas', 'GET', null, { noCache: true }),
+        apiFetch('/api/admin/salsas/catalogos/insumos', 'GET', null, { noCache: true })
       ]);
 
       const normalizedSalsas = Array.isArray(salsasRows)
@@ -266,6 +310,7 @@ const MenuSalsasAdmin = () => {
             ? salsasRows.items
             : [];
       const normalizedRecetas = Array.isArray(recetasRows) ? recetasRows : [];
+      const normalizedInsumos = Array.isArray(insumosRows) ? insumosRows : [];
       const apiPagination = Array.isArray(salsasRows) ? null : (salsasRows?.pagination || salsasRows?.meta || null);
       const safeTotalItems = Number(
         apiPagination?.total
@@ -284,6 +329,7 @@ const MenuSalsasAdmin = () => {
 
       setSalsas(normalizedSalsas);
       setRecetas(normalizedRecetas);
+      setInsumos(normalizedInsumos);
       setTotalItems(safeTotalItems);
       setTotalPages(safeTotalPages);
 
@@ -297,6 +343,7 @@ const MenuSalsasAdmin = () => {
       setError(e?.message || 'No se pudo cargar el modulo de salsas.');
       setSalsas([]);
       setRecetas([]);
+      setInsumos([]);
       setTotalItems(0);
       setTotalPages(1);
       setSelectedRecetaId('');
@@ -491,6 +538,13 @@ const MenuSalsasAdmin = () => {
     }));
   };
 
+  const updateFormField = (field, value) => {
+    setForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  };
+
   const changeNumericFormField = (field, delta, options = {}) => {
     const min = options.min ?? 0;
     const max = options.max ?? 9999;
@@ -510,7 +564,10 @@ const MenuSalsasAdmin = () => {
     const payload = {
       nombre: String(form.nombre || '').trim(),
       nivel_picante: toIntOrNull(form.nivel_picante, { min: 0, max: 5 }),
-      orden: resolvedOrden
+      orden: resolvedOrden,
+      id_insumo: form.id_insumo ? toPositiveInt(form.id_insumo) : null,
+      cantidad_porcion: Number(form.cantidad_porcion || 0),
+      id_unidad_consumo: form.id_unidad_consumo ? toPositiveInt(form.id_unidad_consumo) : null
     };
 
     if (!payload.nombre) {
@@ -523,6 +580,14 @@ const MenuSalsasAdmin = () => {
     }
     if (mode === 'edit' && form.orden !== '' && payload.orden === null) {
       setError('Orden debe ser entero positivo o 0.');
+      return;
+    }
+    if ((payload.id_insumo || payload.id_unidad_consumo) && (!payload.id_insumo || !payload.id_unidad_consumo)) {
+      setError('Para enlazar inventario indica insumo y unidad de consumo.');
+      return;
+    }
+    if (!Number.isFinite(payload.cantidad_porcion) || payload.cantidad_porcion <= 0) {
+      setError('Cantidad por porcion debe ser mayor a 0.');
       return;
     }
 
@@ -557,7 +622,10 @@ const MenuSalsasAdmin = () => {
     setForm({
       nombre: String(salsa?.nombre || ''),
       nivel_picante: String(Number(salsa?.nivel_picante || 0)),
-      orden: salsa?.orden === null || salsa?.orden === undefined ? '' : String(salsa.orden)
+      orden: salsa?.orden === null || salsa?.orden === undefined ? '' : String(salsa.orden),
+      id_insumo: salsa?.id_insumo ? String(salsa.id_insumo) : '',
+      cantidad_porcion: salsa?.cantidad_porcion ? String(salsa.cantidad_porcion) : '2',
+      id_unidad_consumo: salsa?.id_unidad_consumo ? String(salsa.id_unidad_consumo) : ''
     });
     setError('');
     setSuccess('');
@@ -838,6 +906,7 @@ const MenuSalsasAdmin = () => {
                       <th>Orden</th>
                       <th>Salsa</th>
                       <th>Picante</th>
+                      <th>Inventario</th>
                       <th>Estado</th>
                       <th className="menu-salsas-admin__actions-head">Acciones</th>
                     </tr>
@@ -845,7 +914,7 @@ const MenuSalsasAdmin = () => {
                   <tbody>
                     {paginatedSalsas.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="text-center py-3">
+                        <td colSpan={6} className="text-center py-3">
                           {loading ? 'Cargando salsas...' : 'No hay salsas registradas.'}
                         </td>
                       </tr>
@@ -877,6 +946,18 @@ const MenuSalsasAdmin = () => {
                                   ))}
                                 </span>
                               </div>
+                            </td>
+                            <td>
+                              {row.id_insumo ? (
+                                <div className="small">
+                                  <strong>{row.insumo_nombre || `Insumo #${row.id_insumo}`}</strong>
+                                  <div className="text-muted">
+                                    {Number(row.cantidad_porcion || 0)} {row.unidad_consumo_simbolo || row.unidad_consumo_nombre || 'unidad'}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-muted small">Sin insumo</span>
+                              )}
                             </td>
                             <td>
                               <span className={`menu-recetas-admin__estado-badge ${isActive ? 'is-active' : 'is-inactive'}`}>
@@ -1382,6 +1463,66 @@ const MenuSalsasAdmin = () => {
                         <div className="menu-salsas-admin__quick-copy">Esta salsa será la #{Math.max(1, Number(form.orden || 1))} en el orden de preparación.</div>
                       </div>
                     </div>
+
+                    <div className="mt-3">
+                      <label className="form-label" htmlFor="menu_salsa_insumo">Insumo de inventario</label>
+                      <AppSelect
+                        inputId="menu_salsa_insumo"
+                        className="menu-salsas-receta-admin__recipe-select app-select--compact"
+                        value={form.id_insumo}
+                        options={insumoOptions}
+                        onChange={(value) => {
+                          const option = insumoOptions.find((entry) => String(entry.value) === String(value));
+                          setForm((current) => ({
+                            ...current,
+                            id_insumo: String(value || ''),
+                            id_unidad_consumo: option?.unidadId ? String(option.unidadId) : current.id_unidad_consumo
+                          }));
+                        }}
+                        placeholder="Selecciona insumo..."
+                        searchable
+                        searchPlaceholder="Buscar insumo..."
+                        emptyText="No hay insumos activos."
+                        disabled={savingSalsa}
+                      />
+                    </div>
+
+                    <div className="row g-2 mt-1">
+                      <div className="col-sm-6">
+                        <label className="form-label" htmlFor="menu_salsa_cantidad_porcion">Cantidad por porcion</label>
+                        <input
+                          id="menu_salsa_cantidad_porcion"
+                          type="number"
+                          className="form-control"
+                          name="cantidad_porcion"
+                          value={form.cantidad_porcion}
+                          min="0.0001"
+                          step="0.0001"
+                          onChange={onChangeForm}
+                          disabled={savingSalsa}
+                        />
+                      </div>
+                      <div className="col-sm-6">
+                        <label className="form-label" htmlFor="menu_salsa_unidad_consumo">Unidad de consumo</label>
+                        <AppSelect
+                          inputId="menu_salsa_unidad_consumo"
+                          className="menu-salsas-receta-admin__recipe-select app-select--compact"
+                          value={form.id_unidad_consumo}
+                          options={unidadOptions}
+                          onChange={(value) => updateFormField('id_unidad_consumo', String(value || ''))}
+                          placeholder="Unidad..."
+                          searchable
+                          searchPlaceholder="Buscar unidad..."
+                          emptyText="No hay unidades disponibles."
+                          disabled={savingSalsa || !form.id_insumo}
+                        />
+                      </div>
+                    </div>
+                    {inventoryWarning ? (
+                      <div className="alert alert-warning py-2 mt-2 mb-0">
+                        {inventoryWarning}
+                      </div>
+                    ) : null}
                   </section>
                 </div>
               </div>
