@@ -220,9 +220,13 @@ const Login = () => {
       const refreshed = await authService.me({ noCache: true });
       if (refreshed?.usuario) {
         login(refreshed);
+      } else {
+        throw new Error('No se pudo refrescar la sesion.');
       }
-    } catch {
-      // Si falla el refresh, dejamos el usuario actual y redirigimos al dashboard.
+    } catch (err) {
+      setError(err?.message || 'No se pudo refrescar la sesion. Inicia sesion nuevamente.');
+      setShowForcePasswordModal(false);
+      return;
     }
 
     setShowForcePasswordModal(false);
