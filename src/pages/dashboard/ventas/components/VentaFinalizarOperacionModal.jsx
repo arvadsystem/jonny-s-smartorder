@@ -119,6 +119,10 @@ export default function VentaFinalizarOperacionModal({
   const phoneSaveAskedRef = useRef(new Set());
   const phoneSaveBypassRef = useRef(false);
   const isSubmitting = saving || paidSubmitting || pendingSubmitting;
+  const handleModalClose = () => {
+    composer.resetPaymentDraft?.();
+    onClose();
+  };
 
   const deliveryCost = useMemo(() => {
     if (!String(delivery.costo_envio || '').trim()) return 0;
@@ -174,12 +178,12 @@ export default function VentaFinalizarOperacionModal({
     if (!open) return undefined;
 
     const onKeyDown = (event) => {
-      if (event.key === 'Escape' && !isSubmitting) onClose();
+      if (event.key === 'Escape' && !isSubmitting) handleModalClose();
     };
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isSubmitting, onClose, open]);
+  }, [handleModalClose, isSubmitting, open]);
 
   useEffect(() => {
     if (open) return;
@@ -543,7 +547,7 @@ export default function VentaFinalizarOperacionModal({
               <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
             </div>
           </div>
-          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={isSubmitting} aria-label="Cerrar">
+          <button type="button" className="ventas-modal__close-btn" onClick={handleModalClose} disabled={isSubmitting} aria-label="Cerrar">
             <i className="bi bi-x-lg" />
           </button>
         </header>
@@ -742,7 +746,11 @@ export default function VentaFinalizarOperacionModal({
 
                 <div className="ventas-finalizar-modal__payment-summary">
                   <span><i className={selectedPayment.icon} /> {selectedPayment.label}</span>
-                  <strong>Cambio: {composer.formatCurrency(composer.change)}</strong>
+                  <strong>
+                    {composer.paymentMethod === 'efectivo'
+                      ? `Cambio: ${composer.formatCurrency(composer.change)}`
+                      : 'Referencia requerida'}
+                  </strong>
                 </div>
               </div>
             </section>
@@ -812,7 +820,7 @@ export default function VentaFinalizarOperacionModal({
         </div>
 
         <footer className="ventas-modal-footer">
-          <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={isSubmitting}>
+          <button type="button" className="btn btn-outline-secondary" onClick={handleModalClose} disabled={isSubmitting}>
             Cancelar
           </button>
           {activeTab === 'pagar' ? (
