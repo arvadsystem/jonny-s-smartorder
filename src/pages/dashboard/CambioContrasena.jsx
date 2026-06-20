@@ -53,8 +53,27 @@ const normalizePasswordChangeError = (message) => {
   return raw;
 };
 
+const buildSuccessfulPasswordUserPatch = (payload = {}) => {
+  const fechaCambioClave =
+    payload?.fecha_cambio_clave
+    ?? payload?.perfil?.fecha_cambio_clave
+    ?? new Date().toISOString();
+
+  return {
+    must_change_password: false,
+    password_warning_58d: false,
+    password_age_days: 0,
+    password_days_to_expire: 60,
+    fecha_cambio_clave: fechaCambioClave,
+    perfil: {
+      ...(payload?.perfil && typeof payload.perfil === "object" ? payload.perfil : {}),
+      fecha_cambio_clave: fechaCambioClave,
+    },
+  };
+};
+
 const CambioContrasena = () => {
-  const { user } = useAuth();
+  const { user, updateCurrentUser } = useAuth();
   const [pw, setPw] = useState({
     actual: "",
     nueva: "",
@@ -155,18 +174,41 @@ const CambioContrasena = () => {
   };
 
   const onChangePassword = async () => {
+    if (!pw.actual.trim()) {
+      mostrarAlerta("Ingresa la contrase\u00f1a actual para continuar.", {
+        variant: "warning",
+      });
+      return false;
+    }
+
     if (pw.nueva !== pw.confirmacion) {
       mostrarAlerta("La nueva contrase\u00f1a y la confirmaci\u00f3n no coinciden.", {
         variant: "warning",
       });
-      return;
+      return false;
+    }
+
+    if (!passwordCheck.allOk) {
+      mostrarAlerta("La nueva contrase\u00f1a no cumple las pol\u00edticas requeridas.", {
+        variant: "warning",
+      });
+      return false;
+    }
+
+    if (pw.actual.trim() === pw.nueva.trim()) {
+      mostrarAlerta("La nueva contrase\u00f1a debe ser diferente de la actual.", {
+        variant: "warning",
+      });
+      return false;
     }
 
     try {
-      await perfilService.changePassword({
+      const response = await perfilService.changePassword({
         clave_actual: pw.actual,
         clave_nueva: pw.nueva,
       });
+
+      updateCurrentUser(buildSuccessfulPasswordUserPatch(response));
 
       mostrarAlerta("Contrase\u00f1a actualizada.", {
         titulo: "ACTUALIZADO",
@@ -176,10 +218,12 @@ const CambioContrasena = () => {
       setPw({ actual: "", nueva: "", confirmacion: "" });
       setShowPw({ actual: false, nueva: false, confirmacion: false });
       await cargarUltimoCambioClave();
+      return true;
     } catch (e) {
       mostrarAlerta(normalizePasswordChangeError(e?.message), {
         variant: "danger",
       });
+      return false;
     }
   };
 
