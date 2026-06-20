@@ -30,7 +30,7 @@ const RecuperarPassword = () => {
     setLoading(true);
     try {
       const response = await clientePublicoService.forgotPassword({ email });
-      setSuccessMsg(response?.message || 'Si el correo está registrado, recibirás un enlace de recuperación.');
+      setSuccessMsg(response?.message || 'Si el correo está registrado, recibirás instrucciones de recuperación.');
     } catch (err) {
       setError(err.message || 'Error al enviar el correo');
     } finally {
@@ -76,7 +76,7 @@ const RecuperarPassword = () => {
       >
         <div className="form-header">
           <h2>Recuperar contraseña</h2>
-          <p>Te enviaremos un enlace a tu correo</p>
+          <p>Te enviaremos instrucciones de recuperación a tu correo</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">

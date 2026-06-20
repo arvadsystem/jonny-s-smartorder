@@ -54,6 +54,10 @@ const normalizePasswordChangeError = (message) => {
   return raw;
 };
 
+const waitForSuccessFeedback = () => new Promise((resolve) => {
+  window.setTimeout(resolve, 1400);
+});
+
 const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -71,6 +75,7 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const normalizedPolicies = useMemo(() => {
     const minLenRaw = Number(policies?.password_min_length);
@@ -120,6 +125,7 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
 
   const canSubmit =
     !saving &&
+    !successMessage &&
     String(form.actual || '').trim().length > 0 &&
     String(form.nueva || '').trim().length > 0 &&
     confirmationMatches &&
@@ -128,6 +134,7 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
   const onChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (error) setError('');
+    if (successMessage) setSuccessMessage('');
   };
 
   const toggleField = (field) => {
@@ -137,6 +144,7 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
   const onSubmit = async (event) => {
     event.preventDefault();
     setError('');
+    setSuccessMessage('');
 
     const actual = String(form.actual || '').trim();
     const nueva = String(form.nueva || '').trim();
@@ -168,6 +176,9 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
         clave_actual: actual,
         clave_nueva: nueva,
       });
+
+      setSuccessMessage('Contrasena actualizada correctamente. Redirigiendo al sistema...');
+      await waitForSuccessFeedback();
 
       if (typeof onCompleted === 'function') {
         await onCompleted();
@@ -217,6 +228,13 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
             </div>
           ) : null}
 
+          {successMessage ? (
+            <div className="force-password-alert force-password-alert--success" role="status">
+              <i className="bi bi-check-circle-fill" aria-hidden="true"></i>
+              <span>{successMessage}</span>
+            </div>
+          ) : null}
+
           <form onSubmit={onSubmit} noValidate>
             <div className="force-password-group">
               <label className="form-label">Contraseña actual</label>
@@ -229,12 +247,14 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
                   value={form.actual}
                   onChange={(e) => onChange('actual', e.target.value)}
                   autoComplete="current-password"
+                  disabled={saving || Boolean(successMessage)}
                   required
                 />
                 <button
                   type="button"
                   className="force-password-field__toggle"
                   onClick={() => toggleField('actual')}
+                  disabled={saving || Boolean(successMessage)}
                   aria-label={showPassword.actual ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'}
                 >
                   <i className={`bi ${showPassword.actual ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
@@ -254,12 +274,14 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
                   onChange={(e) => onChange('nueva', e.target.value)}
                   onInput={(e) => onChange('nueva', e.target.value)}
                   autoComplete="new-password"
+                  disabled={saving || Boolean(successMessage)}
                   required
                 />
                 <button
                   type="button"
                   className="force-password-field__toggle"
                   onClick={() => toggleField('nueva')}
+                  disabled={saving || Boolean(successMessage)}
                   aria-label={showPassword.nueva ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'}
                 >
                   <i className={`bi ${showPassword.nueva ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
@@ -292,12 +314,14 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
                   onChange={(e) => onChange('confirmacion', e.target.value)}
                   onInput={(e) => onChange('confirmacion', e.target.value)}
                   autoComplete="new-password"
+                  disabled={saving || Boolean(successMessage)}
                   required
                 />
                 <button
                   type="button"
                   className="force-password-field__toggle"
                   onClick={() => toggleField('confirmacion')}
+                  disabled={saving || Boolean(successMessage)}
                   aria-label={showPassword.confirmacion ? 'Ocultar confirmación' : 'Mostrar confirmación'}
                 >
                   <i className={`bi ${showPassword.confirmacion ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
@@ -339,7 +363,7 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
             type="button"
             className="force-password-logout"
             onClick={onLogout}
-            disabled={saving}
+            disabled={saving || Boolean(successMessage)}
           >
             Cerrar sesión
           </button>
