@@ -1041,8 +1041,8 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     }
   ],
   ventas: [
-    { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff', required: VENTAS_TAB_PERMISSIONS_MAP.ventas },
     { key: 'caja', label: 'Caja', icon: 'bi bi-cart3', required: VENTAS_TAB_PERMISSIONS_MAP.caja },
+    { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff', required: VENTAS_TAB_PERMISSIONS_MAP.ventas },
     { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS_MAP.pedidos },
     { key: 'descuentos', label: 'Descuentos', icon: 'bi bi-tags', required: VENTAS_TAB_PERMISSIONS_MAP.descuentos }
   ],

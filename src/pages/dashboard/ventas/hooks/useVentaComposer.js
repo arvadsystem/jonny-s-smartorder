@@ -34,8 +34,25 @@ import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes'
 export { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 export { getComboDepartmentIds } from '../../../../modules/ventas/utils/ventasCartUtils';
 
+const DEFAULT_CATALOG_KEY = 'RECETAS';
+const DEFAULT_DEPARTMENT_NAME = 'ALITAS';
+
+const normalizeFilterText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+
+const resolveDefaultDepartmentId = (tiposDepartamento = []) => {
+  const defaultDepartment = (Array.isArray(tiposDepartamento) ? tiposDepartamento : []).find(
+    (tipo) => normalizeFilterText(tipo?.nombre_tipo_departamento) === DEFAULT_DEPARTMENT_NAME
+  );
+  return defaultDepartment?.id_tipo_departamento ? String(defaultDepartment.id_tipo_departamento) : 'all';
+};
+
 const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = {}) => ({
-  activeCatalog: 'PRODUCTOS',
+  activeCatalog: DEFAULT_CATALOG_KEY,
   search: '',
   activeCategory: 'all',
   selectedSucursal: isSuperAdmin ? '' : String(defaultSucursalId || ''),
@@ -363,6 +380,18 @@ export const useVentaComposer = ({
 
   const selectedSucursalId = toNormalizedId(state.selectedSucursal);
   const hasSelectedSucursal = Boolean(selectedSucursalId);
+
+  useEffect(() => {
+    setState((current) => {
+      if (current.activeCatalog !== DEFAULT_CATALOG_KEY || current.activeCategory !== 'all') return current;
+      const defaultDepartmentId = resolveDefaultDepartmentId(tiposDepartamento);
+      if (defaultDepartmentId === 'all') return current;
+      return {
+        ...current,
+        activeCategory: defaultDepartmentId
+      };
+    });
+  }, [tiposDepartamento]);
 
   useEffect(() => {
     setState((current) => {
@@ -1228,9 +1257,18 @@ export const useVentaComposer = ({
     setPartialState,
     resetComposer,
     setActiveCatalog: (key) =>
-      setPartialState({
-        activeCatalog: key,
-        search: ''
+      setState((current) => {
+        const nextKey = String(key || '').trim().toUpperCase();
+        return {
+          ...current,
+          activeCatalog: nextKey,
+          search: '',
+          activeCategory: nextKey === 'PRODUCTOS'
+            ? 'all'
+            : (current.activeCatalog === 'PRODUCTOS'
+                ? resolveDefaultDepartmentId(tiposDepartamento)
+                : current.activeCategory)
+        };
       }),
     setSearch: (value) => setPartialState({ search: value }),
     setActiveCategory: (value) => setPartialState({ activeCategory: value }),
