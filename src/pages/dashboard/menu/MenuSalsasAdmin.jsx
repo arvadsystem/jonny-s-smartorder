@@ -139,6 +139,16 @@ const normalizeRecipeConfigState = (sauceIds, ruleRows) => ({
 
 const recipeConfigStatesMatch = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
+const normalizeInsumosPayload = (rows) => (
+  Array.isArray(rows)
+    ? rows
+    : {
+        recomendados: Array.isArray(rows?.recomendados) ? rows.recomendados : [],
+        otros_disponibles: Array.isArray(rows?.otros_disponibles) ? rows.otros_disponibles : [],
+        bloqueados: Array.isArray(rows?.bloqueados) ? rows.bloqueados : []
+      }
+);
+
 const MenuSalsasAdmin = () => {
   const { canAny } = usePermisos();
   const [loading, setLoading] = useState(false);
@@ -216,8 +226,14 @@ const MenuSalsasAdmin = () => {
       ...(Array.isArray(insumos?.bloqueados) ? insumos.bloqueados.map((row) => ({ ...row, grupo: 'Bloqueados' })) : [])
     ];
   }, [insumos]);
+  const blockedInsumos = useMemo(
+    () => flatInsumos.filter((insumo) => insumo?.seleccionable === false),
+    [flatInsumos]
+  );
   const insumoOptions = useMemo(() => {
-    const rows = Array.isArray(flatInsumos) ? [...flatInsumos] : [];
+    const rows = Array.isArray(flatInsumos)
+      ? flatInsumos.filter((insumo) => insumo?.seleccionable !== false)
+      : [];
     rows.sort((left, right) => {
       const leftPreferred = String(left?.categoria || left?.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 0 : 1;
       const rightPreferred = String(right?.categoria || right?.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 0 : 1;
@@ -226,25 +242,14 @@ const MenuSalsasAdmin = () => {
     });
     return rows.map((insumo) => {
       const unidadLabel = String(insumo.unidad_base?.etiqueta || insumo.unidad_simbolo || insumo.unidad_nombre || '').trim();
-      const metadata = insumo.metadata || {};
-      const mappingStatus = String(insumo.estado_mapeo_maestro || metadata.estado_mapeo_maestro || 'SIN_MAPEO').trim();
-      const masterLegacy = String(insumo.indicador_maestro_legacy || metadata.indicador_maestro_legacy || 'MAESTRO').trim();
-      const configStatus = String(insumo.estado_configuracion || metadata.estado_configuracion || (insumo.seleccionable === false ? 'BLOQUEADO' : 'OK')).trim();
-      const disabled = insumo.seleccionable === false || !insumo.id_unidad_medida;
-      const helperParts = [
-        insumo.grupo || (String(insumo.categoria || insumo.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 'Recomendados' : 'Otros disponibles'),
-        `Unidad base: ${unidadLabel || 'sin unidad'}`,
-        `Mapeo: ${mappingStatus}`,
-        masterLegacy,
-        `Config: ${configStatus}`,
-        disabled ? (insumo.motivo_bloqueo || getInsumoConfigStatusLabel(configStatus)) : 'Disponible'
-      ];
+      const configStatus = String(insumo.estado_configuracion || 'OK').trim();
+      const disabled = !insumo.id_unidad_medida;
       return {
         value: String(insumo.id_insumo),
-        label: `#${insumo.id_insumo} - ${insumo.nombre}`,
-        helperText: helperParts.join(' · '),
+        label: `#${insumo.id_insumo} · ${insumo.nombre}`,
+        helperText: `Unidad base: ${unidadLabel || 'sin unidad'}`,
         disabled,
-        searchText: `${insumo.id_insumo} ${insumo.nombre || ''} ${insumo.categoria || insumo.categoria_nombre || ''} ${unidadLabel} ${insumo.grupo || ''} ${mappingStatus} ${masterLegacy} ${configStatus} ${insumo.motivo_bloqueo || ''}`,
+        searchText: `${insumo.id_insumo} ${insumo.nombre || ''} ${insumo.categoria || insumo.categoria_nombre || ''} ${unidadLabel}`,
         unidadId: insumo.id_unidad_medida ? String(insumo.id_unidad_medida) : '',
         unidadLabel,
         configStatus,
@@ -280,7 +285,7 @@ const MenuSalsasAdmin = () => {
     if (!inventoryForm.id_insumo) return '';
     if (!selectedInsumoOption?.unidadId) return 'El insumo seleccionado no tiene unidad base configurada.';
     if (selectedInsumoOption?.disabled) {
-      return `El insumo seleccionado no puede usarse: ${getInsumoConfigStatusLabel(selectedInsumoOption.configStatus)}.`;
+      return selectedInsumoOption.motivoBloqueo || `El insumo seleccionado no puede usarse: ${getInsumoConfigStatusLabel(selectedInsumoOption.configStatus)}.`;
     }
     if (!inventoryForm.id_unidad_consumo) return 'Selecciona la unidad de consumo para validar conversion en backend.';
     if (selectedInsumoOption.unidadId !== String(inventoryForm.id_unidad_consumo)) {
@@ -336,6 +341,14 @@ const MenuSalsasAdmin = () => {
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
+
+  const refreshInsumosCatalog = useCallback(async () => {
+    const rows = await apiFetch('/api/admin/salsas/catalogos/insumos', 'GET', null, { noCache: true });
+    const normalized = normalizeInsumosPayload(rows);
+    setInsumos(normalized);
+    return normalized;
+  }, []);
+
   const loadBase = useCallback(async () => {
     try {
       setLoading(true);
@@ -370,13 +383,7 @@ const MenuSalsasAdmin = () => {
             ? salsasRows.items
             : [];
       const normalizedRecetas = Array.isArray(recetasRows) ? recetasRows : [];
-      const normalizedInsumos = Array.isArray(insumosRows)
-        ? insumosRows
-        : {
-            recomendados: Array.isArray(insumosRows?.recomendados) ? insumosRows.recomendados : [],
-            otros_disponibles: Array.isArray(insumosRows?.otros_disponibles) ? insumosRows.otros_disponibles : [],
-            bloqueados: Array.isArray(insumosRows?.bloqueados) ? insumosRows.bloqueados : []
-          };
+      const normalizedInsumos = normalizeInsumosPayload(insumosRows);
       const apiPagination = Array.isArray(salsasRows) ? null : (salsasRows?.pagination || salsasRows?.meta || null);
       const apiSummary = Array.isArray(salsasRows) ? null : (salsasRows?.summary || null);
       const safeTotalItems = Number(
@@ -549,6 +556,9 @@ const MenuSalsasAdmin = () => {
     setError('');
     setSuccess('');
     setInventoryModalOpen(true);
+    void refreshInsumosCatalog().catch((catalogError) => {
+      setError(catalogError?.message || 'No se pudo actualizar el catalogo de insumos.');
+    });
   };
 
   const onCreateSalsa = () => {
@@ -724,6 +734,10 @@ const MenuSalsasAdmin = () => {
     const cantidad = Number(inventoryForm.cantidad_porcion || 0);
     const idUnidad = toPositiveInt(inventoryForm.id_unidad_consumo);
     if (!idInsumo) errors.id_insumo = 'Selecciona un insumo.';
+    if (idInsumo && !selectedInsumoOption) {
+      const blocked = blockedInsumos.find((insumo) => Number(insumo?.id_insumo) === idInsumo);
+      errors.id_insumo = blocked?.motivo_bloqueo || 'El insumo ya no esta disponible para configurar esta salsa.';
+    }
     if (selectedInsumoOption?.disabled) errors.id_insumo = selectedInsumoOption.motivoBloqueo || 'Este insumo no puede seleccionarse.';
     if (!Number.isFinite(cantidad) || cantidad <= 0) errors.cantidad_porcion = 'Indica una cantidad mayor a 0.';
     if (!idUnidad) errors.id_unidad_consumo = 'Selecciona una unidad.';
@@ -1596,6 +1610,9 @@ const MenuSalsasAdmin = () => {
                             setInventoryForm((current) => ({
                               ...current,
                               id_insumo: String(value || ''),
+                              cantidad_porcion: /(^|\s)(onza|oz)(\s|$)/i.test(String(option?.unidadLabel || ''))
+                                ? '2'
+                                : current.cantidad_porcion,
                               id_unidad_consumo: option?.unidadId ? String(option.unidadId) : ''
                             }));
                             setInventoryUseCustomUnit(false);
@@ -1608,6 +1625,13 @@ const MenuSalsasAdmin = () => {
                           disabled={savingSalsa}
                         />
                         {displayedInventoryErrors.id_insumo ? <div className="text-danger small mt-1">{displayedInventoryErrors.id_insumo}</div> : null}
+                        {selectedInsumoOption ? (
+                          <div className="mt-2 small">
+                            <div className="fw-semibold">#{selectedInsumoOption.value} · {selectedInsumoOption.nombre}</div>
+                            <div className="text-muted">Unidad base: {selectedInsumoOption.unidadLabel || 'Sin unidad'}</div>
+                            <div className="text-success">Disponible</div>
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="row g-2">
@@ -1673,10 +1697,27 @@ const MenuSalsasAdmin = () => {
 
                       {selectedInsumoOption && inventoryForm.cantidad_porcion && inventoryForm.id_unidad_consumo ? (
                         <div className="alert alert-info py-2 mt-3 mb-0">
-                          Cada vez que el cliente elija {inventorySalsa?.nombre || 'esta salsa'}, se descontaran {Number(inventoryForm.cantidad_porcion || 0)} {unidadOptions.find((unit) => String(unit.value) === String(inventoryForm.id_unidad_consumo))?.label || 'unidad'} de {selectedInsumoOption.nombre || selectedInsumoOption.label}.
+                          Cada vez que el cliente elija {inventorySalsa?.nombre || 'esta salsa'} se descontaran {Number(inventoryForm.cantidad_porcion || 0)} {unidadOptions.find((unit) => String(unit.value) === String(inventoryForm.id_unidad_consumo))?.label || 'unidad'} de {selectedInsumoOption.nombre || selectedInsumoOption.label}.
                         </div>
                       ) : null}
                     </section>
+
+                    {blockedInsumos.length > 0 ? (
+                      <section className="inv-prod-pmodal__section">
+                        <div className="inv-prod-pmodal__section-head">
+                          <div className="inv-prod-pmodal__section-title">Insumos no disponibles</div>
+                        </div>
+                        <div className="d-grid gap-2">
+                          {blockedInsumos.map((insumo) => (
+                            <div key={`blocked-insumo-${insumo.id_insumo}`} className="border-top pt-2 small">
+                              <div className="fw-semibold">#{insumo.id_insumo} · {insumo.nombre}</div>
+                              <div className="text-muted">Unidad base: {insumo.unidad_base?.etiqueta || insumo.unidad_base?.nombre || 'Sin unidad'}</div>
+                              <div className="text-danger">{insumo.motivo_bloqueo || 'Configuracion incompleta.'}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
                   </div>
                 </div>
 
