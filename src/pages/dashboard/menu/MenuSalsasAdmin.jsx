@@ -220,11 +220,17 @@ const MenuSalsasAdmin = () => {
     });
     return rows.map((insumo) => {
       const unidadLabel = String(insumo.unidad_base?.etiqueta || insumo.unidad_simbolo || insumo.unidad_nombre || '').trim();
-      const configStatus = insumo.seleccionable === false ? 'BLOQUEADO' : 'OK';
+      const metadata = insumo.metadata || {};
+      const mappingStatus = String(insumo.estado_mapeo_maestro || metadata.estado_mapeo_maestro || 'SIN_MAPEO').trim();
+      const masterLegacy = String(insumo.indicador_maestro_legacy || metadata.indicador_maestro_legacy || 'MAESTRO').trim();
+      const configStatus = String(insumo.estado_configuracion || metadata.estado_configuracion || (insumo.seleccionable === false ? 'BLOQUEADO' : 'OK')).trim();
       const disabled = insumo.seleccionable === false || !insumo.id_unidad_medida;
       const helperParts = [
         insumo.grupo || (String(insumo.categoria || insumo.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 'Recomendados' : 'Otros disponibles'),
         `Unidad base: ${unidadLabel || 'sin unidad'}`,
+        `Mapeo: ${mappingStatus}`,
+        masterLegacy,
+        `Config: ${configStatus}`,
         disabled ? (insumo.motivo_bloqueo || getInsumoConfigStatusLabel(configStatus)) : 'Disponible'
       ];
       return {
@@ -232,7 +238,7 @@ const MenuSalsasAdmin = () => {
         label: `#${insumo.id_insumo} - ${insumo.nombre}`,
         helperText: helperParts.join(' · '),
         disabled,
-        searchText: `${insumo.id_insumo} ${insumo.nombre || ''} ${insumo.categoria || insumo.categoria_nombre || ''} ${unidadLabel} ${insumo.grupo || ''} ${insumo.motivo_bloqueo || ''}`,
+        searchText: `${insumo.id_insumo} ${insumo.nombre || ''} ${insumo.categoria || insumo.categoria_nombre || ''} ${unidadLabel} ${insumo.grupo || ''} ${mappingStatus} ${masterLegacy} ${configStatus} ${insumo.motivo_bloqueo || ''}`,
         unidadId: insumo.id_unidad_medida ? String(insumo.id_unidad_medida) : '',
         unidadLabel,
         configStatus,
@@ -283,37 +289,8 @@ const MenuSalsasAdmin = () => {
   }, [activeSalsas, recipeSauceSearch]);
 
   const visibleSalsas = useMemo(() => {
-    const normalizedSearch = String(searchTerm || '').trim().toLowerCase();
-    const searchedRows = normalizedSearch
-      ? salsas.filter((row) => (
-        String(row?.nombre || '').toLowerCase().includes(normalizedSearch)
-        || String(row?.id_salsa || '').toLowerCase().includes(normalizedSearch)
-      ))
-      : salsas;
-
-    const filteredRows = searchedRows
-      .filter((row) => {
-        const active = isRowActive(row?.estado);
-        if (showInactiveOnly) return !active;
-        if (estadoFiltro === 'activos') return active;
-        if (estadoFiltro === 'inactivos') return !active;
-        return true;
-      })
-      .filter((row) => {
-        if (nivelPicanteFiltro === 'todos') return true;
-        return String(Math.max(0, Math.min(5, Number(row?.nivel_picante || 0)))) === String(nivelPicanteFiltro);
-      });
-
-    const sortedRows = [...filteredRows].sort((a, b) => {
-      const aOrder = Number(a?.orden ?? 0);
-      const bOrder = Number(b?.orden ?? 0);
-      if (aOrder === bOrder) {
-        return Number(a?.id_salsa ?? 0) - Number(b?.id_salsa ?? 0);
-      }
-      return sortOrderDirection === 'asc' ? aOrder - bOrder : bOrder - aOrder;
-    });
-    return sortedRows;
-  }, [estadoFiltro, nivelPicanteFiltro, salsas, searchTerm, showInactiveOnly, sortOrderDirection]);
+    return salsas;
+  }, [salsas]);
 
   const currentSpicyLevel = Math.max(0, Math.min(5, Number(form.nivel_picante || 0)));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), Math.max(1, totalPages));
@@ -372,9 +349,14 @@ const MenuSalsasAdmin = () => {
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
       params.set('sort_by', 'orden');
       params.set('sort_dir', sortOrderDirection);
-      if (showInactiveOnly) {
+      if (showInactiveOnly || estadoFiltro === 'inactivos') {
         params.set('include_inactive', '1');
         params.set('only_inactive', '1');
+      } else if (estadoFiltro === 'todos') {
+        params.set('include_inactive', '1');
+      }
+      if (nivelPicanteFiltro !== 'todos') {
+        params.set('nivel_picante', String(nivelPicanteFiltro));
       }
 
       const [salsasRows, recetasRows, insumosRows] = await Promise.all([
@@ -437,7 +419,7 @@ const MenuSalsasAdmin = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, searchTerm, showInactiveOnly, sortOrderDirection]);
+  }, [currentPage, estadoFiltro, nivelPicanteFiltro, pageSize, searchTerm, showInactiveOnly, sortOrderDirection]);
 
   const loadRecipeConfig = useCallback(async (idReceta) => {
     const id = toPositiveInt(idReceta);
