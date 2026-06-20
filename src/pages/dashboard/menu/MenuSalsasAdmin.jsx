@@ -172,6 +172,11 @@ const MenuSalsasAdmin = () => {
   const [inventorySalsa, setInventorySalsa] = useState(null);
   const [inventoryFieldErrors, setInventoryFieldErrors] = useState({});
   const [inventoryUseCustomUnit, setInventoryUseCustomUnit] = useState(false);
+  const [publicationSalsa, setPublicationSalsa] = useState(null);
+  const [publicationRows, setPublicationRows] = useState([]);
+  const [publicationModalOpen, setPublicationModalOpen] = useState(false);
+  const [loadingPublication, setLoadingPublication] = useState(false);
+  const [savingPublication, setSavingPublication] = useState(false);
 
   const [selectedRecetaId, setSelectedRecetaId] = useState('');
   const [selectedSauceIds, setSelectedSauceIds] = useState([]);
@@ -183,6 +188,7 @@ const MenuSalsasAdmin = () => {
   const [showInactiveOnly, setShowInactiveOnly] = useState(false);
   const [estadoFiltro, setEstadoFiltro] = useState('activos');
   const [nivelPicanteFiltro, setNivelPicanteFiltro] = useState('todos');
+  const [publicacionFiltro, setPublicacionFiltro] = useState('todas_las');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -368,6 +374,7 @@ const MenuSalsasAdmin = () => {
       if (nivelPicanteFiltro !== 'todos') {
         params.set('nivel_picante', String(nivelPicanteFiltro));
       }
+      if (publicacionFiltro !== 'todas_las') params.set('publicacion', publicacionFiltro);
 
       const [salsasRows, recetasRows, insumosRows] = await Promise.all([
         apiFetch(`/api/admin/salsas?${params.toString()}`, 'GET', null, { noCache: true }),
@@ -434,7 +441,7 @@ const MenuSalsasAdmin = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, estadoFiltro, nivelPicanteFiltro, pageSize, searchTerm, showInactiveOnly, sortOrderDirection]);
+  }, [currentPage, estadoFiltro, nivelPicanteFiltro, pageSize, publicacionFiltro, searchTerm, showInactiveOnly, sortOrderDirection]);
 
   const loadRecipeConfig = useCallback(async (idReceta) => {
     const id = toPositiveInt(idReceta);
@@ -559,6 +566,63 @@ const MenuSalsasAdmin = () => {
     void refreshInsumosCatalog().catch((catalogError) => {
       setError(catalogError?.message || 'No se pudo actualizar el catalogo de insumos.');
     });
+  };
+
+  const closePublicationModal = () => {
+    if (savingPublication) return;
+    setPublicationModalOpen(false);
+    setPublicationSalsa(null);
+    setPublicationRows([]);
+  };
+
+  const openPublicationModal = async (salsa) => {
+    const idSalsa = toPositiveInt(salsa?.id_salsa);
+    if (!idSalsa) return;
+    setPublicationSalsa(salsa);
+    setPublicationModalOpen(true);
+    setLoadingPublication(true);
+    setError('');
+    try {
+      const response = await apiFetch(`/api/admin/salsas/${idSalsa}/sucursales`, 'GET', null, { noCache: true });
+      setPublicationRows(Array.isArray(response?.sucursales) ? response.sucursales : []);
+    } catch (e) {
+      setError(e?.message || 'No se pudo cargar la publicacion por sucursal.');
+    } finally {
+      setLoadingPublication(false);
+    }
+  };
+
+  const onTogglePublication = (idSucursal) => {
+    setPublicationRows((current) => current.map((row) => (
+      Number(row.id_sucursal) === Number(idSucursal)
+        ? { ...row, publicada: !row.publicada }
+        : row
+    )));
+  };
+
+  const onSavePublication = async () => {
+    const idSalsa = toPositiveInt(publicationSalsa?.id_salsa);
+    if (!idSalsa) return;
+    try {
+      setSavingPublication(true);
+      setError('');
+      await apiFetch(`/api/admin/salsas/${idSalsa}/sucursales`, 'PUT', {
+        sucursales: publicationRows.map((row) => ({
+          id_sucursal: Number(row.id_sucursal),
+          publicada: Boolean(row.publicada)
+        }))
+      });
+      setSuccess('Publicacion por sucursal actualizada correctamente.');
+      setPublicationModalOpen(false);
+      setPublicationSalsa(null);
+      setPublicationRows([]);
+      await loadBase();
+      if (selectedRecetaId) await loadRecipeConfig(selectedRecetaId);
+    } catch (e) {
+      setError(e?.message || 'No se pudo guardar la publicacion por sucursal.');
+    } finally {
+      setSavingPublication(false);
+    }
   };
 
   const onCreateSalsa = () => {
@@ -1066,6 +1130,18 @@ const MenuSalsasAdmin = () => {
                       </option>
                     ))}
                   </select>
+                  <select
+                    className="form-select menu-salsas-admin__toolbar-select"
+                    value={publicacionFiltro}
+                    onChange={(event) => setPublicacionFiltro(event.target.value)}
+                    disabled={loading}
+                    aria-label="Filtrar por publicacion"
+                  >
+                    <option value="todas_las">Toda publicacion</option>
+                    <option value="todas">Todas las sucursales</option>
+                    <option value="parcial">Publicacion parcial</option>
+                    <option value="ninguna">Sin publicar</option>
+                  </select>
                   <button
                     type="button"
                     className="btn menu-salsas-admin__order-btn"
@@ -1094,6 +1170,7 @@ const MenuSalsasAdmin = () => {
                       <th>Salsa</th>
                       <th>Picante</th>
                       <th>Inventario</th>
+                      <th>Publicacion</th>
                       <th>Estado</th>
                       <th className="menu-salsas-admin__actions-head">Acciones</th>
                     </tr>
@@ -1101,7 +1178,7 @@ const MenuSalsasAdmin = () => {
                   <tbody>
                     {paginatedSalsas.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-3">
+                        <td colSpan={7} className="text-center py-3">
                           {loading ? 'Cargando salsas...' : 'No hay salsas registradas.'}
                         </td>
                       </tr>
@@ -1141,6 +1218,11 @@ const MenuSalsasAdmin = () => {
                               </div>
                             </td>
                             <td>
+                              <span className="small fw-semibold">
+                                Publicada en {Number(row?.sucursales_publicadas || 0)} de {Number(row?.sucursales_activas || 0)} sucursales
+                              </span>
+                            </td>
+                            <td>
                               <span className={`menu-recetas-admin__estado-badge ${isActive ? 'is-active' : 'is-inactive'}`}>
                                 {isActive ? 'Activa' : 'Inactiva'}
                               </span>
@@ -1167,6 +1249,16 @@ const MenuSalsasAdmin = () => {
                                 >
                                   <i className="bi bi-box-seam" aria-hidden="true" />
                                   <span className="inv-catpro-action-label">Configurar consumo</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="inv-catpro-action edit inv-catpro-action-compact menu-salsas-admin__action-btn"
+                                  onClick={() => void openPublicationModal(row)}
+                                  title="Publicar por sucursal"
+                                  disabled={!canEditSalsa}
+                                >
+                                  <i className="bi bi-shop" aria-hidden="true" />
+                                  <span className="inv-catpro-action-label">Publicar</span>
                                 </button>
                                 <button
                                   type="button"
@@ -1254,6 +1346,10 @@ const MenuSalsasAdmin = () => {
                                     <span>Inventario</span>
                                     <strong>{getInventoryStatusText(row)}</strong>
                                   </div>
+                                  <div className="menu-salsas-admin__mobile-meta">
+                                    <span>Publicacion</span>
+                                    <strong>{Number(row?.sucursales_publicadas || 0)} de {Number(row?.sucursales_activas || 0)}</strong>
+                                  </div>
                                 </div>
                                 <div className="menu-salsas-admin__mobile-actions">
                                   <button
@@ -1273,6 +1369,15 @@ const MenuSalsasAdmin = () => {
                                   >
                                     <i className="bi bi-box-seam" aria-hidden="true" />
                                     <span>Consumo</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="inv-catpro-action edit inv-catpro-action-compact menu-salsas-admin__mobile-action"
+                                    onClick={() => void openPublicationModal(row)}
+                                    disabled={!canEditSalsa}
+                                  >
+                                    <i className="bi bi-shop" aria-hidden="true" />
+                                    <span>Publicar</span>
                                   </button>
                                   <button
                                     type="button"
@@ -1554,6 +1659,92 @@ const MenuSalsasAdmin = () => {
         message={toastMessage}
         onClose={() => setToastMessage('')}
       />
+
+      {publicationModalOpen ? (
+        <div className="inv-prod-pmodal inv-prod-pmodal--create show">
+          <div className="inv-prod-pmodal__overlay" onClick={closePublicationModal} />
+          <div className="inv-prod-pmodal__viewport">
+            <section
+              className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="menu-salsa-publication-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create">
+                <div className="inv-prod-pmodal__body">
+                  <div className="inv-ins-create-hero is-edit">
+                    <button
+                      type="button"
+                      className="inv-prod-drawer-close inv-ins-create-hero__close"
+                      onClick={closePublicationModal}
+                      aria-label="Cerrar publicacion por sucursal"
+                      disabled={savingPublication}
+                    >
+                      <i className="bi bi-x-lg" />
+                    </button>
+                    <div className="inv-ins-create-hero__icon"><i className="bi bi-shop" /></div>
+                    <div className="inv-ins-create-hero__copy">
+                      <div className="inv-ins-create-hero__kicker">Disponibilidad</div>
+                      <div id="menu-salsa-publication-title" className="inv-ins-create-hero__title">
+                        Publicar {publicationSalsa?.nombre || 'salsa'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {error ? <div className="alert alert-danger mt-3 mb-0">{error}</div> : null}
+                  <div className="inv-prod-pmodal__sections mt-3">
+                    <section className="inv-prod-pmodal__section">
+                      <div className="inv-prod-pmodal__section-head">
+                        <div className="inv-prod-pmodal__section-title">Sucursales activas</div>
+                        <div className="inv-prod-pmodal__section-sub">La publicacion requiere inventario valido y stock para una porcion.</div>
+                      </div>
+                      {loadingPublication ? <div className="py-3 text-muted">Cargando sucursales...</div> : null}
+                      {!loadingPublication && publicationRows.length === 0 ? <div className="py-3 text-muted">No hay sucursales activas.</div> : null}
+                      <div className="d-grid gap-2">
+                        {publicationRows.map((row) => {
+                          const blocked = !row.publicada && !row.puede_publicarse;
+                          return (
+                            <div key={`publication-${row.id_sucursal}`} className="border rounded p-3">
+                              <div className="d-flex align-items-start justify-content-between gap-3">
+                                <div>
+                                  <div className="fw-semibold">{row.nombre_sucursal}</div>
+                                  <div className="small text-muted">
+                                    Inventario: {row.inventario_configurado ? 'configurado' : 'pendiente'} · Stock: {row.stock_disponible ?? 'no disponible'}
+                                  </div>
+                                  {row.motivo_bloqueo ? <div className="small text-danger mt-1">{row.motivo_bloqueo}</div> : null}
+                                </div>
+                                <div className="form-check form-switch">
+                                  <input
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    role="switch"
+                                    checked={Boolean(row.publicada)}
+                                    onChange={() => onTogglePublication(row.id_sucursal)}
+                                    disabled={savingPublication || blocked}
+                                    aria-label={`Publicar en ${row.nombre_sucursal}`}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  </div>
+                </div>
+                <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+                  <button className="btn inv-prod-btn-subtle" type="button" onClick={closePublicationModal} disabled={savingPublication}>Cancelar</button>
+                  <button className="btn inv-prod-btn-primary" type="button" onClick={() => void onSavePublication()} disabled={loadingPublication || savingPublication}>
+                    <i className="bi bi-check-circle" aria-hidden="true" />
+                    {savingPublication ? 'Guardando...' : 'Guardar publicacion'}
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      ) : null}
 
       {inventoryModalOpen ? (
         <div className="inv-prod-pmodal inv-prod-pmodal--create show">
