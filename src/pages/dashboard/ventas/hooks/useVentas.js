@@ -104,6 +104,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const clientesAbortRef = useRef(null);
   const cajaCatalogLoadedRef = useRef(new Set());
   const cajaCatalogInFlightRef = useRef(new Map());
+  const cajaBootstrapDataCacheRef = useRef(new Map());
   const cajaCatalogDataCacheRef = useRef(new Map());
   const recipeCatalogAbortRef = useRef(new Map());
   const recipeCatalogCacheRef = useRef(new Map());
@@ -255,6 +256,74 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     return loadVentas({ ...options, refreshTotals: true });
   }, [invalidateVentasTotalsCache, loadVentas]);
 
+  const hydrateCajaBootstrapData = useCallback((data = {}, { requestedSucursalId = null, meta = {} } = {}) => {
+    const sesionesDisponibles = Array.isArray(data.sesiones_disponibles) ? data.sesiones_disponibles : [];
+    const sucursalesDisponibles = Array.isArray(data.sucursales_disponibles) ? data.sucursales_disponibles : [];
+    const sucursalSources = sucursalesDisponibles.length > 0 ? sucursalesDisponibles : sesionesDisponibles;
+    if (sucursalSources.length > 0) {
+      const branchesById = new Map(sucursalSources.map((row) => [
+        Number(row.id_sucursal),
+        {
+          id_sucursal: Number(row.id_sucursal),
+          nombre_sucursal: String(row.nombre_sucursal || `Sucursal #${row.id_sucursal}`).trim()
+        }
+      ]).filter(([id, row]) => Number.isInteger(id) && id > 0 && row.nombre_sucursal));
+      setSucursales([...branchesById.values()]);
+    }
+    const responseSucursalId = parsePositiveId(data.id_sucursal);
+    if (requestedSucursalId && responseSucursalId !== requestedSucursalId) return null;
+    setCajaBootstrapData(data);
+    if (!responseSucursalId) {
+      setRecetas([]);
+      setTiposDepartamento([]);
+      activeRecipeScopeRef.current = null;
+      setRecipeCatalogState((current) => ({ ...current, activeKey: null }));
+      setCatalogStatuses((current) => ({ ...current, recetas: 'idle' }));
+      setCatalogLoading(false);
+      return { recetas: [], tiposDepartamento: [], data, meta };
+    }
+    activeCajaSucursalRef.current = responseSucursalId;
+    const normalizedTiposDepartamento = (Array.isArray(data.departamentos) ? data.departamentos : [])
+      .map((row) => ({
+        id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
+        nombre_tipo_departamento: String(row?.nombre_departamento ?? row?.nombre_tipo_departamento ?? '')
+      }))
+      .filter((row) => row.id_tipo_departamento && row.nombre_tipo_departamento);
+    const normalizedRecetas = (Array.isArray(data.recetas) ? data.recetas : [])
+      .map(normalizeRecetaRecord)
+      .filter((receta) => receta.estado)
+      .sort(compareRecipeNamesNaturally);
+    setTiposDepartamento(normalizedTiposDepartamento);
+    setRecetas(normalizedRecetas);
+    const activeDepartmentId = parsePositiveId(data.departamento_activo?.id_tipo_departamento);
+    const recipeScopeKey = `${responseSucursalId}:${activeDepartmentId || 'ALL'}`;
+    const recipeEntry = {
+      status: data.sesion_caja ? 'success' : 'idle',
+      rows: normalizedRecetas,
+      error: null
+    };
+    recipeCatalogCacheRef.current.set(recipeScopeKey, recipeEntry);
+    activeRecipeScopeRef.current = recipeScopeKey;
+    setRecipeCatalogState((current) => ({
+      activeKey: recipeScopeKey,
+      byScope: {
+        ...current.byScope,
+        [recipeScopeKey]: recipeEntry
+      }
+    }));
+    setScopeInfo((current) => ({
+      ...current,
+      canSelectSucursal: isSuperAdmin,
+      selectedSucursalId: responseSucursalId,
+      userSucursalId: parsePositiveId(initialSucursalId)
+    }));
+    setCatalogStatuses((current) => ({
+      ...current,
+      recetas: data.sesion_caja ? 'success' : 'idle'
+    }));
+    return { recetas: normalizedRecetas, tiposDepartamento: normalizedTiposDepartamento, data, meta };
+  }, [initialSucursalId, isSuperAdmin]);
+
   const loadCajaBootstrap = useCallback(async ({ id_sucursal: idSucursalRaw, force = false } = {}) => {
     const idSucursal = parsePositiveId(idSucursalRaw);
     if (activeCajaSucursalRef.current && activeCajaSucursalRef.current !== idSucursal) {
@@ -282,7 +351,14 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     }
     if (idSucursal) activeCajaSucursalRef.current = idSucursal;
     const cacheKey = `bootstrap:${idSucursal || 'auto'}`;
-    if (!force && cajaCatalogLoadedRef.current.has(cacheKey)) return null;
+    if (force) cajaBootstrapDataCacheRef.current.delete(cacheKey);
+    const cachedBootstrap = cajaBootstrapDataCacheRef.current.get(cacheKey);
+    if (!force && cachedBootstrap?.status === 'success') {
+      return hydrateCajaBootstrapData(cachedBootstrap.data, {
+        requestedSucursalId: idSucursal,
+        meta: cachedBootstrap.meta || {}
+      });
+    }
     const currentInFlight = cajaCatalogInFlightRef.current.get(cacheKey);
     if (currentInFlight) return currentInFlight;
 
@@ -300,74 +376,24 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     ).then((response) => {
       if (controller.signal.aborted) return null;
       const data = response?.data || {};
-      const sesionesDisponibles = Array.isArray(data.sesiones_disponibles) ? data.sesiones_disponibles : [];
-      if (sesionesDisponibles.length > 0) {
-        const branchesById = new Map(sesionesDisponibles.map((session) => [
-          Number(session.id_sucursal),
-          {
-            id_sucursal: Number(session.id_sucursal),
-            nombre_sucursal: String(session.nombre_sucursal || `Sucursal #${session.id_sucursal}`).trim()
-          }
-        ]));
-        setSucursales([...branchesById.values()]);
-      }
-      const responseSucursalId = parsePositiveId(data.id_sucursal);
-      if (idSucursal && responseSucursalId !== idSucursal) return null;
-      setCajaBootstrapData(data);
-      if (!responseSucursalId) {
-        setRecetas([]);
-        setTiposDepartamento([]);
-        activeRecipeScopeRef.current = null;
-        setRecipeCatalogState((current) => ({ ...current, activeKey: null }));
-        setCatalogStatuses((current) => ({ ...current, recetas: 'idle' }));
-        setCatalogLoading(false);
-        return { recetas: [], tiposDepartamento: [], data, meta: response?.meta || {} };
-      }
-      activeCajaSucursalRef.current = responseSucursalId;
-      const normalizedTiposDepartamento = (Array.isArray(data.departamentos) ? data.departamentos : [])
-        .map((row) => ({
-          id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
-          nombre_tipo_departamento: String(row?.nombre_departamento ?? row?.nombre_tipo_departamento ?? '')
-        }))
-        .filter((row) => row.id_tipo_departamento && row.nombre_tipo_departamento);
-      const normalizedRecetas = (Array.isArray(data.recetas) ? data.recetas : [])
-        .map(normalizeRecetaRecord)
-        .filter((receta) => receta.estado)
-        .sort(compareRecipeNamesNaturally);
-      setTiposDepartamento(normalizedTiposDepartamento);
-      setRecetas(normalizedRecetas);
-      const activeDepartmentId = parsePositiveId(data.departamento_activo?.id_tipo_departamento);
-      const recipeScopeKey = `${responseSucursalId}:${activeDepartmentId || 'ALL'}`;
-      recipeCatalogCacheRef.current.set(recipeScopeKey, {
-        status: data.sesion_caja ? 'success' : 'idle',
-        rows: normalizedRecetas,
-        error: null
-      });
-      activeRecipeScopeRef.current = recipeScopeKey;
-      setRecipeCatalogState((current) => ({
-        activeKey: recipeScopeKey,
-        byScope: {
-          ...current.byScope,
-          [recipeScopeKey]: {
-            status: data.sesion_caja ? 'success' : 'idle',
-            rows: normalizedRecetas,
-            error: null
-          }
-        }
-      }));
-      setScopeInfo((current) => ({
-        ...current,
-        canSelectSucursal: isSuperAdmin,
-        selectedSucursalId: responseSucursalId,
-        userSucursalId: parsePositiveId(initialSucursalId)
-      }));
+      const result = hydrateCajaBootstrapData(data, { requestedSucursalId: idSucursal, meta: response?.meta || {} });
+      if (!result) return null;
       cajaCatalogLoadedRef.current.add(cacheKey);
-      cajaCatalogLoadedRef.current.add(`bootstrap:${responseSucursalId}`);
-      setCatalogStatuses((current) => ({
-        ...current,
-        recetas: data.sesion_caja ? 'success' : 'idle'
-      }));
-      return { recetas: normalizedRecetas, tiposDepartamento: normalizedTiposDepartamento, data, meta: response?.meta || {} };
+      const responseSucursalId = parsePositiveId(data.id_sucursal);
+      if (responseSucursalId) cajaCatalogLoadedRef.current.add(`bootstrap:${responseSucursalId}`);
+      cajaBootstrapDataCacheRef.current.set(cacheKey, {
+        status: 'success',
+        data,
+        meta: response?.meta || {}
+      });
+      if (responseSucursalId) {
+        cajaBootstrapDataCacheRef.current.set(`bootstrap:${responseSucursalId}`, {
+          status: 'success',
+          data,
+          meta: response?.meta || {}
+        });
+      }
+      return result;
     }).catch((error) => {
       if (controller.signal.aborted) {
         setCatalogStatuses((current) => ({ ...current, recetas: 'idle' }));
@@ -392,7 +418,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     });
     cajaCatalogInFlightRef.current.set(cacheKey, promise);
     return promise;
-  }, [initialSucursalId, isSuperAdmin, openToast]);
+  }, [hydrateCajaBootstrapData, openToast]);
 
   const loadCajaRecipesDepartment = useCallback(async ({
     id_sucursal: idSucursalRaw,
@@ -515,6 +541,10 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       } else {
         setDescuentosCatalogo(cachedData.rows || []);
         setTiposDescuento(cachedData.tipos || []);
+        if (Array.isArray(cachedData.categorias)) setCategorias(cachedData.categorias);
+        if (Array.isArray(cachedData.productos)) setProductos(cachedData.productos);
+        if (Array.isArray(cachedData.combos)) setCombos(cachedData.combos);
+        if (Array.isArray(cachedData.recetas)) setRecetas(cachedData.recetas);
       }
       setCatalogStatuses((current) => ({ ...current, [catalogKey.toLowerCase()]: 'success' }));
       return cachedData.rows || [];
@@ -594,12 +624,86 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
             estado: isTruthyState(row.estado ?? true)
           }))
           .filter((row) => row.id_descuento_catalogo && row.valor_descuento > 0 && row.estado);
+        const scopes = new Set(normalizedDescuentos.map((row) => normalizeDiscountScope(row.alcance)));
+        let discountCategorias = null;
+        let discountProductos = null;
+        let discountCombos = null;
+        let discountRecetas = null;
+        if (scopes.has('PRODUCTO')) {
+          const productCacheKey = `PRODUCTOS:${idSucursal}`;
+          const productCache = cajaCatalogDataCacheRef.current.get(productCacheKey);
+          if (productCache?.status === 'success') {
+            discountCategorias = productCache.categorias || [];
+            discountProductos = productCache.rows || [];
+          } else {
+            const [categoriasResponse, productosResponse] = await Promise.all([
+              ventasService.getCategoriasCatalog({ signal: controller.signal }),
+              ventasService.getProductosCatalog({ id_sucursal: idSucursal }, { signal: controller.signal })
+            ]);
+            if (controller.signal.aborted || !isCurrentRequest()) return null;
+            discountCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
+              .map(normalizeCategoriaRecord)
+              .filter((row) => row.estado);
+            const categoriasMap = buildCategoriasMap(discountCategorias);
+            discountProductos = (Array.isArray(productosResponse) ? productosResponse : [])
+              .map((row) => normalizeProductoRecord(row, categoriasMap))
+              .filter((row) => row.estado)
+              .sort((a, b) => a.nombre_producto.localeCompare(b.nombre_producto, 'es', { sensitivity: 'base' }));
+            cajaCatalogDataCacheRef.current.set(productCacheKey, {
+              status: 'success',
+              categorias: discountCategorias,
+              rows: discountProductos
+            });
+          }
+          setCategorias(discountCategorias || []);
+          setProductos(discountProductos || []);
+        }
+        if (scopes.has('COMBO')) {
+          const comboCacheKey = `COMBOS:${idSucursal}`;
+          const comboCache = cajaCatalogDataCacheRef.current.get(comboCacheKey);
+          if (comboCache?.status === 'success') {
+            discountCombos = comboCache.rows || [];
+          } else {
+            const combosResponse = await ventasService.getCombosCatalog({ id_sucursal: idSucursal }, { signal: controller.signal });
+            if (controller.signal.aborted || !isCurrentRequest()) return null;
+            discountCombos = (Array.isArray(combosResponse) ? combosResponse : [])
+              .map(normalizeComboRecord)
+              .filter((row) => row.estado)
+              .sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es', { sensitivity: 'base' }));
+            cajaCatalogDataCacheRef.current.set(comboCacheKey, { status: 'success', rows: discountCombos });
+          }
+          setCombos(discountCombos || []);
+        }
+        if (scopes.has('RECETA')) {
+          const recipeScopeKey = `${idSucursal}:ALL`;
+          const recipeCache = recipeCatalogCacheRef.current.get(recipeScopeKey);
+          if (recipeCache?.status === 'success') {
+            discountRecetas = recipeCache.rows || [];
+          } else {
+            const recetasResponse = await ventasService.getRecetasCatalog({ id_sucursal: idSucursal }, { signal: controller.signal });
+            if (controller.signal.aborted || !isCurrentRequest()) return null;
+            discountRecetas = (Array.isArray(recetasResponse) ? recetasResponse : [])
+              .map(normalizeRecetaRecord)
+              .filter((row) => row.estado)
+              .sort(compareRecipeNamesNaturally);
+            recipeCatalogCacheRef.current.set(recipeScopeKey, {
+              status: 'success',
+              rows: discountRecetas,
+              error: null
+            });
+          }
+          setRecetas(discountRecetas || []);
+        }
         setTiposDescuento(normalizedTipos);
         setDescuentosCatalogo(normalizedDescuentos);
         cajaCatalogDataCacheRef.current.set(cacheKey, {
           status: 'success',
           tipos: normalizedTipos,
-          rows: normalizedDescuentos
+          rows: normalizedDescuentos,
+          ...(discountCategorias ? { categorias: discountCategorias } : {}),
+          ...(discountProductos ? { productos: discountProductos } : {}),
+          ...(discountCombos ? { combos: discountCombos } : {}),
+          ...(discountRecetas ? { recetas: discountRecetas } : {})
         });
       }
       cajaCatalogLoadedRef.current.add(cacheKey);
@@ -839,18 +943,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     void (async () => {
       if (String(activeTab || '').toLowerCase() === 'caja') {
         let idSucursal = parsePositiveId(initialSucursalId);
-        if (!idSucursal && isSuperAdmin) {
-          const response = await sucursalesService.getAll().catch(() => []);
-          if (!active) return;
-          const normalized = (Array.isArray(response) ? response : [])
-            .filter((row) => isTruthyState(row?.estado))
-            .map((row) => ({
-              id_sucursal: Number(row?.id_sucursal || 0) || null,
-              nombre_sucursal: String(row?.nombre_sucursal || '').trim()
-            }))
-            .filter((row) => row.id_sucursal && row.nombre_sucursal);
-          setSucursales(normalized);
-        }
         await loadCajaBootstrap(idSucursal ? { id_sucursal: idSucursal } : {});
         return;
       }

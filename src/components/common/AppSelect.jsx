@@ -39,6 +39,7 @@ export default function AppSelect({
   searchable = false,
   searchPlaceholder = 'Buscar...',
   onSearchChange,
+  onOpen,
   emptyText = 'No hay resultados.',
   createActionLabel = '',
   onCreateAction,
@@ -99,6 +100,7 @@ export default function AppSelect({
     const preferredIndex = selectedIndex >= 0 ? selectedIndex : 0;
     setActiveIndex(getNextEnabledIndex(preferredIndex, 1));
     setOpen(true);
+    onOpen?.(search);
   };
 
   useEffect(() => {

@@ -289,6 +289,8 @@ export default function CajaView({
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
   const catalogSucursalRequestRef = useRef('');
+  const bootstrapSesionCaja = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
+  const hasCajaSession = Boolean(cajaSesionActiva?.id_sesion_caja || bootstrapSesionCaja?.id_sesion_caja);
 
   const openAutoAuxiliarForSucursal = async ({ idSucursal, force = false }) => {
     if (!isSuperAdmin) return;
@@ -356,7 +358,7 @@ export default function CajaView({
     isSuperAdmin,
     defaultSucursalId,
     allowSucursalAutoSelection: !catalogLoadingStates.bootstrapLoading,
-    catalogsEnabled: Boolean(cajaSesionActiva?.id_sesion_caja),
+    catalogsEnabled: hasCajaSession,
     onDepartmentDemand: ({ idSucursal, idTipoDepartamento }) => onRecipesDepartmentDemand?.({
       id_sucursal: idSucursal,
       id_tipo_departamento: idTipoDepartamento
@@ -366,6 +368,9 @@ export default function CajaView({
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
   });
   composerRef.current = composer;
+  const resolvedCajaSucursalId = toPositiveId(
+    composer.selectedSucursalId || composer.selectedSucursal || cajaBootstrapData?.id_sucursal
+  );
   const activeCatalogLoading = composer.activeCatalog === 'PRODUCTOS'
     ? Boolean(catalogLoadingStates.productsLoading)
     : composer.activeCatalog === 'COMBOS'
@@ -378,7 +383,7 @@ export default function CajaView({
     : composer.activeCatalog === 'COMBOS'
       ? catalogStatuses.combos || 'idle'
       : composer.activeCatalog === 'EXTRAS'
-        ? !cajaSesionActiva?.id_sesion_caja
+        ? !hasCajaSession
           ? 'idle'
           : composer.currentCatalogStatus || 'idle'
       : composer.activeCatalog === 'DESCUENTOS'
@@ -429,8 +434,8 @@ export default function CajaView({
   ]);
 
   useEffect(() => {
-    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
-    if (!selectedSucursalId || !cajaSesionActiva?.id_sesion_caja) return;
+    const selectedSucursalId = resolvedCajaSucursalId;
+    if (!selectedSucursalId || !hasCajaSession) return;
     if (composer.activeCatalog === 'RECETAS') {
       const bootstrapDepartmentId = toPositiveId(cajaBootstrapData?.departamento_activo?.id_tipo_departamento);
       if (composer.activeCategory === 'all' && bootstrapDepartmentId) return;
@@ -442,11 +447,11 @@ export default function CajaView({
     }
     void onCatalogDemand?.(composer.activeCatalog, { id_sucursal: selectedSucursalId });
   }, [
-    cajaSesionActiva?.id_sesion_caja,
+    hasCajaSession,
+    resolvedCajaSucursalId,
+    cajaBootstrapData?.departamento_activo?.id_tipo_departamento,
     composer.activeCatalog,
     composer.activeCategory,
-    composer.selectedSucursal,
-    composer.selectedSucursalId,
     onCatalogDemand,
     onRecipesDepartmentDemand
   ]);
@@ -466,7 +471,8 @@ export default function CajaView({
   useEffect(() => {
     const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
-    if (!bootstrapSucursalId || bootstrapSucursalId !== selectedSucursalId) return;
+    if (!bootstrapSucursalId) return;
+    if (selectedSucursalId && bootstrapSucursalId !== selectedSucursalId) return;
 
     const session = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
     const assignment = session

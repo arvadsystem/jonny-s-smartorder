@@ -25,7 +25,7 @@ assert.match(useVentasSource, /setDiscountsLoading/, 'descuentos debe tener load
 assert.match(cajaSource, /onCatalogDemand\?\.\(composer\.activeCatalog/, 'el catalogo activo debe cargarse bajo demanda');
 assert.match(useVentasSource, /catalogStatuses[\s\S]*recetas[\s\S]*productos[\s\S]*clientes/, 'los catalogos deben tener estados independientes');
 assert.match(useVentasSource, /controller\.signal\.aborted[\s\S]*'idle'/, 'una cancelacion debe volver a idle');
-assert.match(cajaSource, /!cajaSesionActiva\?\.id_sesion_caja/, 'no deben solicitarse catalogos sin sesion activa');
+assert.match(cajaSource, /hasCajaSession/, 'no deben solicitarse catalogos sin sesion activa');
 assert.match(cajaSource, /cajaBootstrapData\?\.sesion_caja/, 'CajaView debe hidratar la sesion desde bootstrap');
 assert.match(composerSource, /const DEFAULT_CATALOG_KEY = 'RECETAS'/, 'el catalogo inicial debe ser Recetas');
 assert.match(composerSource, /const DEFAULT_DEPARTMENT_NAME = 'ALITAS'/, 'el departamento inicial debe ser Alitas');
@@ -48,6 +48,7 @@ assert.match(useVentasSource, /cajaCatalogDataCacheRef/, 'productos y combos deb
 assert.match(useVentasSource, /force = false[\s\S]*!force && cachedData/, 'los catalogos con error deben soportar reintento forzado');
 assert.match(cajaSource, /activeCatalog[\s\S]*selectedSucursalId[\s\S]*catalogStatuses/, 'la demanda debe reintentarse cuando se resuelve la sucursal');
 assert.match(useVentasSource, /sesiones_disponibles[\s\S]*setSucursales/, 'las sucursales seleccionables deben provenir de sesiones activas');
+assert.match(useVentasSource, /sucursales_disponibles[\s\S]*setSucursales/, 'el selector de Caja debe poder usar sucursales disponibles del bootstrap');
 assert.match(composerSource, /shouldLoadExtras[\s\S]*activeCatalog === 'EXTRAS'/, 'Extras debe cargarse solo bajo demanda');
 assert.match(optionsSource, /key: 'EXTRAS'/, 'la pestaña Extras debe permanecer visible');
 assert.match(composerSource, /getExtrasPermitidos/, 'el catalogo de Extras debe cargarse por sucursal');

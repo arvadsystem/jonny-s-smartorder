@@ -770,10 +770,23 @@ export const useVentaComposer = ({
   const discountCatalogRows = useMemo(() => {
     if (!canApplyDiscount) return [];
 
+    const discountProducts = filterBySearch(Array.isArray(productos) ? productos : [], deferredSearch, [
+      'nombre_producto',
+      'descripcion_producto',
+      'categoria_label'
+    ]);
+    const discountCombos = filterBySearch(Array.isArray(combos) ? combos : [], deferredSearch, [
+      'nombre_combo',
+      'descripcion'
+    ]);
+    const discountRecetas = filterBySearch(Array.isArray(recetas) ? recetas : [], deferredSearch, [
+      'nombre_receta',
+      'nombre_producto_base'
+    ]);
     const candidates = [
-      ...filteredProducts.map((row) => ({ kind: 'PRODUCTO', row })),
-      ...filteredCombos.map((row) => ({ kind: 'COMBO', row })),
-      ...filteredRecetas.map((row) => ({ kind: 'RECETA', row }))
+      ...discountProducts.map((row) => ({ kind: 'PRODUCTO', row })),
+      ...discountCombos.map((row) => ({ kind: 'COMBO', row })),
+      ...discountRecetas.map((row) => ({ kind: 'RECETA', row }))
     ];
 
     return candidates
@@ -795,10 +808,11 @@ export const useVentaComposer = ({
       .filter(Boolean);
   }, [
     canApplyDiscount,
-    filteredCombos,
-    filteredProducts,
-    filteredRecetas,
+    combos,
+    deferredSearch,
     normalizedDescuentosCatalogo,
+    productos,
+    recetas,
     selectedSucursalId
   ]);
 

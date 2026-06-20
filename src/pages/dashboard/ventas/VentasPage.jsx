@@ -477,7 +477,9 @@ export default function VentasPage() {
         <CajaView
           sucursales={sucursales}
           isSuperAdmin={isSuperAdmin}
-          defaultSucursalId={Number(scopeInfo?.selectedSucursalId || (!isSuperAdmin ? userSucursalId : null)) || null}
+          defaultSucursalId={Number(
+            cajaBootstrapData?.id_sucursal || scopeInfo?.selectedSucursalId || (!isSuperAdmin ? userSucursalId : null)
+          ) || null}
           productos={productos}
           categorias={categorias}
           tiposDepartamento={tiposDepartamento}

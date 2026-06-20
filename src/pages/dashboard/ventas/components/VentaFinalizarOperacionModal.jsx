@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppSelect from '../../../../components/common/AppSelect';
 import ventasService from '../../../../services/ventasService';
 import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
@@ -118,6 +118,7 @@ export default function VentaFinalizarOperacionModal({
   const pendingSubmittingRef = useRef(false);
   const paidErrorPendingRef = useRef(false);
   const lastAutoPhoneRef = useRef('');
+  const lastClientSearchRequestRef = useRef(null);
   const phoneSaveAskedRef = useRef(new Set());
   const phoneSaveBypassRef = useRef(false);
   const isSubmitting = saving || paidSubmitting || pendingSubmitting;
@@ -132,15 +133,34 @@ export default function VentaFinalizarOperacionModal({
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   }, [delivery.costo_envio]);
 
-  useEffect(() => {
+  const requestClientes = useCallback((rawSearch = '', { force = false } = {}) => {
     if (!open) return undefined;
+    const query = String(rawSearch || '').trim();
+    if (query && query.length < 2 && !/^\d+$/.test(query)) return undefined;
+    const requestKey = `${query}:20`;
+    if (!force && lastClientSearchRequestRef.current === requestKey) return undefined;
+    lastClientSearchRequestRef.current = requestKey;
+    return onClientesRefresh?.({ search: query, limit: 20 }).catch((error) => {
+      if (lastClientSearchRequestRef.current === requestKey) {
+        lastClientSearchRequestRef.current = null;
+      }
+      return Promise.reject(error);
+    });
+  }, [onClientesRefresh, open]);
+
+  useEffect(() => {
+    if (!open) {
+      lastClientSearchRequestRef.current = null;
+      setClientSearch('');
+      return undefined;
+    }
     const query = clientSearch.trim();
-    if (!query || (query.length < 2 && !/^\d+$/.test(query))) return undefined;
+    if (query && query.length < 2 && !/^\d+$/.test(query)) return undefined;
     const timer = setTimeout(() => {
-      void onClientesRefresh?.({ search: query, limit: 20 }).catch(() => null);
-    }, 250);
+      void requestClientes(query).catch(() => null);
+    }, query ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [clientSearch, onClientesRefresh, open]);
+  }, [clientSearch, open, requestClientes]);
 
   useEffect(() => {
     if (!open) return;
@@ -600,6 +620,10 @@ export default function VentaFinalizarOperacionModal({
                 searchable
                 searchPlaceholder="Buscar cliente..."
                 onSearchChange={setClientSearch}
+                onOpen={() => {
+                  setClientSearch('');
+                  void requestClientes('').catch(() => null);
+                }}
                 emptyText={clientsLoading ? 'Buscando clientes...' : 'No se encontro ese cliente.'}
                 createActionLabel={(query) => (query ? `Crear cliente "${query}"` : 'Crear cliente')}
                 onCreateAction={(query) => {
