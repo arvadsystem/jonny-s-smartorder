@@ -207,12 +207,14 @@ export default function CajaView({
   descuentosCatalogo,
   canApplyDiscount,
   catalogLoading,
+  catalogLoadingStates = {},
   catalogErrors,
   saving,
   onSubmit,
   onCreatePedidoPendiente,
   onRegistrarPagoPedido,
   onCatalogSucursalChange,
+  onCatalogDemand,
   onClientesRefresh,
   onNotify
 }) {
@@ -354,6 +356,11 @@ export default function CajaView({
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
   });
   composerRef.current = composer;
+  const activeCatalogLoading = composer.activeCatalog === 'PRODUCTOS'
+    ? Boolean(catalogLoadingStates.productsLoading)
+    : composer.activeCatalog === 'COMBOS'
+      ? Boolean(catalogLoadingStates.combosLoading)
+      : Boolean(catalogLoadingStates.bootstrapLoading || catalogLoadingStates.recipesLoading || catalogLoading);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -371,6 +378,19 @@ export default function CajaView({
     isSuperAdmin,
     onCatalogSucursalChange
   ]);
+
+  useEffect(() => {
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!selectedSucursalId) return;
+    void onCatalogDemand?.(composer.activeCatalog, { id_sucursal: selectedSucursalId });
+  }, [composer.activeCatalog, composer.selectedSucursal, composer.selectedSucursalId, onCatalogDemand]);
+
+  useEffect(() => {
+    if (!canApplyDiscount || !composer.descuentoPickerOpen) return;
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!selectedSucursalId) return;
+    void onCatalogDemand?.('DESCUENTOS', { id_sucursal: selectedSucursalId });
+  }, [canApplyDiscount, composer.descuentoPickerOpen, composer.selectedSucursal, composer.selectedSucursalId, onCatalogDemand]);
 
   const syncComposerSession = useCallback((session) => {
     const idSesionCaja = toPositiveId(session?.id_sesion_caja);
@@ -1107,7 +1127,7 @@ export default function CajaView({
         <form className="ventas-create-modal__body ventas-caja__body ventas-caja-layout" onSubmit={composer.handleSubmit}>
           <VentaComposerCatalog
             composer={composer}
-            catalogLoading={catalogLoading}
+            catalogLoading={activeCatalogLoading}
             catalogErrors={catalogErrors}
           />
           <VentaComposerSummary
@@ -1225,6 +1245,7 @@ export default function CajaView({
           onCreatePedidoPendiente={handleCreatePedidoPendiente}
           onDeliveryCostChange={setDeliveryCostPreview}
           onClientesRefresh={onClientesRefresh}
+          clientsLoading={Boolean(catalogLoadingStates.clientsLoading)}
         />
       ) : null}
       {registrarPagoOpen ? (

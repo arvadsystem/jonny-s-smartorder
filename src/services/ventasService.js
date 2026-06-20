@@ -87,17 +87,20 @@ const ventasService = {
     apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload, withIdempotencyKey()),
   guardarTelefonoCliente: (idCliente, payload) =>
     apiFetch(`/ventas/clientes/${idCliente}/telefono`, 'PATCH', payload),
-  getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
-  getCombosCatalog: (params = {}) => apiFetch(`/ventas/catalogos/combos${buildQuery(params)}`, 'GET'),
-  getRecetasCatalog: (params = {}) => apiFetch(`/ventas/catalogos/recetas${buildQuery(params)}`, 'GET'),
+  getCajaBootstrap: (params = {}, config = {}) =>
+    apiFetch(`/ventas/caja/bootstrap${buildQuery(params)}`, 'GET', null, config),
+  getClientesCatalog: (params = {}, config = {}) =>
+    apiFetch(`/ventas/catalogos/clientes${buildQuery(params)}`, 'GET', null, config),
+  getCombosCatalog: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/combos${buildQuery(params)}`, 'GET', null, config),
+  getRecetasCatalog: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/recetas${buildQuery(params)}`, 'GET', null, config),
   getExtrasPermitidos: (params = {}) => apiFetch(`/ventas/catalogos/extras-permitidos${buildQuery(params)}`, 'GET'),
-  getDescuentosCatalog: (params = {}) => apiFetch(`/ventas/catalogos/descuentos${buildQuery(params)}`, 'GET'),
-  getTiposDescuentoCatalog: () => apiFetch('/ventas/catalogos/tipos-descuento', 'GET'),
-  getProductosCatalog: (params = {}) => apiFetch(`/ventas/catalogos/productos${buildQuery(params)}`, 'GET'),
+  getDescuentosCatalog: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/descuentos${buildQuery(params)}`, 'GET', null, config),
+  getTiposDescuentoCatalog: (config = {}) => apiFetch('/ventas/catalogos/tipos-descuento', 'GET', null, config),
+  getProductosCatalog: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/productos${buildQuery(params)}`, 'GET', null, config),
   // FIX: usar endpoint propio de ventas para categorias; /categorias_productos exige
   // INVENTARIO_CATEGORIAS_VER que el cajero no tiene, causando 403 y caja sin productos.
-  getCategoriasCatalog: () => apiFetch('/ventas/catalogos/categorias', 'GET'),
-  getTipoDepartamentos: () => apiFetch('/ventas/catalogos/tipo-departamento', 'GET'),
+  getCategoriasCatalog: (config = {}) => apiFetch('/ventas/catalogos/categorias', 'GET', null, config),
+  getTipoDepartamentos: (config = {}) => apiFetch('/ventas/catalogos/tipo-departamento', 'GET', null, config),
   listDescuentosCatalogosAdmin: (params = {}) =>
     apiFetch(`/ventas/descuentos-catalogos${buildQuery(params)}`, 'GET'),
   getDescuentoCatalogoById: (id) => apiFetch(`/ventas/descuentos-catalogos/${id}`, 'GET'),

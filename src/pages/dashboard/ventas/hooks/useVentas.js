@@ -21,6 +21,7 @@ import {
   normalizeVentaDetail,
   normalizeVentaRecord
 } from '../utils/ventasHelpers';
+import { compareRecipeNamesNaturally } from '../utils/ventasRecipeSort';
 
 const isTruthyState = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
@@ -60,7 +61,7 @@ const normalizeVentasSummaryPayload = (summary = {}) => ({
   pendientes: Number.parseInt(String(summary?.pendientes ?? 0), 10) || 0
 });
 
-export const useVentas = () => {
+export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdmin = false } = {}) => {
   const [ventas, setVentas] = useState([]);
   const [summary, setSummary] = useState(() => createDefaultVentasSummary());
   const [pagination, setPagination] = useState(() => createDefaultVentasPagination());
@@ -74,15 +75,27 @@ export const useVentas = () => {
   const [descuentosCatalogo, setDescuentosCatalogo] = useState([]);
   const [tiposDescuento, setTiposDescuento] = useState([]);
   const [tiposDepartamento, setTiposDepartamento] = useState([]);
-  const [clientes, setClientes] = useState([]);
+  const [clientes, setClientes] = useState(() => [createConsumidorFinalCliente()]);
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
+  const [bootstrapLoading, setBootstrapLoading] = useState(false);
+  const [recipesLoading, setRecipesLoading] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [combosLoading, setCombosLoading] = useState(false);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [discountsLoading, setDiscountsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
   const [catalogErrors, setCatalogErrors] = useState({});
   const [toast, setToast] = useState(() => createDefaultVentasToast());
   const catalogRequestRef = useRef(0);
+  const cajaBootstrapAbortRef = useRef(null);
+  const cajaCatalogAbortRef = useRef(new Map());
+  const clientesAbortRef = useRef(null);
+  const cajaCatalogLoadedRef = useRef(new Set());
+  const cajaCatalogInFlightRef = useRef(new Map());
+  const activeCajaSucursalRef = useRef(null);
   const ventasTotalsCacheRef = useRef({ key: '', summary: null, pagination: null });
   const ventasLastFiltersRef = useRef(null);
 
@@ -228,6 +241,170 @@ export const useVentas = () => {
     invalidateVentasTotalsCache();
     return loadVentas({ ...options, refreshTotals: true });
   }, [invalidateVentasTotalsCache, loadVentas]);
+
+  const loadCajaBootstrap = useCallback(async ({ id_sucursal: idSucursalRaw, force = false } = {}) => {
+    const idSucursal = parsePositiveId(idSucursalRaw);
+    if (!idSucursal) return null;
+    if (activeCajaSucursalRef.current && activeCajaSucursalRef.current !== idSucursal) {
+      cajaBootstrapAbortRef.current?.abort();
+      for (const controller of cajaCatalogAbortRef.current.values()) controller.abort();
+      cajaCatalogAbortRef.current.clear();
+      setProductos([]);
+      setCombos([]);
+      setRecetas([]);
+      setDescuentosCatalogo([]);
+      setClientes([createConsumidorFinalCliente()]);
+      for (const key of [...cajaCatalogLoadedRef.current]) {
+        if (key.endsWith(`:${idSucursal}`)) cajaCatalogLoadedRef.current.delete(key);
+      }
+    }
+    activeCajaSucursalRef.current = idSucursal;
+    const cacheKey = `bootstrap:${idSucursal}`;
+    if (!force && cajaCatalogLoadedRef.current.has(cacheKey)) return null;
+    const currentInFlight = cajaCatalogInFlightRef.current.get(cacheKey);
+    if (currentInFlight) return currentInFlight;
+
+    cajaBootstrapAbortRef.current?.abort();
+    const controller = new AbortController();
+    cajaBootstrapAbortRef.current = controller;
+    setBootstrapLoading(true);
+    setRecipesLoading(true);
+    setCatalogErrors((current) => ({ ...current, recetas: undefined }));
+
+    const promise = ventasService.getCajaBootstrap(
+      { id_sucursal: idSucursal },
+      { signal: controller.signal }
+    ).then((response) => {
+      if (controller.signal.aborted) return null;
+      const data = response?.data || {};
+      if (Number(data.id_sucursal) !== idSucursal) return null;
+      const normalizedTiposDepartamento = (Array.isArray(data.departamentos) ? data.departamentos : [])
+        .map((row) => ({
+          id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
+          nombre_tipo_departamento: String(row?.nombre_departamento ?? row?.nombre_tipo_departamento ?? '')
+        }))
+        .filter((row) => row.id_tipo_departamento && row.nombre_tipo_departamento);
+      const normalizedRecetas = (Array.isArray(data.recetas) ? data.recetas : [])
+        .map(normalizeRecetaRecord)
+        .filter((receta) => receta.estado)
+        .sort(compareRecipeNamesNaturally);
+      setTiposDepartamento(normalizedTiposDepartamento);
+      setRecetas(normalizedRecetas);
+      setScopeInfo((current) => ({
+        ...current,
+        canSelectSucursal: isSuperAdmin,
+        selectedSucursalId: idSucursal,
+        userSucursalId: parsePositiveId(initialSucursalId)
+      }));
+      cajaCatalogLoadedRef.current.add(cacheKey);
+      return { recetas: normalizedRecetas, tiposDepartamento: normalizedTiposDepartamento, meta: response?.meta || {} };
+    }).catch((error) => {
+      if (controller.signal.aborted) return null;
+      const message = extractApiMessage(error, 'No se pudo cargar el catalogo inicial de Caja.');
+      setCatalogErrors((current) => ({
+        ...current,
+        recetas: { endpoint: '/ventas/caja/bootstrap', status: Number(error?.status || 0) || null, message }
+      }));
+      openToast('ERROR CATALOGO', message, 'danger');
+      throw error;
+    }).finally(() => {
+      cajaCatalogInFlightRef.current.delete(cacheKey);
+      if (cajaBootstrapAbortRef.current === controller) {
+        cajaBootstrapAbortRef.current = null;
+        setBootstrapLoading(false);
+        setRecipesLoading(false);
+        setCatalogLoading(false);
+      }
+    });
+    cajaCatalogInFlightRef.current.set(cacheKey, promise);
+    return promise;
+  }, [initialSucursalId, isSuperAdmin, openToast]);
+
+  const loadCajaCatalog = useCallback(async (catalogKeyRaw, { id_sucursal: idSucursalRaw } = {}) => {
+    const catalogKey = String(catalogKeyRaw || '').trim().toUpperCase();
+    const idSucursal = parsePositiveId(idSucursalRaw);
+    if (!idSucursal) return null;
+    if (catalogKey === 'RECETAS') return loadCajaBootstrap({ id_sucursal: idSucursal });
+    if (!['PRODUCTOS', 'COMBOS', 'DESCUENTOS'].includes(catalogKey)) return null;
+    const cacheKey = `${catalogKey}:${idSucursal}`;
+    if (cajaCatalogLoadedRef.current.has(cacheKey)) return null;
+    const currentInFlight = cajaCatalogInFlightRef.current.get(cacheKey);
+    if (currentInFlight) return currentInFlight;
+
+    const controller = new AbortController();
+    cajaCatalogAbortRef.current.set(cacheKey, controller);
+    const setLoadingState = catalogKey === 'PRODUCTOS'
+      ? setProductsLoading
+      : catalogKey === 'COMBOS'
+        ? setCombosLoading
+        : setDiscountsLoading;
+    setLoadingState(true);
+
+    const promise = (async () => {
+      if (catalogKey === 'PRODUCTOS') {
+        const [categoriasResponse, productosResponse] = await Promise.all([
+          ventasService.getCategoriasCatalog({ signal: controller.signal }),
+          ventasService.getProductosCatalog({ id_sucursal: idSucursal }, { signal: controller.signal })
+        ]);
+        if (controller.signal.aborted) return null;
+        const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
+          .map(normalizeCategoriaRecord)
+          .filter((row) => row.estado);
+        const categoriasMap = buildCategoriasMap(normalizedCategorias);
+        setCategorias(normalizedCategorias);
+        setProductos((Array.isArray(productosResponse) ? productosResponse : [])
+          .map((row) => normalizeProductoRecord(row, categoriasMap))
+          .filter((row) => row.estado)
+          .sort((a, b) => a.nombre_producto.localeCompare(b.nombre_producto, 'es', { sensitivity: 'base' })));
+      } else if (catalogKey === 'COMBOS') {
+        const response = await ventasService.getCombosCatalog({ id_sucursal: idSucursal }, { signal: controller.signal });
+        if (controller.signal.aborted) return null;
+        setCombos((Array.isArray(response) ? response : [])
+          .map(normalizeComboRecord)
+          .filter((row) => row.estado)
+          .sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es', { sensitivity: 'base' })));
+      } else {
+        const [descuentosResponse, tiposResponse] = await Promise.all([
+          ventasService.getDescuentosCatalog({ id_sucursal: idSucursal }, { signal: controller.signal }),
+          ventasService.getTiposDescuentoCatalog({ signal: controller.signal })
+        ]);
+        if (controller.signal.aborted) return null;
+        setTiposDescuento((Array.isArray(tiposResponse) ? tiposResponse : [])
+          .filter((row) => isTruthyState(row?.estado))
+          .map((row) => ({
+            id_tipo_descuento: Number(row.id_tipo_descuento || 0) || null,
+            nombre_tipo_descuento: String(row.nombre_tipo_descuento || '')
+          })));
+        setDescuentosCatalogo((Array.isArray(descuentosResponse) ? descuentosResponse : [])
+          .map((row) => ({
+            ...row,
+            id_descuento_catalogo: Number(row.id_descuento_catalogo || 0) || null,
+            valor_descuento: Number(row.valor_descuento || 0),
+            alcance: normalizeDiscountScope(row.alcance),
+            id_sucursal: Number(row.id_sucursal || 0) || null,
+            estado: isTruthyState(row.estado ?? true)
+          }))
+          .filter((row) => row.id_descuento_catalogo && row.valor_descuento > 0 && row.estado));
+      }
+      cajaCatalogLoadedRef.current.add(cacheKey);
+      setCatalogErrors((current) => ({ ...current, [catalogKey.toLowerCase()]: undefined }));
+      return true;
+    })().catch((error) => {
+      if (controller.signal.aborted) return null;
+      const key = catalogKey.toLowerCase();
+      setCatalogErrors((current) => ({
+        ...current,
+        [key]: { endpoint: catalogKey, status: Number(error?.status || 0) || null, message: extractApiMessage(error, `No se pudo cargar ${catalogKey}.`) }
+      }));
+      return null;
+    }).finally(() => {
+      cajaCatalogInFlightRef.current.delete(cacheKey);
+      cajaCatalogAbortRef.current.delete(cacheKey);
+      setLoadingState(false);
+    });
+    cajaCatalogInFlightRef.current.set(cacheKey, promise);
+    return promise;
+  }, [loadCajaBootstrap]);
 
   const loadCatalogs = useCallback(async (options = {}) => {
     const requestId = catalogRequestRef.current + 1;
@@ -433,19 +610,46 @@ export const useVentas = () => {
 
   useEffect(() => {
     let active = true;
+    const catalogAbortControllers = cajaCatalogAbortRef.current;
     void (async () => {
+      if (String(activeTab || '').toLowerCase() === 'caja') {
+        let idSucursal = parsePositiveId(initialSucursalId);
+        if (!idSucursal && isSuperAdmin) {
+          const response = await sucursalesService.getAll().catch(() => []);
+          if (!active) return;
+          const normalized = (Array.isArray(response) ? response : [])
+            .filter((row) => isTruthyState(row?.estado))
+            .map((row) => ({
+              id_sucursal: Number(row?.id_sucursal || 0) || null,
+              nombre_sucursal: String(row?.nombre_sucursal || '').trim()
+            }))
+            .filter((row) => row.id_sucursal && row.nombre_sucursal);
+          setSucursales(normalized);
+          idSucursal = normalized[0]?.id_sucursal || null;
+        }
+        if (idSucursal) await loadCajaBootstrap({ id_sucursal: idSucursal });
+        else setCatalogLoading(false);
+        return;
+      }
+
       const ventasResult = await loadVentas().catch(() => null);
       if (!active) return;
-      const includeSucursales = Boolean(ventasResult?.canSelectSucursal);
-      await loadCatalogs({
-        includeSucursales,
-        id_sucursal: ventasResult?.catalogSucursalId
-      });
+      if (String(activeTab || '').toLowerCase() === 'descuentos') {
+        await loadCatalogs({
+          includeSucursales: Boolean(ventasResult?.canSelectSucursal),
+          id_sucursal: ventasResult?.catalogSucursalId
+        });
+      } else {
+        setCatalogLoading(false);
+      }
     })();
     return () => {
       active = false;
+      cajaBootstrapAbortRef.current?.abort();
+      for (const controller of catalogAbortControllers.values()) controller.abort();
+      catalogAbortControllers.clear();
     };
-  }, [loadCatalogs, loadVentas]);
+  }, [activeTab, initialSucursalId, isSuperAdmin, loadCajaBootstrap, loadCatalogs, loadVentas]);
 
   const refreshCatalogs = useCallback(
     (options = {}) => loadCatalogs({
@@ -455,16 +659,32 @@ export const useVentas = () => {
     [loadCatalogs, scopeInfo?.canSelectSucursal]
   );
 
-  const refreshClientesCatalog = useCallback(async () => {
-    const clientesResponse = await ventasService.getClientesCatalog();
-    const normalizedClientes = [
-      createConsumidorFinalCliente(),
-      ...(Array.isArray(clientesResponse) ? clientesResponse : [])
-        .map(normalizeClienteOption)
-        .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
-    ];
-    setClientes(normalizedClientes);
-    return normalizedClientes;
+  const refreshClientesCatalog = useCallback(async (options = {}) => {
+    const search = String(options?.search ?? '').trim();
+    clientesAbortRef.current?.abort();
+    const controller = new AbortController();
+    clientesAbortRef.current = controller;
+    setClientsLoading(true);
+    try {
+      const clientesResponse = await ventasService.getClientesCatalog(
+        { search, limit: Math.min(50, Math.max(1, Number(options?.limit || 20))) },
+        { signal: controller.signal }
+      );
+      if (controller.signal.aborted) return null;
+      const normalizedClientes = [
+        createConsumidorFinalCliente(),
+        ...(Array.isArray(clientesResponse) ? clientesResponse : [])
+          .map(normalizeClienteOption)
+          .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
+      ];
+      setClientes(normalizedClientes);
+      return normalizedClientes;
+    } finally {
+      if (clientesAbortRef.current === controller) {
+        clientesAbortRef.current = null;
+        setClientsLoading(false);
+      }
+    }
   }, []);
 
   const setVentasSearch = useCallback((search) => {
@@ -648,6 +868,12 @@ export const useVentas = () => {
     clientes,
     loading,
     catalogLoading,
+    bootstrapLoading,
+    recipesLoading,
+    productsLoading,
+    combosLoading,
+    clientsLoading,
+    discountsLoading,
     saving,
     detailLoading,
     error,
@@ -657,6 +883,8 @@ export const useVentas = () => {
     closeToast,
     refreshVentas,
     refreshCatalogs,
+    loadCajaBootstrap,
+    loadCajaCatalog,
     refreshClientesCatalog,
     setVentasSearch,
     setVentasPage,

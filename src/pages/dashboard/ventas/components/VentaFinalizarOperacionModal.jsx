@@ -93,7 +93,8 @@ export default function VentaFinalizarOperacionModal({
   onClose,
   onCreatePedidoPendiente,
   onDeliveryCostChange,
-  onClientesRefresh
+  onClientesRefresh,
+  clientsLoading = false
 }) {
   const [activeTab, setActiveTab] = useState('pagar');
   const [contact, setContact] = useState(CONTACT_INITIAL);
@@ -102,6 +103,7 @@ export default function VentaFinalizarOperacionModal({
   const [submitDialogError, setSubmitDialogError] = useState('');
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateSearch, setQuickCreateSearch] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
   const [phoneSaveDialog, setPhoneSaveDialog] = useState({
     open: false,
     pendingAction: '',
@@ -129,6 +131,16 @@ export default function VentaFinalizarOperacionModal({
     const parsed = Number(delivery.costo_envio);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   }, [delivery.costo_envio]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const query = clientSearch.trim();
+    if (!query || (query.length < 2 && !/^\d+$/.test(query))) return undefined;
+    const timer = setTimeout(() => {
+      void onClientesRefresh?.({ search: query, limit: 20 }).catch(() => null);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [clientSearch, onClientesRefresh, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -266,14 +278,14 @@ export default function VentaFinalizarOperacionModal({
     try {
       setPhoneSaveDialog((current) => ({ ...current, saving: true, error: '' }));
       await ventasService.guardarTelefonoCliente(selectedClienteId, { telefono });
-      await onClientesRefresh?.();
+      await onClientesRefresh?.({ search: String(selectedClienteId), limit: 20 });
       setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
       continuePhoneSaveAction(pendingAction);
     } catch (error) {
       const status = Number(error?.status ?? error?.data?.status ?? 0);
       const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
       if (status === 409 && code === 'CLIENTE_TELEFONO_EXISTENTE') {
-        await onClientesRefresh?.();
+        await onClientesRefresh?.({ search: String(selectedClienteId), limit: 20 });
         setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
         continuePhoneSaveAction(pendingAction);
         return;
@@ -488,7 +500,7 @@ export default function VentaFinalizarOperacionModal({
   ];
 
   const handleClienteCreated = async ({ id_cliente: idCliente, label }) => {
-    const refreshedClientes = await onClientesRefresh?.();
+    const refreshedClientes = await onClientesRefresh?.({ search: String(idCliente || label || ''), limit: 20 });
     const selected = (Array.isArray(refreshedClientes) ? refreshedClientes : []).find((cliente) => {
       if (idCliente && Number(cliente.id_cliente) === Number(idCliente)) return true;
       return label && String(cliente.label || '').trim().toLowerCase() === String(label).trim().toLowerCase();
@@ -587,7 +599,8 @@ export default function VentaFinalizarOperacionModal({
                 placeholder="Selecciona cliente"
                 searchable
                 searchPlaceholder="Buscar cliente..."
-                emptyText="No se encontro ese cliente."
+                onSearchChange={setClientSearch}
+                emptyText={clientsLoading ? 'Buscando clientes...' : 'No se encontro ese cliente.'}
                 createActionLabel={(query) => (query ? `Crear cliente "${query}"` : 'Crear cliente')}
                 onCreateAction={(query) => {
                   setQuickCreateSearch(query);

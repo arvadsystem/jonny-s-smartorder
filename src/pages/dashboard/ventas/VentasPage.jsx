@@ -42,6 +42,9 @@ export default function VentasPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
+  const requestedVentasTab = String(
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') || '' : ''
+  ).trim().toLowerCase();
   const {
     ventas,
     summary,
@@ -58,6 +61,12 @@ export default function VentasPage() {
     clientes,
     loading,
     catalogLoading,
+    bootstrapLoading,
+    recipesLoading,
+    productsLoading,
+    combosLoading,
+    clientsLoading,
+    discountsLoading,
     saving,
     detailLoading,
     error,
@@ -76,9 +85,14 @@ export default function VentasPage() {
     registrarPagoPedido,
     getVentaDetail,
     refreshVentas,
-    refreshCatalogs,
+    loadCajaBootstrap,
+    loadCajaCatalog,
     refreshClientesCatalog
-  } = useVentas();
+  } = useVentas({
+    activeTab: requestedVentasTab,
+    initialSucursalId: user?.id_sucursal,
+    isSuperAdmin
+  });
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [detailOpen, setDetailOpen] = useState(false);
@@ -469,12 +483,21 @@ export default function VentasPage() {
           descuentosCatalogo={descuentosCatalogo}
           canApplyDiscount={canApplyDiscount}
           catalogLoading={catalogLoading}
+          catalogLoadingStates={{
+            bootstrapLoading,
+            recipesLoading,
+            productsLoading,
+            combosLoading,
+            clientsLoading,
+            discountsLoading
+          }}
           catalogErrors={catalogErrors}
           saving={saving}
           onSubmit={handleCreateVenta}
           onCreatePedidoPendiente={createPedidoPendiente}
           onRegistrarPagoPedido={registrarPagoPedido}
-          onCatalogSucursalChange={refreshCatalogs}
+          onCatalogSucursalChange={loadCajaBootstrap}
+          onCatalogDemand={loadCajaCatalog}
           onClientesRefresh={refreshClientesCatalog}
           onNotify={openToast}
         />

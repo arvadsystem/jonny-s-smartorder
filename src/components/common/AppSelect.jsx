@@ -38,6 +38,7 @@ export default function AppSelect({
   helperText = '',
   searchable = false,
   searchPlaceholder = 'Buscar...',
+  onSearchChange,
   emptyText = 'No hay resultados.',
   createActionLabel = '',
   onCreateAction,
@@ -83,6 +84,7 @@ export default function AppSelect({
   const closeList = () => {
     setOpen(false);
     setActiveIndex(-1);
+    setSearch('');
   };
 
   const selectOption = (option) => {
@@ -105,6 +107,8 @@ export default function AppSelect({
     const handlePointerDown = (event) => {
       if (!rootRef.current?.contains(event.target)) {
         setOpen(false);
+        setActiveIndex(-1);
+        setSearch('');
       }
     };
 
@@ -116,14 +120,6 @@ export default function AppSelect({
     if (!open || activeIndex < 0) return;
     optionRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex, open]);
-
-  useEffect(() => {
-    if (!open) {
-      setSearch('');
-      return;
-    }
-    setActiveIndex(getNextEnabledIndex(0, 1));
-  }, [open, search, filteredOptions.length]);
 
   const handleButtonKeyDown = (event) => {
     if (disabled) return;
@@ -215,7 +211,12 @@ export default function AppSelect({
                 type="search"
                 value={search}
                 placeholder={searchPlaceholder}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  const nextSearch = event.target.value;
+                  setSearch(nextSearch);
+                  setActiveIndex(getNextEnabledIndex(0, 1));
+                  onSearchChange?.(nextSearch);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') {
                     event.preventDefault();
