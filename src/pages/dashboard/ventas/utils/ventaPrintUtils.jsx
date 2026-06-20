@@ -1,4 +1,5 @@
 import ventasService from '../../../../services/ventasService';
+import qzPrintService from '../../../../services/qzPrintService';
 import buildComandaCocinaHtml from './buildComandaCocinaHtml';
 
 const PRINT_WINDOW_FEATURES = 'width=420,height=760,resizable=yes,scrollbars=yes';
@@ -167,5 +168,45 @@ export const printComandaCocinaInWindow = async (comanda, printWindow) => {
   return printHtmlDocument(html, {
     title: 'Comanda cocina',
     printWindow
+  });
+};
+
+const resolveWidthMm = (value, fallback = 80) => Number(value) === 58 ? 58 : fallback;
+
+export const printVentaTicketWithQz = async (idFactura, printerConfig = {}) => {
+  const printerName = String(printerConfig?.nombre_impresora_sistema || '').trim();
+  if (!printerName) {
+    throw new Error('No hay una impresora FACTURA configurada para QZ Tray.');
+  }
+
+  const pdfBlob = await ventasService.getTicketPdf(idFactura);
+  return qzPrintService.printPdfBlobToPrinter({
+    printerName,
+    blob: pdfBlob,
+    copies: 1,
+    jobName: `Factura ${idFactura}`
+  });
+};
+
+export const printComandaCocinaWithQz = async (comanda, printerConfig = {}) => {
+  const printerName = String(printerConfig?.nombre_impresora_sistema || '').trim();
+  if (!printerName) {
+    throw new Error('No hay una impresora COCINA configurada para QZ Tray.');
+  }
+
+  const html = buildComandaCocinaHtml(comanda);
+  const widthMm = resolveWidthMm(printerConfig?.ancho_mm, 80);
+  const mode = String(printerConfig?.modo_impresion || 'QZ_HTML').trim().toUpperCase();
+
+  if (mode === 'QZ_RAW') {
+    throw new Error('QZ_RAW para comanda aun no esta habilitado en este flujo.');
+  }
+
+  return qzPrintService.printHtmlToPrinter({
+    printerName,
+    html,
+    widthMm,
+    copies: 1,
+    jobName: `Comanda ${comanda?.numero_pedido || comanda?.numero_venta || comanda?.id_pedido || ''}`.trim()
   });
 };

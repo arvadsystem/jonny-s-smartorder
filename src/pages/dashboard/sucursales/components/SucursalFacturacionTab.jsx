@@ -100,7 +100,10 @@ const normalizePrinterConfig = (payload = {}) => {
         tipo_impresora: String(item?.tipo_impresora || '').trim().toUpperCase(),
         nombre_logico: String(item?.nombre_logico || '').trim() || null,
         nombre_impresora_sistema: String(item?.nombre_impresora_sistema || '').trim(),
+        ip_impresora: String(item?.ip_impresora || '').trim(),
+        puerto_impresora: Number(item?.puerto_impresora ?? 9100) || 9100,
         ancho_mm: Number(item?.ancho_mm ?? 80),
+        modo_impresion: String(item?.modo_impresion || 'BROWSER').trim().toUpperCase() || 'BROWSER',
         activa: item?.activa !== false,
         updated_at: item?.updated_at || null
       }))
@@ -118,7 +121,10 @@ const normalizePrinterConfig = (payload = {}) => {
         tipo_impresora: tipo,
         nombre_logico: tipo,
         nombre_impresora_sistema: '',
+        ip_impresora: '',
+        puerto_impresora: 9100,
         ancho_mm: 80,
+        modo_impresion: 'BROWSER',
         activa: true,
         updated_at: null
       };
