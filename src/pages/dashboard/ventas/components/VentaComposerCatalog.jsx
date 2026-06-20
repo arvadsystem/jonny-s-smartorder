@@ -45,7 +45,13 @@ const buildResultsLabel = (catalogKey, count) => {
   return `${count} ${count === 1 ? 'producto' : 'productos'}`;
 };
 
-export default function VentaComposerCatalog({ composer, catalogLoading, catalogErrors = {} }) {
+export default function VentaComposerCatalog({
+  composer,
+  catalogLoading,
+  catalogStatus = 'idle',
+  catalogStatuses = {},
+  catalogErrors = {}
+}) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [showOutOfStock, setShowOutOfStock] = useState(false);
   const searchWrapRef = useRef(null);
@@ -101,7 +107,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
     return rawUrl ? resolveInventarioImageUrl(rawUrl) : null;
   };
 
-  const activeCatalogError = (() => {
+  const activeCatalogError = catalogStatus === 'error' ? (() => {
     if (isDiscountCatalog) return catalogErrors.descuentos || null;
     if (isExtrasCatalog && composer.currentCatalogError) {
       return {
@@ -113,8 +119,9 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
     if (composer.activeCatalog === 'PRODUCTOS') return catalogErrors.productos || null;
     if (composer.activeCatalog === 'COMBOS') return catalogErrors.combos || null;
     return catalogErrors.recetas || null;
-  })();
-  const hasNonDiscountCatalogErrors = Object.keys(catalogErrors || {}).some((key) => key !== 'descuentos');
+  })() : null;
+  const hasNonDiscountCatalogErrors = ['productos', 'combos', 'recetas']
+    .some((key) => catalogStatuses[key] === 'error');
   const visibleCatalogRows = composer.currentCatalogRows.filter((row) => {
     if (isDiscountCatalog) return false;
     const isProducto = composer.activeCatalog === 'PRODUCTOS';
@@ -239,7 +246,9 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
 
       <div className="ventas-create-modal__results-meta ventas-catalog-results">
         <span>
-          {(composer.currentCatalogLoading || catalogLoading)
+          {catalogStatus === 'idle'
+            ? 'Catalogo pendiente'
+            : (composer.currentCatalogLoading || catalogLoading)
             ? 'Cargando catalogo...'
             : buildResultsLabel(composer.activeCatalog, isDiscountCatalog ? visibleDiscountRows.length : visibleCatalogRows.length)}
         </span>
@@ -270,7 +279,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
 
       {isDiscountCatalog ? (
         <div className="ventas-discounts-panel">
-          {catalogLoading ? (
+          {catalogStatus === 'idle' ? null : catalogLoading ? (
             <div className="ventas-create-modal__empty ventas-discounts-panel__empty">
               <span className="spinner-border spinner-border-sm" aria-hidden="true" />
               <span>Cargando descuentos...</span>
@@ -368,7 +377,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
         </div>
       ) : (
       <div className="ventas-create-modal__products ventas-catalog-grid">
-        {(composer.currentCatalogLoading || catalogLoading) ? (
+        {catalogStatus === 'idle' ? null : (composer.currentCatalogLoading || catalogLoading) ? (
           <div className="ventas-create-modal__empty">
             <span className="spinner-border spinner-border-sm" aria-hidden="true" />
             <span>Cargando catalogo...</span>

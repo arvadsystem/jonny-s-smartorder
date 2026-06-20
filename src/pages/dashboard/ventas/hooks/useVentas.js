@@ -78,12 +78,20 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const [clientes, setClientes] = useState(() => [createConsumidorFinalCliente()]);
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
-  const [bootstrapLoading, setBootstrapLoading] = useState(false);
-  const [recipesLoading, setRecipesLoading] = useState(false);
+  const [bootstrapLoading, setBootstrapLoading] = useState(() => String(activeTab).toLowerCase() === 'caja');
+  const [recipesLoading, setRecipesLoading] = useState(() => String(activeTab).toLowerCase() === 'caja');
   const [productsLoading, setProductsLoading] = useState(false);
   const [combosLoading, setCombosLoading] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [discountsLoading, setDiscountsLoading] = useState(false);
+  const [catalogStatuses, setCatalogStatuses] = useState({
+    recetas: String(activeTab).toLowerCase() === 'caja' ? 'loading' : 'idle',
+    productos: 'idle',
+    combos: 'idle',
+    clientes: 'idle',
+    descuentos: 'idle'
+  });
+  const [cajaBootstrapData, setCajaBootstrapData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
@@ -244,7 +252,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
 
   const loadCajaBootstrap = useCallback(async ({ id_sucursal: idSucursalRaw, force = false } = {}) => {
     const idSucursal = parsePositiveId(idSucursalRaw);
-    if (!idSucursal) return null;
     if (activeCajaSucursalRef.current && activeCajaSucursalRef.current !== idSucursal) {
       cajaBootstrapAbortRef.current?.abort();
       for (const controller of cajaCatalogAbortRef.current.values()) controller.abort();
@@ -254,12 +261,21 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       setRecetas([]);
       setDescuentosCatalogo([]);
       setClientes([createConsumidorFinalCliente()]);
+      setCajaBootstrapData(null);
+      setCatalogStatuses({
+        recetas: 'idle',
+        productos: 'idle',
+        combos: 'idle',
+        clientes: 'idle',
+        descuentos: 'idle'
+      });
+      setCatalogErrors({});
       for (const key of [...cajaCatalogLoadedRef.current]) {
         if (key.endsWith(`:${idSucursal}`)) cajaCatalogLoadedRef.current.delete(key);
       }
     }
-    activeCajaSucursalRef.current = idSucursal;
-    const cacheKey = `bootstrap:${idSucursal}`;
+    if (idSucursal) activeCajaSucursalRef.current = idSucursal;
+    const cacheKey = `bootstrap:${idSucursal || 'auto'}`;
     if (!force && cajaCatalogLoadedRef.current.has(cacheKey)) return null;
     const currentInFlight = cajaCatalogInFlightRef.current.get(cacheKey);
     if (currentInFlight) return currentInFlight;
@@ -269,15 +285,24 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     cajaBootstrapAbortRef.current = controller;
     setBootstrapLoading(true);
     setRecipesLoading(true);
+    setCatalogStatuses((current) => ({ ...current, recetas: 'loading' }));
     setCatalogErrors((current) => ({ ...current, recetas: undefined }));
 
     const promise = ventasService.getCajaBootstrap(
-      { id_sucursal: idSucursal },
+      idSucursal ? { id_sucursal: idSucursal } : {},
       { signal: controller.signal }
     ).then((response) => {
       if (controller.signal.aborted) return null;
       const data = response?.data || {};
-      if (Number(data.id_sucursal) !== idSucursal) return null;
+      const responseSucursalId = parsePositiveId(data.id_sucursal);
+      if (idSucursal && responseSucursalId !== idSucursal) return null;
+      setCajaBootstrapData(data);
+      if (!responseSucursalId) {
+        setCatalogStatuses((current) => ({ ...current, recetas: 'idle' }));
+        setCatalogLoading(false);
+        return { recetas: [], tiposDepartamento: [], data, meta: response?.meta || {} };
+      }
+      activeCajaSucursalRef.current = responseSucursalId;
       const normalizedTiposDepartamento = (Array.isArray(data.departamentos) ? data.departamentos : [])
         .map((row) => ({
           id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
@@ -293,18 +318,27 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       setScopeInfo((current) => ({
         ...current,
         canSelectSucursal: isSuperAdmin,
-        selectedSucursalId: idSucursal,
+        selectedSucursalId: responseSucursalId,
         userSucursalId: parsePositiveId(initialSucursalId)
       }));
       cajaCatalogLoadedRef.current.add(cacheKey);
-      return { recetas: normalizedRecetas, tiposDepartamento: normalizedTiposDepartamento, meta: response?.meta || {} };
+      cajaCatalogLoadedRef.current.add(`bootstrap:${responseSucursalId}`);
+      setCatalogStatuses((current) => ({
+        ...current,
+        recetas: data.sesion_caja ? 'success' : 'idle'
+      }));
+      return { recetas: normalizedRecetas, tiposDepartamento: normalizedTiposDepartamento, data, meta: response?.meta || {} };
     }).catch((error) => {
-      if (controller.signal.aborted) return null;
+      if (controller.signal.aborted) {
+        setCatalogStatuses((current) => ({ ...current, recetas: 'idle' }));
+        return null;
+      }
       const message = extractApiMessage(error, 'No se pudo cargar el catalogo inicial de Caja.');
       setCatalogErrors((current) => ({
         ...current,
         recetas: { endpoint: '/ventas/caja/bootstrap', status: Number(error?.status || 0) || null, message }
       }));
+      setCatalogStatuses((current) => ({ ...current, recetas: 'error' }));
       openToast('ERROR CATALOGO', message, 'danger');
       throw error;
     }).finally(() => {
@@ -339,6 +373,8 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         ? setCombosLoading
         : setDiscountsLoading;
     setLoadingState(true);
+    const statusKey = catalogKey.toLowerCase();
+    setCatalogStatuses((current) => ({ ...current, [statusKey]: 'loading' }));
 
     const promise = (async () => {
       if (catalogKey === 'PRODUCTOS') {
@@ -388,14 +424,19 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       }
       cajaCatalogLoadedRef.current.add(cacheKey);
       setCatalogErrors((current) => ({ ...current, [catalogKey.toLowerCase()]: undefined }));
+      setCatalogStatuses((current) => ({ ...current, [statusKey]: 'success' }));
       return true;
     })().catch((error) => {
-      if (controller.signal.aborted) return null;
+      if (controller.signal.aborted) {
+        setCatalogStatuses((current) => ({ ...current, [statusKey]: 'idle' }));
+        return null;
+      }
       const key = catalogKey.toLowerCase();
       setCatalogErrors((current) => ({
         ...current,
         [key]: { endpoint: catalogKey, status: Number(error?.status || 0) || null, message: extractApiMessage(error, `No se pudo cargar ${catalogKey}.`) }
       }));
+      setCatalogStatuses((current) => ({ ...current, [statusKey]: 'error' }));
       return null;
     }).finally(() => {
       cajaCatalogInFlightRef.current.delete(cacheKey);
@@ -625,10 +666,8 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
             }))
             .filter((row) => row.id_sucursal && row.nombre_sucursal);
           setSucursales(normalized);
-          idSucursal = normalized[0]?.id_sucursal || null;
         }
-        if (idSucursal) await loadCajaBootstrap({ id_sucursal: idSucursal });
-        else setCatalogLoading(false);
+        await loadCajaBootstrap(idSucursal ? { id_sucursal: idSucursal } : {});
         return;
       }
 
@@ -665,6 +704,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     const controller = new AbortController();
     clientesAbortRef.current = controller;
     setClientsLoading(true);
+    setCatalogStatuses((current) => ({ ...current, clientes: 'loading' }));
     try {
       const clientesResponse = await ventasService.getClientesCatalog(
         { search, limit: Math.min(50, Math.max(1, Number(options?.limit || 20))) },
@@ -678,7 +718,14 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
           .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
       ];
       setClientes(normalizedClientes);
+      setCatalogStatuses((current) => ({ ...current, clientes: 'success' }));
       return normalizedClientes;
+    } catch (error) {
+      setCatalogStatuses((current) => ({
+        ...current,
+        clientes: controller.signal.aborted ? 'idle' : 'error'
+      }));
+      throw error;
     } finally {
       if (clientesAbortRef.current === controller) {
         clientesAbortRef.current = null;
@@ -874,6 +921,8 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     combosLoading,
     clientsLoading,
     discountsLoading,
+    catalogStatuses,
+    cajaBootstrapData,
     saving,
     detailLoading,
     error,

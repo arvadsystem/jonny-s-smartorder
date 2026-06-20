@@ -36,6 +36,27 @@ export { getComboDepartmentIds } from '../../../../modules/ventas/utils/ventasCa
 
 const DEFAULT_CATALOG_KEY = 'RECETAS';
 const DEFAULT_DEPARTMENT_NAME = 'ALITAS';
+const CAJA_SUCURSAL_STORAGE_KEY = 'jonny:ventas:caja:sucursal';
+
+const readPersistedCajaSucursal = () => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return String(window.sessionStorage.getItem(CAJA_SUCURSAL_STORAGE_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+};
+
+const persistCajaSucursal = (value) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const normalized = String(value || '').trim();
+    if (normalized) window.sessionStorage.setItem(CAJA_SUCURSAL_STORAGE_KEY, normalized);
+    else window.sessionStorage.removeItem(CAJA_SUCURSAL_STORAGE_KEY);
+  } catch {
+    // Session storage puede estar deshabilitado.
+  }
+};
 
 const isQuantityManagedVentaLineKind = (kind) => ['PRODUCTO', 'ITEM'].includes(String(kind || '').toUpperCase());
 
@@ -352,6 +373,7 @@ export const useVentaComposer = ({
   sucursales,
   isSuperAdmin = false,
   defaultSucursalId = null,
+  allowSucursalAutoSelection = true,
   clientes,
   combos,
   recetas,
@@ -617,15 +639,32 @@ export const useVentaComposer = ({
 
   useEffect(() => {
     if (!isSuperAdmin) return;
+    if (!allowSucursalAutoSelection) return;
     if (!normalizedSucursales.length) return;
     setState((current) => {
-      if (String(current.selectedSucursal || '').trim()) return current;
+      const validIds = new Set(normalizedSucursales.map((row) => String(row.id_sucursal)));
+      const sessionSelection = String(defaultSucursalId || '').trim();
+      const currentSelection = String(current.selectedSucursal || '').trim();
+      const persistedSelection = readPersistedCajaSucursal();
+      const nextSelection = validIds.has(sessionSelection)
+        ? sessionSelection
+        : validIds.has(currentSelection)
+          ? currentSelection
+          : validIds.has(persistedSelection)
+            ? persistedSelection
+            : normalizedSucursales.length === 1
+              ? String(normalizedSucursales[0].id_sucursal)
+              : '';
+      if (currentSelection === nextSelection) return current;
       return {
         ...current,
-        selectedSucursal: String(normalizedSucursales[0].id_sucursal)
+        selectedSucursal: nextSelection,
+        activeCatalog: DEFAULT_CATALOG_KEY,
+        activeCategory: resolveDefaultDepartmentId(tiposDepartamento),
+        search: ''
       };
     });
-  }, [isSuperAdmin, normalizedSucursales]);
+  }, [allowSucursalAutoSelection, defaultSucursalId, isSuperAdmin, normalizedSucursales, tiposDepartamento]);
 
   useEffect(() => {
     if (isSuperAdmin) return;
@@ -1440,11 +1479,15 @@ export const useVentaComposer = ({
     setSucursalPickerOpen: (value) => setPartialState({ sucursalPickerOpen: value }),
     setSelectedSucursal: (value) => {
       const nextSucursal = String(value || '');
+      persistCajaSucursal(nextSucursal);
       setState((current) => {
         const changed = String(current.selectedSucursal || '') !== nextSucursal;
         return {
           ...current,
           selectedSucursal: nextSucursal,
+          activeCatalog: changed ? DEFAULT_CATALOG_KEY : current.activeCatalog,
+          activeCategory: changed ? resolveDefaultDepartmentId(tiposDepartamento) : current.activeCategory,
+          search: changed ? '' : current.search,
           temporarySessionId: '',
           selectedDiscountId: '',
           cashReceived: '',

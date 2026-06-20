@@ -67,6 +67,8 @@ export default function VentasPage() {
     combosLoading,
     clientsLoading,
     discountsLoading,
+    catalogStatuses,
+    cajaBootstrapData,
     saving,
     detailLoading,
     error,
@@ -473,7 +475,7 @@ export default function VentasPage() {
         <CajaView
           sucursales={sucursales}
           isSuperAdmin={isSuperAdmin}
-          defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
+          defaultSucursalId={Number(scopeInfo?.selectedSucursalId || userSucursalId) || null}
           productos={productos}
           categorias={categorias}
           tiposDepartamento={tiposDepartamento}
@@ -491,6 +493,8 @@ export default function VentasPage() {
             clientsLoading,
             discountsLoading
           }}
+          catalogStatuses={catalogStatuses}
+          cajaBootstrapData={cajaBootstrapData}
           catalogErrors={catalogErrors}
           saving={saving}
           onSubmit={handleCreateVenta}

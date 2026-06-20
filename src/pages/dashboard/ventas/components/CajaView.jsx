@@ -208,6 +208,8 @@ export default function CajaView({
   canApplyDiscount,
   catalogLoading,
   catalogLoadingStates = {},
+  catalogStatuses = {},
+  cajaBootstrapData = null,
   catalogErrors,
   saving,
   onSubmit,
@@ -351,6 +353,7 @@ export default function CajaView({
     sucursales,
     isSuperAdmin,
     defaultSucursalId,
+    allowSucursalAutoSelection: !catalogLoadingStates.bootstrapLoading,
     onSubmit,
     suppressSubmitErrorToast: true,
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
@@ -360,7 +363,24 @@ export default function CajaView({
     ? Boolean(catalogLoadingStates.productsLoading)
     : composer.activeCatalog === 'COMBOS'
       ? Boolean(catalogLoadingStates.combosLoading)
+      : composer.activeCatalog === 'EXTRAS'
+        ? Boolean(composer.currentCatalogLoading)
       : Boolean(catalogLoadingStates.bootstrapLoading || catalogLoadingStates.recipesLoading || catalogLoading);
+  const activeCatalogStatus = composer.activeCatalog === 'PRODUCTOS'
+    ? catalogStatuses.productos || 'idle'
+    : composer.activeCatalog === 'COMBOS'
+      ? catalogStatuses.combos || 'idle'
+      : composer.activeCatalog === 'EXTRAS'
+        ? !cajaSesionActiva?.id_sesion_caja
+          ? 'idle'
+          : composer.currentCatalogLoading
+            ? 'loading'
+            : composer.currentCatalogError
+              ? 'error'
+              : 'success'
+      : composer.activeCatalog === 'DESCUENTOS'
+        ? catalogStatuses.descuentos || 'idle'
+        : catalogStatuses.recetas || 'idle';
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -381,9 +401,9 @@ export default function CajaView({
 
   useEffect(() => {
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
-    if (!selectedSucursalId) return;
+    if (!selectedSucursalId || !cajaSesionActiva?.id_sesion_caja) return;
     void onCatalogDemand?.(composer.activeCatalog, { id_sucursal: selectedSucursalId });
-  }, [composer.activeCatalog, composer.selectedSucursal, composer.selectedSucursalId, onCatalogDemand]);
+  }, [cajaSesionActiva?.id_sesion_caja, composer.activeCatalog, composer.selectedSucursal, composer.selectedSucursalId, onCatalogDemand]);
 
   useEffect(() => {
     if (!canApplyDiscount || !composer.descuentoPickerOpen) return;
@@ -396,6 +416,31 @@ export default function CajaView({
     const idSesionCaja = toPositiveId(session?.id_sesion_caja);
     composerRef.current?.setTemporarySessionId(idSesionCaja ? String(idSesionCaja) : '');
   }, []);
+
+  useEffect(() => {
+    const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!bootstrapSucursalId || bootstrapSucursalId !== selectedSucursalId) return;
+
+    const session = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
+    const assignment = session
+      ? buildCajaAssignmentFromSession(session)
+      : normalizeCajaAssignment(cajaBootstrapData?.caja_activa);
+    setCajaAsignacion(assignment);
+    setCajaSesionActiva(session);
+    syncComposerSession(session);
+    setCajaStatus({
+      loading: false,
+      error: '',
+      assignmentMissing: !assignment
+    });
+    setDecisionOpen(Boolean(assignment && !session && assignment.puede_abrir));
+  }, [
+    cajaBootstrapData,
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    syncComposerSession
+  ]);
 
   const loadCajaAsignada = useCallback(async () => {
     const cacheKey = `asignacion:${cajaUserKey}`;
@@ -653,7 +698,10 @@ export default function CajaView({
       return undefined;
     }
 
-    if (isSuperAdmin) return undefined;
+    if (isSuperAdmin || catalogLoadingStates.bootstrapLoading) return undefined;
+
+    const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
+    if (bootstrapSucursalId && bootstrapSucursalId === toPositiveId(defaultSucursalId)) return undefined;
 
     setCajaAsignacion(null);
     setCajaSesionActiva(null);
@@ -665,12 +713,14 @@ export default function CajaView({
     return () => {
       cajaAsignacionRequestRef.current += 1;
     };
-  }, [cajaUserKey, hasCajaUser, isSuperAdmin, loadCajaAsignada, syncComposerSession]);
+  }, [cajaBootstrapData?.id_sucursal, cajaUserKey, catalogLoadingStates.bootstrapLoading, defaultSucursalId, hasCajaUser, isSuperAdmin, loadCajaAsignada, syncComposerSession]);
 
   useEffect(() => {
-    if (!hasCajaUser || !isSuperAdmin) return undefined;
+    if (!hasCajaUser || !isSuperAdmin || catalogLoadingStates.bootstrapLoading) return undefined;
 
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
+    if (selectedSucursalId && bootstrapSucursalId === selectedSucursalId) return undefined;
     cajaAsignacionRequestRef.current += 1;
     setCajaAsignacion(null);
     setCajaSesionActiva(null);
@@ -686,6 +736,8 @@ export default function CajaView({
     };
   }, [
     cajaUserKey,
+    cajaBootstrapData?.id_sucursal,
+    catalogLoadingStates.bootstrapLoading,
     composer.selectedSucursal,
     composer.selectedSucursalId,
     hasCajaUser,
@@ -906,6 +958,7 @@ export default function CajaView({
       setDecisionOpen(false);
       setAbrirSesionOpen(false);
       setCajaStatus({ loading: false, error: '', assignmentMissing: false });
+      await onCatalogSucursalChange?.({ id_sucursal: session?.id_sucursal, force: true });
       onNotify?.('SESIÓN ABIERTA', 'Sesión de caja abierta correctamente.', 'success');
     } catch (error) {
       if (Number(error?.status || 0) >= 500) {
@@ -1011,6 +1064,7 @@ export default function CajaView({
       setCajaStatus({ loading: false, error: '', assignmentMissing: false });
       clearCajaDecisionDismissed(assignment, cajaUserKey);
       setAutoModalOpen(false);
+      await onCatalogSucursalChange?.({ id_sucursal: idSucursal, force: true });
       onNotify?.('CAJA ACTIVA', 'Te registraste como auxiliar de caja para esta sesión.', 'success');
     } catch (error) {
       setAutoModalError(toSafeMessage(error, 'No se pudo registrar la autoasignación temporal.'));
@@ -1128,6 +1182,8 @@ export default function CajaView({
           <VentaComposerCatalog
             composer={composer}
             catalogLoading={activeCatalogLoading}
+            catalogStatus={activeCatalogStatus}
+            catalogStatuses={catalogStatuses}
             catalogErrors={catalogErrors}
           />
           <VentaComposerSummary
