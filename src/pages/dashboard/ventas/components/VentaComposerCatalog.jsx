@@ -50,7 +50,8 @@ export default function VentaComposerCatalog({
   catalogLoading,
   catalogStatus = 'idle',
   catalogStatuses = {},
-  catalogErrors = {}
+  catalogErrors = {},
+  onRetry
 }) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [showOutOfStock, setShowOutOfStock] = useState(false);
@@ -268,7 +269,10 @@ export default function VentaComposerCatalog({
       </div>
       {activeCatalogError ? (
         <div className="ventas-create-modal__error">
-          {`Error en ${activeCatalogError.endpoint}${activeCatalogError.status ? ` (HTTP ${activeCatalogError.status})` : ''}: ${activeCatalogError.message}`}
+          <span>{`Error en ${activeCatalogError.endpoint}${activeCatalogError.status ? ` (HTTP ${activeCatalogError.status})` : ''}: ${activeCatalogError.message}`}</span>
+          <button type="button" className="btn btn-sm btn-outline-danger ms-2" onClick={onRetry}>
+            Reintentar
+          </button>
         </div>
       ) : null}
       {!isDiscountCatalog && !activeCatalogError && hasNonDiscountCatalogErrors ? (
@@ -392,7 +396,9 @@ export default function VentaComposerCatalog({
                   ? 'No hay items agotados para ese filtro.'
                 : outOfStockCount > 0
                   ? 'Solo hay items agotados para ese filtro.'
-                  : 'No hay resultados para ese filtro.'}
+                  : composer.activeCatalog === 'PRODUCTOS'
+                    ? 'No hay productos.'
+                    : 'No hay resultados para ese filtro.'}
             </span>
           </div>
         ) : (

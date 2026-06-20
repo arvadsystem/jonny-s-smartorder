@@ -210,6 +210,7 @@ export default function CajaView({
   catalogLoadingStates = {},
   catalogStatuses = {},
   cajaBootstrapData = null,
+  recipeCatalogState = { byScope: {}, activeKey: null },
   catalogErrors,
   saving,
   onSubmit,
@@ -217,6 +218,7 @@ export default function CajaView({
   onRegistrarPagoPedido,
   onCatalogSucursalChange,
   onCatalogDemand,
+  onRecipesDepartmentDemand,
   onClientesRefresh,
   onNotify
 }) {
@@ -354,6 +356,11 @@ export default function CajaView({
     isSuperAdmin,
     defaultSucursalId,
     allowSucursalAutoSelection: !catalogLoadingStates.bootstrapLoading,
+    catalogsEnabled: Boolean(cajaSesionActiva?.id_sesion_caja),
+    onDepartmentDemand: ({ idSucursal, idTipoDepartamento }) => onRecipesDepartmentDemand?.({
+      id_sucursal: idSucursal,
+      id_tipo_departamento: idTipoDepartamento
+    }),
     onSubmit,
     suppressSubmitErrorToast: true,
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
@@ -373,14 +380,36 @@ export default function CajaView({
       : composer.activeCatalog === 'EXTRAS'
         ? !cajaSesionActiva?.id_sesion_caja
           ? 'idle'
-          : composer.currentCatalogLoading
-            ? 'loading'
-            : composer.currentCatalogError
-              ? 'error'
-              : 'success'
+          : composer.currentCatalogStatus || 'idle'
       : composer.activeCatalog === 'DESCUENTOS'
         ? catalogStatuses.descuentos || 'idle'
         : catalogStatuses.recetas || 'idle';
+
+  const retryActiveCatalog = useCallback(() => {
+    const idSucursal = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!idSucursal) return;
+    if (composer.activeCatalog === 'EXTRAS') {
+      composer.retryGlobalExtras();
+      return;
+    }
+    if (composer.activeCatalog === 'RECETAS') {
+      void onRecipesDepartmentDemand?.({
+        id_sucursal: idSucursal,
+        id_tipo_departamento: composer.activeCategory === 'all' ? null : toPositiveId(composer.activeCategory),
+        force: true
+      });
+      return;
+    }
+    void onCatalogDemand?.(composer.activeCatalog, { id_sucursal: idSucursal, force: true });
+  }, [
+    composer.activeCatalog,
+    composer.activeCategory,
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    composer.retryGlobalExtras,
+    onCatalogDemand,
+    onRecipesDepartmentDemand
+  ]);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -402,8 +431,25 @@ export default function CajaView({
   useEffect(() => {
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
     if (!selectedSucursalId || !cajaSesionActiva?.id_sesion_caja) return;
+    if (composer.activeCatalog === 'RECETAS') {
+      const bootstrapDepartmentId = toPositiveId(cajaBootstrapData?.departamento_activo?.id_tipo_departamento);
+      if (composer.activeCategory === 'all' && bootstrapDepartmentId) return;
+      void onRecipesDepartmentDemand?.({
+        id_sucursal: selectedSucursalId,
+        id_tipo_departamento: composer.activeCategory === 'all' ? null : toPositiveId(composer.activeCategory)
+      });
+      return;
+    }
     void onCatalogDemand?.(composer.activeCatalog, { id_sucursal: selectedSucursalId });
-  }, [cajaSesionActiva?.id_sesion_caja, composer.activeCatalog, composer.selectedSucursal, composer.selectedSucursalId, onCatalogDemand]);
+  }, [
+    cajaSesionActiva?.id_sesion_caja,
+    composer.activeCatalog,
+    composer.activeCategory,
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    onCatalogDemand,
+    onRecipesDepartmentDemand
+  ]);
 
   useEffect(() => {
     if (!canApplyDiscount || !composer.descuentoPickerOpen) return;
@@ -719,6 +765,7 @@ export default function CajaView({
     if (!hasCajaUser || !isSuperAdmin || catalogLoadingStates.bootstrapLoading) return undefined;
 
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (cajaBootstrapData) return undefined;
     const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
     if (selectedSucursalId && bootstrapSucursalId === selectedSucursalId) return undefined;
     cajaAsignacionRequestRef.current += 1;
@@ -1184,7 +1231,9 @@ export default function CajaView({
             catalogLoading={activeCatalogLoading}
             catalogStatus={activeCatalogStatus}
             catalogStatuses={catalogStatuses}
+            recipeCatalogState={recipeCatalogState}
             catalogErrors={catalogErrors}
+            onRetry={retryActiveCatalog}
           />
           <VentaComposerSummary
             composer={composer}

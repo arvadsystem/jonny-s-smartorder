@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 import {
   buildCartKey,
@@ -36,6 +36,7 @@ export { getComboDepartmentIds } from '../../../../modules/ventas/utils/ventasCa
 
 const DEFAULT_CATALOG_KEY = 'RECETAS';
 const DEFAULT_DEPARTMENT_NAME = 'ALITAS';
+const DEFAULT_DEPARTMENT_ID = '5';
 const CAJA_SUCURSAL_STORAGE_KEY = 'jonny:ventas:caja:sucursal';
 
 const readPersistedCajaSucursal = () => {
@@ -102,7 +103,7 @@ const resolveDefaultDepartmentId = (tiposDepartamento = []) => {
 const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = {}) => ({
   activeCatalog: DEFAULT_CATALOG_KEY,
   search: '',
-  activeCategory: 'all',
+  activeCategory: DEFAULT_DEPARTMENT_ID,
   selectedSucursal: isSuperAdmin ? '' : String(defaultSucursalId || ''),
   selectedClient: 'cf',
   clientPickerOpen: false,
@@ -374,6 +375,8 @@ export const useVentaComposer = ({
   isSuperAdmin = false,
   defaultSucursalId = null,
   allowSucursalAutoSelection = true,
+  onDepartmentDemand,
+  catalogsEnabled = true,
   clientes,
   combos,
   recetas,
@@ -408,8 +411,12 @@ export const useVentaComposer = ({
     options: [],
     loading: false,
     error: '',
-    sucursalId: null
+    sucursalId: null,
+    status: 'idle'
   });
+  const globalExtrasCacheRef = useRef(new Map());
+  const globalExtrasAbortRef = useRef(null);
+  const [globalExtrasRetryToken, setGlobalExtrasRetryToken] = useState(0);
   const deferredSearch = useDeferredValue(state.search);
 
   useEffect(() => {
@@ -473,52 +480,88 @@ export const useVentaComposer = ({
   const hasSelectedSucursal = Boolean(selectedSucursalId);
 
   useEffect(() => {
+    const shouldLoadExtras = catalogsEnabled && (state.activeCatalog === 'EXTRAS' || extrasModal.open);
     if (!selectedSucursalId) {
+      globalExtrasAbortRef.current?.abort();
       setGlobalExtrasCatalog({
         options: [],
         loading: false,
         error: '',
-        sucursalId: null
+        sucursalId: null,
+        status: 'idle'
+      });
+      return;
+    }
+    if (!shouldLoadExtras) {
+      globalExtrasAbortRef.current?.abort();
+      const cached = globalExtrasCacheRef.current.get(selectedSucursalId);
+      setGlobalExtrasCatalog({
+        options: cached?.options || [],
+        loading: false,
+        error: cached?.error || '',
+        sucursalId: selectedSucursalId,
+        status: cached?.status || 'idle'
       });
       return;
     }
 
-    let cancelled = false;
+    const cached = globalExtrasCacheRef.current.get(selectedSucursalId);
+    if (cached?.status === 'success') {
+      setGlobalExtrasCatalog({ ...cached, loading: false, sucursalId: selectedSucursalId });
+      return;
+    }
+
+    globalExtrasAbortRef.current?.abort();
+    const controller = new AbortController();
+    globalExtrasAbortRef.current = controller;
     setGlobalExtrasCatalog((current) => ({
       options: current.sucursalId === selectedSucursalId ? current.options : [],
       loading: true,
       error: '',
-      sucursalId: selectedSucursalId
+      sucursalId: selectedSucursalId,
+      status: 'loading'
     }));
 
-    void ventasService.getExtrasPermitidos({ id_sucursal: selectedSucursalId })
+    void ventasService.getExtrasPermitidos(
+      { id_sucursal: selectedSucursalId },
+      { signal: controller.signal }
+    )
       .then((response) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const options = (Array.isArray(response) ? response : [])
           .filter((entry) => entry?.estado !== false)
           .map(normalizeGlobalExtraOption)
           .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0);
-        setGlobalExtrasCatalog({
+        const entry = {
           options,
           loading: false,
           error: '',
-          sucursalId: selectedSucursalId
-        });
+          sucursalId: selectedSucursalId,
+          status: 'success'
+        };
+        globalExtrasCacheRef.current.set(selectedSucursalId, entry);
+        setGlobalExtrasCatalog(entry);
       })
       .catch((error) => {
-        if (cancelled) return;
-        setGlobalExtrasCatalog({
+        if (controller.signal.aborted) {
+          setGlobalExtrasCatalog({ options: [], loading: false, error: '', sucursalId: selectedSucursalId, status: 'idle' });
+          return;
+        }
+        const entry = {
           options: [],
           loading: false,
           error: error?.message || 'No se pudieron cargar los extras globales.',
-          sucursalId: selectedSucursalId
-        });
+          sucursalId: selectedSucursalId,
+          status: 'error'
+        };
+        globalExtrasCacheRef.current.set(selectedSucursalId, entry);
+        setGlobalExtrasCatalog(entry);
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [selectedSucursalId]);
+  }, [catalogsEnabled, extrasModal.open, globalExtrasRetryToken, selectedSucursalId, state.activeCatalog]);
 
   useEffect(() => {
     setExtrasModal((current) => {
@@ -531,18 +574,6 @@ export const useVentaComposer = ({
       };
     });
   }, [globalExtrasCatalog]);
-
-  useEffect(() => {
-    setState((current) => {
-      if (current.activeCatalog !== DEFAULT_CATALOG_KEY || current.activeCategory !== 'all') return current;
-      const defaultDepartmentId = resolveDefaultDepartmentId(tiposDepartamento);
-      if (defaultDepartmentId === 'all') return current;
-      return {
-        ...current,
-        activeCategory: defaultDepartmentId
-      };
-    });
-  }, [tiposDepartamento]);
 
   useEffect(() => {
     setState((current) => {
@@ -1430,6 +1461,12 @@ export const useVentaComposer = ({
     currentCatalogRows,
     currentCatalogLoading: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.loading : false,
     currentCatalogError: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.error : '',
+    currentCatalogStatus: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.status : null,
+    retryGlobalExtras: () => {
+      if (!selectedSucursalId) return;
+      globalExtrasCacheRef.current.delete(selectedSucursalId);
+      setGlobalExtrasRetryToken((current) => current + 1);
+    },
     discountCatalogRows,
     resultsLabel,
     cartCount,
@@ -1470,7 +1507,16 @@ export const useVentaComposer = ({
         };
       }),
     setSearch: (value) => setPartialState({ search: value }),
-    setActiveCategory: (value) => setPartialState({ activeCategory: value }),
+    setActiveCategory: (value) => {
+      const nextDepartment = String(value || 'all');
+      setPartialState({ activeCategory: nextDepartment });
+      if (state.activeCatalog === 'RECETAS' && selectedSucursalId) {
+        void onDepartmentDemand?.({
+          idSucursal: selectedSucursalId,
+          idTipoDepartamento: nextDepartment === 'all' ? null : Number(nextDepartment)
+        });
+      }
+    },
     paymentPickerOpen: state.paymentPickerOpen,
     setPaymentPickerOpen: (value) => setPartialState({ paymentPickerOpen: value }),
     setDescuentoPickerOpen: (value) => setPartialState({ descuentoPickerOpen: value }),

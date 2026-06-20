@@ -69,6 +69,7 @@ export default function VentasPage() {
     discountsLoading,
     catalogStatuses,
     cajaBootstrapData,
+    recipeCatalogState,
     saving,
     detailLoading,
     error,
@@ -89,6 +90,7 @@ export default function VentasPage() {
     refreshVentas,
     loadCajaBootstrap,
     loadCajaCatalog,
+    loadCajaRecipesDepartment,
     refreshClientesCatalog
   } = useVentas({
     activeTab: requestedVentasTab,
@@ -475,7 +477,7 @@ export default function VentasPage() {
         <CajaView
           sucursales={sucursales}
           isSuperAdmin={isSuperAdmin}
-          defaultSucursalId={Number(scopeInfo?.selectedSucursalId || userSucursalId) || null}
+          defaultSucursalId={Number(scopeInfo?.selectedSucursalId || (!isSuperAdmin ? userSucursalId : null)) || null}
           productos={productos}
           categorias={categorias}
           tiposDepartamento={tiposDepartamento}
@@ -495,6 +497,7 @@ export default function VentasPage() {
           }}
           catalogStatuses={catalogStatuses}
           cajaBootstrapData={cajaBootstrapData}
+          recipeCatalogState={recipeCatalogState}
           catalogErrors={catalogErrors}
           saving={saving}
           onSubmit={handleCreateVenta}
@@ -502,6 +505,7 @@ export default function VentasPage() {
           onRegistrarPagoPedido={registrarPagoPedido}
           onCatalogSucursalChange={loadCajaBootstrap}
           onCatalogDemand={loadCajaCatalog}
+          onRecipesDepartmentDemand={loadCajaRecipesDepartment}
           onClientesRefresh={refreshClientesCatalog}
           onNotify={openToast}
         />

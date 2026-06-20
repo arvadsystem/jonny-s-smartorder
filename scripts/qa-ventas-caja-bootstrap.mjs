@@ -29,6 +29,9 @@ assert.match(cajaSource, /!cajaSesionActiva\?\.id_sesion_caja/, 'no deben solici
 assert.match(cajaSource, /cajaBootstrapData\?\.sesion_caja/, 'CajaView debe hidratar la sesion desde bootstrap');
 assert.match(composerSource, /const DEFAULT_CATALOG_KEY = 'RECETAS'/, 'el catalogo inicial debe ser Recetas');
 assert.match(composerSource, /const DEFAULT_DEPARTMENT_NAME = 'ALITAS'/, 'el departamento inicial debe ser Alitas');
+assert.match(composerSource, /const DEFAULT_DEPARTMENT_ID = '5'/, 'el departamento inicial debe declarar directamente Alitas');
+assert.match(composerSource, /activeCatalog:\s*DEFAULT_CATALOG_KEY[\s\S]*activeCategory:\s*DEFAULT_DEPARTMENT_ID/, 'Recetas y Alitas deben existir desde el estado inicial');
+assert.doesNotMatch(composerSource, /current\.activeCategory !== 'all'[\s\S]{0,250}activeCategory:\s*defaultDepartmentId/, 'Alitas no debe activarse mediante un efecto posterior');
 assert.doesNotMatch(
   composerSource,
   /selectedSucursal:\s*String\(normalizedSucursales\[0\]\.id_sucursal\)/,
@@ -37,6 +40,15 @@ assert.doesNotMatch(
 assert.match(composerSource, /normalizedSucursales\.length === 1/, 'una unica sucursal debe seleccionarse automaticamente');
 assert.match(catalogSource, /catalogStatus === 'idle'[\s\S]*Catalogo pendiente/, 'idle no debe mostrarse como catalogo vacio');
 assert.match(catalogSource, /catalogStatuses\[key\] === 'error'/, 'la alerta auxiliar debe depender solo de errores reales');
+assert.match(catalogSource, /Reintentar/, 'un error de catalogo debe permitir reintento');
+assert.match(catalogSource, /No hay productos\./, 'productos exitosos sin filas deben mostrar un estado vacio especifico');
+assert.match(useVentasSource, /recipeCatalogCacheRef[\s\S]*`\$\{idSucursal\}:\$\{idTipoDepartamento \|\| 'ALL'\}`/, 'recetas deben usar cache por sucursal y departamento');
+assert.match(useVentasSource, /getRecetasCatalog\([\s\S]*id_tipo_departamento/, 'otro departamento debe solicitarse al backend');
+assert.match(useVentasSource, /cajaCatalogDataCacheRef/, 'productos y combos deben conservar cache independiente por sucursal');
+assert.match(useVentasSource, /force = false[\s\S]*!force && cachedData/, 'los catalogos con error deben soportar reintento forzado');
+assert.match(cajaSource, /activeCatalog[\s\S]*selectedSucursalId[\s\S]*catalogStatuses/, 'la demanda debe reintentarse cuando se resuelve la sucursal');
+assert.match(useVentasSource, /sesiones_disponibles[\s\S]*setSucursales/, 'las sucursales seleccionables deben provenir de sesiones activas');
+assert.match(composerSource, /shouldLoadExtras[\s\S]*activeCatalog === 'EXTRAS'/, 'Extras debe cargarse solo bajo demanda');
 assert.match(optionsSource, /key: 'EXTRAS'/, 'la pestaña Extras debe permanecer visible');
 assert.match(composerSource, /getExtrasPermitidos/, 'el catalogo de Extras debe cargarse por sucursal');
 assert.match(composerSource, /getCurrentQuantityInCartByKind\('ITEM'/, 'Extras debe soportar incremento de cantidad');

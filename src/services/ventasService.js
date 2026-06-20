@@ -93,7 +93,7 @@ const ventasService = {
     apiFetch(`/ventas/catalogos/clientes${buildQuery(params)}`, 'GET', null, config),
   getCombosCatalog: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/combos${buildQuery(params)}`, 'GET', null, config),
   getRecetasCatalog: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/recetas${buildQuery(params)}`, 'GET', null, config),
-  getExtrasPermitidos: (params = {}) => apiFetch(`/ventas/catalogos/extras-permitidos${buildQuery(params)}`, 'GET'),
+  getExtrasPermitidos: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/extras-permitidos${buildQuery(params)}`, 'GET', null, config),
   getDescuentosCatalog: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/descuentos${buildQuery(params)}`, 'GET', null, config),
   getTiposDescuentoCatalog: (config = {}) => apiFetch('/ventas/catalogos/tipos-descuento', 'GET', null, config),
   getProductosCatalog: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/productos${buildQuery(params)}`, 'GET', null, config),
