@@ -182,15 +182,18 @@ export const useVentas = () => {
 
       setVentas(rows);
       setPagination(normalizedPagination);
-      const canSelectSucursal = Boolean(response?.filters?.scope?.canSelectSucursal);
+      const responseScope = response?.filters?.scope || {};
+      const canSelectSucursal = Boolean(responseScope.canSelectSucursal);
+      const selectedSucursalId = parsePositiveId(responseScope.selectedSucursalId);
+      const userSucursalId = parsePositiveId(responseScope.userSucursalId);
       setScopeInfo({
         canSelectSucursal,
-        selectedSucursalId: response?.filters?.scope?.selectedSucursalId ?? null,
-        userSucursalId: response?.filters?.scope?.userSucursalId ?? null,
-        limitedByRole: Boolean(response?.filters?.scope?.limitedByRole),
-        limitedToLast72Hours: Boolean(response?.filters?.scope?.limitedToLast72Hours),
-        allowedSucursalIds: Array.isArray(response?.filters?.scope?.allowedSucursalIds)
-          ? response.filters.scope.allowedSucursalIds
+        selectedSucursalId,
+        userSucursalId,
+        limitedByRole: Boolean(responseScope.limitedByRole),
+        limitedToLast72Hours: Boolean(responseScope.limitedToLast72Hours),
+        allowedSucursalIds: Array.isArray(responseScope.allowedSucursalIds)
+          ? responseScope.allowedSucursalIds
           : []
       });
       setSummary(normalizedSummary);
@@ -204,7 +207,11 @@ export const useVentas = () => {
         };
       }
       ventasLastFiltersRef.current = { ...ventasFilters };
-      return { rows, canSelectSucursal };
+      return {
+        rows,
+        canSelectSucursal,
+        catalogSucursalId: selectedSucursalId || userSucursalId
+      };
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar las ventas.');
       if (!suppressErrors) {
@@ -236,12 +243,16 @@ export const useVentas = () => {
       { key: 'categorias', label: '/ventas/catalogos/categorias', request: () => ventasService.getCategoriasCatalog() },
       { key: 'productos', label: '/ventas/catalogos/productos', request: () => ventasService.getProductosCatalog(scopedCatalogParams) },
       { key: 'clientes', label: '/ventas/catalogos/clientes', request: () => ventasService.getClientesCatalog() },
-      { key: 'combos', label: '/ventas/catalogos/combos', request: () => ventasService.getCombosCatalog(scopedCatalogParams) },
-      { key: 'recetas', label: '/ventas/catalogos/recetas', request: () => ventasService.getRecetasCatalog(scopedCatalogParams) },
       { key: 'descuentos', label: '/ventas/catalogos/descuentos', request: () => ventasService.getDescuentosCatalog(scopedCatalogParams) },
       { key: 'tiposDescuento', label: '/ventas/catalogos/tipos-descuento', request: () => ventasService.getTiposDescuentoCatalog() },
       { key: 'tiposDepartamento', label: '/ventas/catalogos/tipo-departamento', request: () => ventasService.getTipoDepartamentos() }
     ];
+    if (catalogSucursalId) {
+      endpointRequests.push(
+        { key: 'combos', label: '/ventas/catalogos/combos', request: () => ventasService.getCombosCatalog(scopedCatalogParams) },
+        { key: 'recetas', label: '/ventas/catalogos/recetas', request: () => ventasService.getRecetasCatalog(scopedCatalogParams) }
+      );
+    }
     if (options?.includeSucursales) {
       endpointRequests.push({ key: 'sucursales', label: '/sucursales', request: () => sucursalesService.getAll() });
     }
@@ -426,7 +437,10 @@ export const useVentas = () => {
       const ventasResult = await loadVentas().catch(() => null);
       if (!active) return;
       const includeSucursales = Boolean(ventasResult?.canSelectSucursal);
-      await loadCatalogs({ includeSucursales });
+      await loadCatalogs({
+        includeSucursales,
+        id_sucursal: ventasResult?.catalogSucursalId
+      });
     })();
     return () => {
       active = false;

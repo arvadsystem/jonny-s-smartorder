@@ -160,6 +160,7 @@ const MenuSalsasAdmin = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [estadoConfirm, setEstadoConfirm] = useState(null);
   const [recipeDiscardConfirm, setRecipeDiscardConfirm] = useState(null);
+  const [detailSalsa, setDetailSalsa] = useState(null);
 
   const [salsas, setSalsas] = useState([]);
   const [recipeSalsasCatalog, setRecipeSalsasCatalog] = useState([]);
@@ -1168,24 +1169,20 @@ const MenuSalsasAdmin = () => {
                     <tr>
                       <th>Orden</th>
                       <th>Salsa</th>
-                      <th>Picante</th>
-                      <th>Inventario</th>
-                      <th>Publicacion</th>
                       <th>Estado</th>
-                      <th className="menu-salsas-admin__actions-head">Acciones</th>
+                      <th>Detalle</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedSalsas.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-3">
+                        <td colSpan={4} className="text-center py-3">
                           {loading ? 'Cargando salsas...' : 'No hay salsas registradas.'}
                         </td>
                       </tr>
                     ) : (
                       paginatedSalsas.map((row) => {
                         const isActive = isRowActive(row?.estado);
-                        const spicyLevel = Math.max(0, Math.min(5, Number(row?.nivel_picante || 0)));
                         return (
                           <tr key={`salsa-${row.id_salsa}`} className="menu-salsas-admin__table-row">
                             <td>{Number(row?.orden || 0)}</td>
@@ -1198,80 +1195,20 @@ const MenuSalsasAdmin = () => {
                               </div>
                             </td>
                             <td>
-                              <div className="menu-salsas-admin__spicy-cell">
-                                <i className="bi bi-droplet menu-salsas-admin__spicy-icon" aria-hidden="true" />
-                                <span>{Number(row?.nivel_picante || 0)}</span>
-                                <span className="menu-salsas-admin__spicy-dots" aria-hidden="true">
-                                  {[0, 1, 2, 3, 4].map((index) => (
-                                    <span
-                                      key={`spicy-${row.id_salsa}-${index}`}
-                                      className={`menu-salsas-admin__spicy-dot ${index < spicyLevel ? 'is-on' : ''}`}
-                                    />
-                                  ))}
-                                </span>
-                              </div>
-                            </td>
-                            <td>
-                              <div className="small">
-                                <strong>{getInventoryStatusText(row)}</strong>
-                                {row.inventario_mensaje ? <div className="text-muted">{row.inventario_mensaje}</div> : null}
-                              </div>
-                            </td>
-                            <td>
-                              <span className="small fw-semibold">
-                                Publicada en {Number(row?.sucursales_publicadas || 0)} de {Number(row?.sucursales_activas || 0)} sucursales
-                              </span>
-                            </td>
-                            <td>
                               <span className={`menu-recetas-admin__estado-badge ${isActive ? 'is-active' : 'is-inactive'}`}>
                                 {isActive ? 'Activa' : 'Inactiva'}
                               </span>
                             </td>
                             <td>
-                              <div className="d-inline-flex gap-2 menu-salsas-admin__actions">
-                                <button
-                                  type="button"
-                                  // Reutiliza el estilo de accion "Editar" del modulo Inventarios/Categorias.
-                                  className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action menu-salsas-admin__action-btn menu-salsas-admin__action-btn--edit"
-                                  onClick={() => onEditSalsa(row)}
-                                  title="Editar"
-                                  disabled={!canEditSalsa}
-                                >
-                                  <i className="bi bi-pencil-square" aria-hidden="true" />
-                                  <span className="inv-catpro-action-label">Editar</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="inv-catpro-action edit inv-catpro-action-compact menu-salsas-admin__action-btn"
-                                  onClick={() => openInventoryModal(row)}
-                                  title="Configurar consumo"
-                                  disabled={!canEditSalsa}
-                                >
-                                  <i className="bi bi-box-seam" aria-hidden="true" />
-                                  <span className="inv-catpro-action-label">Configurar consumo</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="inv-catpro-action edit inv-catpro-action-compact menu-salsas-admin__action-btn"
-                                  onClick={() => void openPublicationModal(row)}
-                                  title="Publicar por sucursal"
-                                  disabled={!canEditSalsa}
-                                >
-                                  <i className="bi bi-shop" aria-hidden="true" />
-                                  <span className="inv-catpro-action-label">Publicar</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  // Reutiliza la accion de estado de Inventarios/Categorias para inactivar/activar.
-                                  className={`inv-catpro-action ${isActive ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action menu-salsas-admin__action-btn menu-salsas-admin__action-btn--state`}
-                                  onClick={() => setEstadoConfirm(row)}
-                                  title={isActive ? 'Inactivar' : 'Activar'}
-                                  disabled={!canToggleSalsaEstado}
-                                >
-                                  <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
-                                  <span className="inv-catpro-action-label">{isActive ? 'Inactivar' : 'Activar'}</span>
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                className="btn menu-salsas-admin__detail-btn"
+                                onClick={() => setDetailSalsa(row)}
+                                aria-label={`Ver detalle de ${row.nombre}`}
+                              >
+                                <i className="bi bi-eye" aria-hidden="true" />
+                                Ver detalle
+                              </button>
                             </td>
                           </tr>
                         );
@@ -1354,39 +1291,12 @@ const MenuSalsasAdmin = () => {
                                 <div className="menu-salsas-admin__mobile-actions">
                                   <button
                                     type="button"
-                                    className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action menu-salsas-admin__mobile-action"
-                                    onClick={() => onEditSalsa(row)}
-                                    disabled={!canEditSalsa}
+                                    className="btn menu-salsas-admin__detail-btn menu-salsas-admin__detail-btn--mobile"
+                                    onClick={() => setDetailSalsa(row)}
+                                    aria-label={`Ver detalle de ${row.nombre}`}
                                   >
-                                    <i className="bi bi-pencil-square" aria-hidden="true" />
-                                    <span>Editar</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="inv-catpro-action edit inv-catpro-action-compact menu-salsas-admin__mobile-action"
-                                    onClick={() => openInventoryModal(row)}
-                                    disabled={!canEditSalsa}
-                                  >
-                                    <i className="bi bi-box-seam" aria-hidden="true" />
-                                    <span>Consumo</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="inv-catpro-action edit inv-catpro-action-compact menu-salsas-admin__mobile-action"
-                                    onClick={() => void openPublicationModal(row)}
-                                    disabled={!canEditSalsa}
-                                  >
-                                    <i className="bi bi-shop" aria-hidden="true" />
-                                    <span>Publicar</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`inv-catpro-action ${isActive ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action menu-salsas-admin__mobile-action`}
-                                    onClick={() => setEstadoConfirm(row)}
-                                    disabled={!canToggleSalsaEstado}
-                                  >
-                                    <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
-                                    <span>{isActive ? 'Inactivar' : 'Activar'}</span>
+                                    <i className="bi bi-eye" aria-hidden="true" />
+                                    <span>Ver detalle</span>
                                   </button>
                                 </div>
                               </article>
@@ -1449,6 +1359,132 @@ const MenuSalsasAdmin = () => {
           </div>
         </div>
       </div>
+
+      {detailSalsa ? (
+        <div className="inv-prod-pmodal inv-prod-pmodal--create show">
+          <div className="inv-prod-pmodal__overlay" onClick={() => setDetailSalsa(null)} />
+          <div className="inv-prod-pmodal__viewport">
+            <section
+              className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create menu-salsas-detail"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="menu-salsa-detail-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create">
+                <div className="inv-prod-pmodal__body">
+                  <div className="inv-ins-create-hero is-edit">
+                    <button
+                      type="button"
+                      className="inv-prod-drawer-close inv-ins-create-hero__close"
+                      onClick={() => setDetailSalsa(null)}
+                      aria-label="Cerrar detalle de salsa"
+                    >
+                      <i className="bi bi-x-lg" aria-hidden="true" />
+                    </button>
+                    <div className="inv-ins-create-hero__icon"><i className="bi bi-droplet-fill" aria-hidden="true" /></div>
+                    <div className="inv-ins-create-hero__copy">
+                      <div className="inv-ins-create-hero__kicker">Detalle de salsa</div>
+                      <div id="menu-salsa-detail-title" className="inv-ins-create-hero__title">
+                        {detailSalsa.nombre || `Salsa #${detailSalsa.id_salsa}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="menu-salsas-detail__grid">
+                    <div className="menu-salsas-detail__item">
+                      <span>Orden operativo</span>
+                      <strong>{Number(detailSalsa?.orden || 0)}</strong>
+                    </div>
+                    <div className="menu-salsas-detail__item">
+                      <span>Estado</span>
+                      <span className={`menu-recetas-admin__estado-badge ${isRowActive(detailSalsa?.estado) ? 'is-active' : 'is-inactive'}`}>
+                        {isRowActive(detailSalsa?.estado) ? 'Activa' : 'Inactiva'}
+                      </span>
+                    </div>
+                    <div className="menu-salsas-detail__item">
+                      <span>Nivel picante</span>
+                      <div className="menu-salsas-admin__spicy-cell">
+                        <i className="bi bi-droplet menu-salsas-admin__spicy-icon" aria-hidden="true" />
+                        <strong>{Number(detailSalsa?.nivel_picante || 0)} · {SPICY_LEVEL_LABELS[Number(detailSalsa?.nivel_picante || 0)] || 'Sin definir'}</strong>
+                        <span className="menu-salsas-admin__spicy-dots" aria-hidden="true">
+                          {[0, 1, 2, 3, 4].map((index) => (
+                            <span
+                              key={`detail-spicy-${detailSalsa.id_salsa}-${index}`}
+                              className={`menu-salsas-admin__spicy-dot ${index < Math.max(0, Math.min(5, Number(detailSalsa?.nivel_picante || 0))) ? 'is-on' : ''}`}
+                            />
+                          ))}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="menu-salsas-detail__item">
+                      <span>Publicacion</span>
+                      <strong>{Number(detailSalsa?.sucursales_publicadas || 0)} de {Number(detailSalsa?.sucursales_activas || 0)} sucursales</strong>
+                      <small>Solo las sucursales publicadas muestran esta salsa en Caja y menu publico.</small>
+                    </div>
+                    <div className="menu-salsas-detail__item menu-salsas-detail__item--wide">
+                      <span>Inventario</span>
+                      <strong>{getInventoryStatusText(detailSalsa)}</strong>
+                      <small>{detailSalsa?.inventario_mensaje || 'Sin observaciones adicionales.'}</small>
+                    </div>
+                  </div>
+                </div>
+                <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create menu-salsas-detail__footer">
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle"
+                    onClick={() => {
+                      const salsa = detailSalsa;
+                      setDetailSalsa(null);
+                      onEditSalsa(salsa);
+                    }}
+                    disabled={!canEditSalsa}
+                  >
+                    <i className="bi bi-pencil-square" aria-hidden="true" /> Editar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle"
+                    onClick={() => {
+                      const salsa = detailSalsa;
+                      setDetailSalsa(null);
+                      openInventoryModal(salsa);
+                    }}
+                    disabled={!canEditSalsa}
+                  >
+                    <i className="bi bi-box-seam" aria-hidden="true" /> Configurar consumo
+                  </button>
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-primary"
+                    onClick={() => {
+                      const salsa = detailSalsa;
+                      setDetailSalsa(null);
+                      void openPublicationModal(salsa);
+                    }}
+                    disabled={!canEditSalsa}
+                  >
+                    <i className="bi bi-shop" aria-hidden="true" /> Publicar por sucursal
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${isRowActive(detailSalsa?.estado) ? 'btn-outline-danger' : 'btn-outline-success'}`}
+                    onClick={() => {
+                      const salsa = detailSalsa;
+                      setDetailSalsa(null);
+                      setEstadoConfirm(salsa);
+                    }}
+                    disabled={!canToggleSalsaEstado}
+                  >
+                    <i className={`bi ${isRowActive(detailSalsa?.estado) ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
+                    {isRowActive(detailSalsa?.estado) ? ' Inactivar' : ' Activar'}
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      ) : null}
 
       {recipeConfigModalOpen ? (
         <div className="inv-prod-pmodal inv-prod-pmodal--recipe-config show">
