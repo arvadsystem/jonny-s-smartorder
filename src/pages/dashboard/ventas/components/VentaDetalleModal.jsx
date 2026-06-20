@@ -8,9 +8,9 @@ import {
   getLineDiscountPercent,
   resolveVentaReversionBlockReason
 } from '../utils/ventasHelpers';
-import ventasService from '../../../../services/ventasService';
 import VentaTicketPrint from './VentaTicketPrint';
 import './VentaTicketPrint.css';
+import { printVentaTicketPdf } from '../utils/ventaPrintUtils';
 
 const DEFAULT_TICKET_WIDTH_MM = 80;
 
@@ -133,23 +133,12 @@ export default function VentaDetalleModal({
       console.error('[Ventas] No se puede generar el PDF del ticket sin id_factura.');
       return;
     }
+
     printInProgressRef.current = true;
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.opener = null;
-    }
 
     try {
-      const blob = await ventasService.getTicketPdf(venta.id_factura);
-      const url = URL.createObjectURL(blob);
-      if (printWindow) {
-        printWindow.location.href = url;
-      } else {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await printVentaTicketPdf(venta.id_factura);
     } catch (error) {
-      if (printWindow) printWindow.close();
       console.error('[Ventas] No se pudo generar el PDF del ticket', error);
     } finally {
       printInProgressRef.current = false;

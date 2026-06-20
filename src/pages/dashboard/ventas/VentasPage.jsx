@@ -20,6 +20,7 @@ import {
   printComandaCocinaInWindow,
   printVentaTicketPdf
 } from './utils/ventaPrintUtils';
+import { validateComandaForPrint } from './utils/buildComandaCocinaHtml';
 import {
   getAllowedTabs,
   MODULE_PRIMARY_PERMISSION,
@@ -316,6 +317,10 @@ export default function VentasPage() {
 
     try {
       const comanda = await ventasService.getComandaById(venta.id_factura);
+      const validation = validateComandaForPrint(comanda);
+      if (!validation.ok) {
+        throw new Error(validation.message);
+      }
       await printComandaCocinaInWindow(comanda, comandaPrintWindow);
       void ventasService.registerPrintEvent(venta.id_factura, {
         tipo_documento: 'COMANDA',
@@ -327,7 +332,7 @@ export default function VentasPage() {
           logicalPrinterName: 'COCINA'
         }
       }).catch(() => undefined);
-      openToast('COMANDA COCINA', 'Comanda enviada a cocina.', 'success');
+      openToast('COMANDA COCINA', 'Comanda enviada a impresion.', 'success');
       await closeComandaPrompt({ markAsCancelled: false });
     } catch (error) {
       if (comandaPrintWindow) comandaPrintWindow.close();
@@ -346,7 +351,7 @@ export default function VentasPage() {
       setComandaPrompt((current) => ({
         ...current,
         loading: false,
-        error: 'La venta ya se registró, pero no se pudo imprimir la comanda. Puedes continuar sin afectar la venta.'
+        error: error?.message || 'No se pudo abrir la impresion de comanda. Revisa ventanas emergentes o intenta nuevamente.'
       }));
     }
   };
