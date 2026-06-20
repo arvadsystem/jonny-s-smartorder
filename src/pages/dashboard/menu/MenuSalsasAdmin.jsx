@@ -67,6 +67,13 @@ const getInsumoConfigStatusLabel = (status) => {
   return normalized.replace(/_/g, ' ');
 };
 
+const getInventoryStatusText = (salsa) => {
+  if (!isRowActive(salsa?.estado)) return 'No aplica';
+  const status = String(salsa?.inventario_estado || '').trim().toUpperCase();
+  if (status === 'LISTA') return `Lista · ${salsa?.resumen_consumo || 'consumo configurado'}`;
+  return INVENTORY_STATUS_LABELS[status] || 'Sin configurar';
+};
+
 const isRowActive = (value) => {
   const parsed = parseBool(value);
   return parsed === null ? true : parsed;
@@ -75,10 +82,22 @@ const isRowActive = (value) => {
 const DEFAULT_FORM = Object.freeze({
   nombre: '',
   nivel_picante: '1',
-  orden: '',
+  orden: ''
+});
+
+const DEFAULT_INVENTORY_FORM = Object.freeze({
   id_insumo: '',
   cantidad_porcion: '2',
   id_unidad_consumo: ''
+});
+
+const INVENTORY_STATUS_LABELS = Object.freeze({
+  LISTA: 'Lista',
+  PENDIENTE: 'Sin configurar',
+  INSUMO_INVALIDO: 'Revisar insumo',
+  SIN_UNIDAD_BASE: 'Revisar insumo',
+  CONVERSION_FALTANTE: 'Revisar conversion',
+  CONVERSION_AMBIGUA: 'Revisar conversion'
 });
 
 const SPICY_LEVEL_LABELS = {
@@ -131,6 +150,10 @@ const MenuSalsasAdmin = () => {
 
   const [form, setForm] = useState(DEFAULT_FORM);
   const [editingSalsaId, setEditingSalsaId] = useState(null);
+  const [inventoryForm, setInventoryForm] = useState(DEFAULT_INVENTORY_FORM);
+  const [inventorySalsa, setInventorySalsa] = useState(null);
+  const [inventoryFieldErrors, setInventoryFieldErrors] = useState({});
+  const [inventoryUseCustomUnit, setInventoryUseCustomUnit] = useState(false);
 
   const [selectedRecetaId, setSelectedRecetaId] = useState('');
   const [selectedSauceIds, setSelectedSauceIds] = useState([]);
@@ -146,6 +169,7 @@ const MenuSalsasAdmin = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [inventoryModalOpen, setInventoryModalOpen] = useState(false);
   const [recipeConfigModalOpen, setRecipeConfigModalOpen] = useState(false);
   const createNombreInputRef = useRef(null);
   const mobileSalsaCarouselRef = useRef(null);
@@ -158,6 +182,18 @@ const MenuSalsasAdmin = () => {
     () => salsas.filter((row) => isRowActive(row?.estado)),
     [salsas]
   );
+  const inventoryStats = useMemo(() => {
+    const activeRows = salsas.filter((row) => isRowActive(row?.estado));
+    const ready = activeRows.filter((row) => row?.inventario_estado === 'LISTA').length;
+    const pending = activeRows.filter((row) => row?.inventario_estado === 'PENDIENTE' || !row?.inventario_estado).length;
+    const errorsCount = activeRows.length - ready - pending;
+    return {
+      active: activeRows.length,
+      ready,
+      pending,
+      errors: Math.max(0, errorsCount)
+    };
+  }, [salsas]);
   const recetaOptions = useMemo(
     () => recetas.map((receta) => ({
       value: String(receta.id_receta),
@@ -166,66 +202,80 @@ const MenuSalsasAdmin = () => {
     })),
     [recetas]
   );
+  const flatInsumos = useMemo(() => {
+    if (Array.isArray(insumos)) return insumos;
+    return [
+      ...(Array.isArray(insumos?.recomendados) ? insumos.recomendados.map((row) => ({ ...row, grupo: 'Recomendados' })) : []),
+      ...(Array.isArray(insumos?.otros_disponibles) ? insumos.otros_disponibles.map((row) => ({ ...row, grupo: 'Otros disponibles' })) : []),
+      ...(Array.isArray(insumos?.bloqueados) ? insumos.bloqueados.map((row) => ({ ...row, grupo: 'Bloqueados' })) : [])
+    ];
+  }, [insumos]);
   const insumoOptions = useMemo(() => {
-    const rows = Array.isArray(insumos) ? [...insumos] : [];
+    const rows = Array.isArray(flatInsumos) ? [...flatInsumos] : [];
     rows.sort((left, right) => {
-      const leftPreferred = String(left?.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 0 : 1;
-      const rightPreferred = String(right?.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 0 : 1;
+      const leftPreferred = String(left?.categoria || left?.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 0 : 1;
+      const rightPreferred = String(right?.categoria || right?.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 0 : 1;
       if (leftPreferred !== rightPreferred) return leftPreferred - rightPreferred;
       return String(left?.nombre || '').localeCompare(String(right?.nombre || ''), 'es', { sensitivity: 'base' });
     });
     return rows.map((insumo) => {
-      const unidadLabel = String(insumo.unidad_simbolo || insumo.unidad_nombre || '').trim();
-      const configStatus = String(insumo.estado_configuracion || 'OK').trim().toUpperCase();
-      const mappingStatus = String(insumo.estado_mapeo_maestro || (Number(insumo.mapping_count || 0) > 0 ? 'SIN_ESTADO' : 'SIN_MAPEO')).trim().toUpperCase();
-      const catalogIndicator = String(insumo.indicador_maestro_legacy || 'MAESTRO').trim().toUpperCase();
-      const disabled = !insumo.id_unidad_medida || configStatus !== 'OK';
+      const unidadLabel = String(insumo.unidad_base?.etiqueta || insumo.unidad_simbolo || insumo.unidad_nombre || '').trim();
+      const configStatus = insumo.seleccionable === false ? 'BLOQUEADO' : 'OK';
+      const disabled = insumo.seleccionable === false || !insumo.id_unidad_medida;
       const helperParts = [
+        insumo.grupo || (String(insumo.categoria || insumo.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS' ? 'Recomendados' : 'Otros disponibles'),
         `Unidad base: ${unidadLabel || 'sin unidad'}`,
-        `Catalogo: ${catalogIndicator}`,
-        `Mapeo: ${mappingStatus}`,
-        getInsumoConfigStatusLabel(configStatus)
+        disabled ? (insumo.motivo_bloqueo || getInsumoConfigStatusLabel(configStatus)) : 'Disponible'
       ];
       return {
         value: String(insumo.id_insumo),
         label: `#${insumo.id_insumo} - ${insumo.nombre}`,
         helperText: helperParts.join(' · '),
         disabled,
-        searchText: `${insumo.id_insumo} ${insumo.nombre || ''} ${insumo.categoria_nombre || ''} ${unidadLabel} ${catalogIndicator} ${mappingStatus} ${configStatus}`,
+        searchText: `${insumo.id_insumo} ${insumo.nombre || ''} ${insumo.categoria || insumo.categoria_nombre || ''} ${unidadLabel} ${insumo.grupo || ''} ${insumo.motivo_bloqueo || ''}`,
         unidadId: insumo.id_unidad_medida ? String(insumo.id_unidad_medida) : '',
         unidadLabel,
         configStatus,
-        mappingStatus,
-        catalogIndicator
+        motivoBloqueo: insumo.motivo_bloqueo || '',
+        conversiones: Array.isArray(insumo.conversiones_disponibles) ? insumo.conversiones_disponibles : [],
+        nombre: insumo.nombre || '',
+        categoria: insumo.categoria || insumo.categoria_nombre || ''
       };
     });
-  }, [insumos]);
+  }, [flatInsumos]);
   const selectedInsumoOption = useMemo(
-    () => insumoOptions.find((option) => String(option.value) === String(form.id_insumo)) || null,
-    [form.id_insumo, insumoOptions]
+    () => insumoOptions.find((option) => String(option.value) === String(inventoryForm.id_insumo)) || null,
+    [inventoryForm.id_insumo, insumoOptions]
   );
   const unidadOptions = useMemo(() => {
-    const map = new Map();
-    for (const insumo of Array.isArray(insumos) ? insumos : []) {
-      const idUnidad = String(insumo?.id_unidad_medida || '').trim();
+    if (!selectedInsumoOption?.unidadId) return [];
+    const baseOption = {
+      value: selectedInsumoOption.unidadId,
+      label: selectedInsumoOption.unidadLabel || `Unidad ${selectedInsumoOption.unidadId}`,
+      searchText: selectedInsumoOption.unidadLabel || ''
+    };
+    if (!inventoryUseCustomUnit) return [baseOption];
+    const map = new Map([[baseOption.value, baseOption]]);
+    for (const conversion of selectedInsumoOption.conversiones || []) {
+      const idUnidad = String(conversion?.id_unidad_consumo || '').trim();
       if (!idUnidad || map.has(idUnidad)) continue;
-      const label = String(insumo?.unidad_simbolo || insumo?.unidad_nombre || `Unidad ${idUnidad}`).trim();
-      map.set(idUnidad, { value: idUnidad, label });
+      const label = String(conversion?.unidad_simbolo || conversion?.unidad_nombre || `Unidad ${idUnidad}`).trim();
+      map.set(idUnidad, { value: idUnidad, label, searchText: label });
     }
     return [...map.values()].sort((left, right) => left.label.localeCompare(right.label, 'es', { sensitivity: 'base' }));
-  }, [insumos]);
+  }, [inventoryUseCustomUnit, selectedInsumoOption]);
   const inventoryWarning = useMemo(() => {
-    if (!form.id_insumo) return '';
+    if (!inventoryForm.id_insumo) return '';
     if (!selectedInsumoOption?.unidadId) return 'El insumo seleccionado no tiene unidad base configurada.';
     if (selectedInsumoOption?.disabled) {
       return `El insumo seleccionado no puede usarse: ${getInsumoConfigStatusLabel(selectedInsumoOption.configStatus)}.`;
     }
-    if (!form.id_unidad_consumo) return 'Selecciona la unidad de consumo para validar conversion en backend.';
-    if (selectedInsumoOption.unidadId !== String(form.id_unidad_consumo)) {
+    if (!inventoryForm.id_unidad_consumo) return 'Selecciona la unidad de consumo para validar conversion en backend.';
+    if (selectedInsumoOption.unidadId !== String(inventoryForm.id_unidad_consumo)) {
       return 'Si la unidad no coincide con la base, debe existir una conversion activa en presentaciones.';
     }
     return '';
-  }, [form.id_insumo, form.id_unidad_consumo, selectedInsumoOption]);
+  }, [inventoryForm.id_insumo, inventoryForm.id_unidad_consumo, selectedInsumoOption]);
   const filteredAssignableSalsas = useMemo(() => {
     const search = String(recipeSauceSearch || '').trim().toLowerCase();
     if (!search) return activeSalsas;
@@ -341,7 +391,13 @@ const MenuSalsasAdmin = () => {
             ? salsasRows.items
             : [];
       const normalizedRecetas = Array.isArray(recetasRows) ? recetasRows : [];
-      const normalizedInsumos = Array.isArray(insumosRows) ? insumosRows : [];
+      const normalizedInsumos = Array.isArray(insumosRows)
+        ? insumosRows
+        : {
+            recomendados: Array.isArray(insumosRows?.recomendados) ? insumosRows.recomendados : [],
+            otros_disponibles: Array.isArray(insumosRows?.otros_disponibles) ? insumosRows.otros_disponibles : [],
+            bloqueados: Array.isArray(insumosRows?.bloqueados) ? insumosRows.bloqueados : []
+          };
       const apiPagination = Array.isArray(salsasRows) ? null : (salsasRows?.pagination || salsasRows?.meta || null);
       const safeTotalItems = Number(
         apiPagination?.total
@@ -474,6 +530,33 @@ const MenuSalsasAdmin = () => {
     setEditingSalsaId(null);
   }, []);
 
+  const closeInventoryModal = (force = false) => {
+    if (savingSalsa && !force) return;
+    setInventoryModalOpen(false);
+    setInventorySalsa(null);
+    setInventoryForm(DEFAULT_INVENTORY_FORM);
+    setInventoryFieldErrors({});
+    setInventoryUseCustomUnit(false);
+  };
+
+  const openInventoryModal = (salsa) => {
+    const idSalsa = toPositiveInt(salsa?.id_salsa);
+    if (!idSalsa) return;
+    const idUnidadBase = salsa?.id_unidad_base ? String(salsa.id_unidad_base) : '';
+    const idUnidadConsumo = salsa?.id_unidad_consumo ? String(salsa.id_unidad_consumo) : idUnidadBase;
+    setInventorySalsa(salsa);
+    setInventoryForm({
+      id_insumo: salsa?.id_insumo ? String(salsa.id_insumo) : '',
+      cantidad_porcion: salsa?.cantidad_porcion ? String(salsa.cantidad_porcion) : '2',
+      id_unidad_consumo: idUnidadConsumo || ''
+    });
+    setInventoryUseCustomUnit(Boolean(idUnidadBase && idUnidadConsumo && idUnidadBase !== idUnidadConsumo));
+    setInventoryFieldErrors({});
+    setError('');
+    setSuccess('');
+    setInventoryModalOpen(true);
+  };
+
   const onCreateSalsa = () => {
     setError('');
     setSuccess('');
@@ -569,13 +652,6 @@ const MenuSalsasAdmin = () => {
     }));
   };
 
-  const updateFormField = (field, value) => {
-    setForm((current) => ({
-      ...current,
-      [field]: value
-    }));
-  };
-
   const changeNumericFormField = (field, delta, options = {}) => {
     const min = options.min ?? 0;
     const max = options.max ?? 9999;
@@ -595,10 +671,7 @@ const MenuSalsasAdmin = () => {
     const payload = {
       nombre: String(form.nombre || '').trim(),
       nivel_picante: toIntOrNull(form.nivel_picante, { min: 0, max: 5 }),
-      orden: resolvedOrden,
-      id_insumo: form.id_insumo ? toPositiveInt(form.id_insumo) : null,
-      cantidad_porcion: Number(form.cantidad_porcion || 0),
-      id_unidad_consumo: form.id_unidad_consumo ? toPositiveInt(form.id_unidad_consumo) : null
+      orden: resolvedOrden
     };
 
     if (!payload.nombre) {
@@ -613,19 +686,6 @@ const MenuSalsasAdmin = () => {
       setError('Orden debe ser entero positivo o 0.');
       return;
     }
-    if ((payload.id_insumo || payload.id_unidad_consumo) && (!payload.id_insumo || !payload.id_unidad_consumo)) {
-      setError('Para enlazar inventario indica insumo y unidad de consumo.');
-      return;
-    }
-    if (payload.id_insumo && selectedInsumoOption?.disabled) {
-      setError(`El insumo seleccionado no puede usarse: ${getInsumoConfigStatusLabel(selectedInsumoOption.configStatus)}.`);
-      return;
-    }
-    if (!Number.isFinite(payload.cantidad_porcion) || payload.cantidad_porcion <= 0) {
-      setError('Cantidad por porcion debe ser mayor a 0.');
-      return;
-    }
-
     try {
       setSavingSalsa(true);
       setError('');
@@ -657,14 +717,79 @@ const MenuSalsasAdmin = () => {
     setForm({
       nombre: String(salsa?.nombre || ''),
       nivel_picante: String(Number(salsa?.nivel_picante || 0)),
-      orden: salsa?.orden === null || salsa?.orden === undefined ? '' : String(salsa.orden),
-      id_insumo: salsa?.id_insumo ? String(salsa.id_insumo) : '',
-      cantidad_porcion: salsa?.cantidad_porcion ? String(salsa.cantidad_porcion) : '2',
-      id_unidad_consumo: salsa?.id_unidad_consumo ? String(salsa.id_unidad_consumo) : ''
+      orden: salsa?.orden === null || salsa?.orden === undefined ? '' : String(salsa.orden)
     });
     setError('');
     setSuccess('');
     setCreateModalOpen(true);
+  };
+
+  const validateInventoryForm = () => {
+    const errors = {};
+    const idInsumo = toPositiveInt(inventoryForm.id_insumo);
+    const cantidad = Number(inventoryForm.cantidad_porcion || 0);
+    const idUnidad = toPositiveInt(inventoryForm.id_unidad_consumo);
+    if (!idInsumo) errors.id_insumo = 'Selecciona un insumo.';
+    if (selectedInsumoOption?.disabled) errors.id_insumo = selectedInsumoOption.motivoBloqueo || 'Este insumo no puede seleccionarse.';
+    if (!Number.isFinite(cantidad) || cantidad <= 0) errors.cantidad_porcion = 'Indica una cantidad mayor a 0.';
+    if (!idUnidad) errors.id_unidad_consumo = 'Selecciona una unidad.';
+    if (inventoryUseCustomUnit && selectedInsumoOption?.unidadId !== String(idUnidad)) {
+      const hasConversion = (selectedInsumoOption?.conversiones || [])
+        .some((conversion) => String(conversion?.id_unidad_consumo) === String(idUnidad));
+      if (!hasConversion) errors.id_unidad_consumo = 'No hay conversion activa para esa unidad.';
+    }
+    return errors;
+  };
+
+  const inventorySaveDisabled = !inventorySalsa || savingSalsa || Object.keys(validateInventoryForm()).length > 0;
+  const liveInventoryErrors = inventoryModalOpen ? validateInventoryForm() : {};
+  const displayedInventoryErrors = { ...liveInventoryErrors, ...inventoryFieldErrors };
+
+  const onSaveSalsaInventory = async () => {
+    const idSalsa = toPositiveInt(inventorySalsa?.id_salsa);
+    if (!idSalsa) return;
+    const errors = validateInventoryForm();
+    setInventoryFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    try {
+      setSavingSalsa(true);
+      setError('');
+      await apiFetch(`/api/admin/salsas/${idSalsa}/inventario`, 'PUT', {
+        id_insumo: toPositiveInt(inventoryForm.id_insumo),
+        cantidad_porcion: Number(inventoryForm.cantidad_porcion || 0),
+        id_unidad_consumo: toPositiveInt(inventoryForm.id_unidad_consumo)
+      });
+      setSuccess('Consumo de salsa configurado correctamente.');
+      closeInventoryModal(true);
+      await loadBase();
+      if (selectedRecetaId) await loadRecipeConfig(selectedRecetaId);
+    } catch (e) {
+      setError(e?.message || 'No se pudo configurar el consumo de la salsa.');
+    } finally {
+      setSavingSalsa(false);
+    }
+  };
+
+  const onClearSalsaInventory = async () => {
+    const idSalsa = toPositiveInt(inventorySalsa?.id_salsa);
+    if (!idSalsa) return;
+    try {
+      setSavingSalsa(true);
+      setError('');
+      await apiFetch(`/api/admin/salsas/${idSalsa}/inventario`, 'PUT', {
+        id_insumo: null,
+        id_unidad_consumo: null
+      });
+      setSuccess('Configuracion de consumo retirada correctamente.');
+      closeInventoryModal(true);
+      await loadBase();
+      if (selectedRecetaId) await loadRecipeConfig(selectedRecetaId);
+    } catch (e) {
+      setError(e?.message || 'No se pudo retirar la configuracion de consumo.');
+    } finally {
+      setSavingSalsa(false);
+    }
   };
 
   const onToggleSalsaEstado = async (salsa) => {
@@ -685,6 +810,12 @@ const MenuSalsasAdmin = () => {
   const onToggleAssignedSauce = (idSalsa) => {
     const parsedId = toPositiveInt(idSalsa);
     if (!parsedId) return;
+    const salsa = activeSalsas.find((row) => Number(row?.id_salsa) === parsedId);
+    const alreadySelected = selectedSauceIds.includes(parsedId);
+    if (!alreadySelected && salsa?.puede_asignarse_receta !== true) {
+      setError(`${salsa?.nombre || 'La salsa'} no puede agregarse hasta configurar inventario.`);
+      return;
+    }
 
     setSelectedSauceIds((current) => (
       current.includes(parsedId)
@@ -800,6 +931,13 @@ const MenuSalsasAdmin = () => {
       setError(rulesConsistency.message);
       return;
     }
+    const invalidSelected = selectedSauceIds
+      .map((idSalsa) => activeSalsas.find((row) => Number(row?.id_salsa) === Number(idSalsa)))
+      .find((row) => row && row.puede_asignarse_receta !== true);
+    if (invalidSelected) {
+      setError(`${invalidSelected.nombre} no puede guardarse en receta hasta configurar inventario.`);
+      return;
+    }
 
     try {
       setSavingConfig(true);
@@ -863,6 +1001,12 @@ const MenuSalsasAdmin = () => {
 
         <div className="card-body">
           {error ? <div className="alert alert-danger mb-3">{error}</div> : null}
+          <div className="d-flex flex-wrap gap-2 mb-3">
+            <span className="badge text-bg-light border">Activas: {inventoryStats.active}</span>
+            <span className="badge text-bg-success">Listas: {inventoryStats.ready}</span>
+            <span className="badge text-bg-warning">Pendientes: {inventoryStats.pending}</span>
+            <span className="badge text-bg-danger">Con errores: {inventoryStats.errors}</span>
+          </div>
 
           <div className="row g-3 menu-salsas-admin__layout-row">
             <div className="col-12 menu-salsas-admin__table-col">
@@ -983,16 +1127,10 @@ const MenuSalsasAdmin = () => {
                               </div>
                             </td>
                             <td>
-                              {row.id_insumo ? (
-                                <div className="small">
-                                  <strong>{row.insumo_nombre || `Insumo #${row.id_insumo}`}</strong>
-                                  <div className="text-muted">
-                                    {Number(row.cantidad_porcion || 0)} {row.unidad_consumo_simbolo || row.unidad_consumo_nombre || 'unidad'}
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-muted small">Sin insumo</span>
-                              )}
+                              <div className="small">
+                                <strong>{getInventoryStatusText(row)}</strong>
+                                {row.inventario_mensaje ? <div className="text-muted">{row.inventario_mensaje}</div> : null}
+                              </div>
                             </td>
                             <td>
                               <span className={`menu-recetas-admin__estado-badge ${isActive ? 'is-active' : 'is-inactive'}`}>
@@ -1011,6 +1149,16 @@ const MenuSalsasAdmin = () => {
                                 >
                                   <i className="bi bi-pencil-square" aria-hidden="true" />
                                   <span className="inv-catpro-action-label">Editar</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="inv-catpro-action edit inv-catpro-action-compact menu-salsas-admin__action-btn"
+                                  onClick={() => openInventoryModal(row)}
+                                  title="Configurar consumo"
+                                  disabled={!canEditSalsa}
+                                >
+                                  <i className="bi bi-box-seam" aria-hidden="true" />
+                                  <span className="inv-catpro-action-label">Configurar consumo</span>
                                 </button>
                                 <button
                                   type="button"
@@ -1094,6 +1242,10 @@ const MenuSalsasAdmin = () => {
                                   <span className={`menu-recetas-admin__estado-badge ${isActive ? 'is-active' : 'is-inactive'}`}>
                                     {isActive ? 'Activa' : 'Inactiva'}
                                   </span>
+                                  <div className="menu-salsas-admin__mobile-meta">
+                                    <span>Inventario</span>
+                                    <strong>{getInventoryStatusText(row)}</strong>
+                                  </div>
                                 </div>
                                 <div className="menu-salsas-admin__mobile-actions">
                                   <button
@@ -1104,6 +1256,15 @@ const MenuSalsasAdmin = () => {
                                   >
                                     <i className="bi bi-pencil-square" aria-hidden="true" />
                                     <span>Editar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="inv-catpro-action edit inv-catpro-action-compact menu-salsas-admin__mobile-action"
+                                    onClick={() => openInventoryModal(row)}
+                                    disabled={!canEditSalsa}
+                                  >
+                                    <i className="bi bi-box-seam" aria-hidden="true" />
+                                    <span>Consumo</span>
                                   </button>
                                   <button
                                     type="button"
@@ -1261,10 +1422,11 @@ const MenuSalsasAdmin = () => {
                     const checked = selectedSauceIds.includes(idSalsa);
                     const spicy = Number(salsa?.nivel_picante || 0);
                     const intensity = getSpicyIntensity(spicy);
+                    const blockedForNewSelection = !checked && salsa?.puede_asignarse_receta !== true;
                     return (
                       <label
                         key={`assign-${idSalsa}`}
-                        className={`menu-salsas-receta-admin__sauce-item ${checked ? 'is-selected' : ''}`}
+                        className={`menu-salsas-receta-admin__sauce-item ${checked ? 'is-selected' : ''} ${blockedForNewSelection ? 'is-disabled' : ''}`}
                         htmlFor={`assign_salsa_${idSalsa}`}
                       >
                         <input
@@ -1273,12 +1435,13 @@ const MenuSalsasAdmin = () => {
                           id={`assign_salsa_${idSalsa}`}
                           checked={checked}
                           onChange={() => onToggleAssignedSauce(idSalsa)}
-                          disabled={loadingRecipeConfig || !canEditSalsa}
+                          disabled={loadingRecipeConfig || !canEditSalsa || blockedForNewSelection}
                         />
                         <span className="menu-salsas-receta-admin__sauce-avatar"><i className="bi bi-droplet-fill" /></span>
                         <span className="menu-salsas-receta-admin__sauce-copy">
                           <strong>{salsa.nombre}</strong>
                           <small>Picante {spicy}</small>
+                          <small>{getInventoryStatusText(salsa)}</small>
                           <span className="menu-salsas-receta-admin__dots">
                             {Array.from({ length: 5 }).map((_, index) => (
                               <span key={`${idSalsa}-dot-${index}`} className={`menu-salsas-receta-admin__dot ${index < spicy ? 'is-on' : ''}`} />
@@ -1286,6 +1449,17 @@ const MenuSalsasAdmin = () => {
                           </span>
                         </span>
                         <span className={`menu-salsas-receta-admin__intensity ${intensity.className}`}>{intensity.label}</span>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            openInventoryModal(salsa);
+                          }}
+                          disabled={!canEditSalsa}
+                        >
+                          Configurar
+                        </button>
                       </label>
                     );
                   })
@@ -1372,6 +1546,168 @@ const MenuSalsasAdmin = () => {
         message={toastMessage}
         onClose={() => setToastMessage('')}
       />
+
+      {inventoryModalOpen ? (
+        <div className="inv-prod-pmodal inv-prod-pmodal--create show">
+          <div className="inv-prod-pmodal__overlay" onClick={closeInventoryModal} />
+          <div className="inv-prod-pmodal__viewport">
+            <section
+              className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="menu-salsa-inventory-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create">
+                <div className="inv-prod-pmodal__body">
+                  <div className="inv-ins-create-hero is-edit">
+                    <button
+                      type="button"
+                      className="inv-prod-drawer-close inv-ins-create-hero__close"
+                      onClick={closeInventoryModal}
+                      aria-label="Cerrar configuracion de consumo"
+                      disabled={savingSalsa}
+                    >
+                      <i className="bi bi-x-lg" />
+                    </button>
+                    <div className="inv-ins-create-hero__icon">
+                      <i className="bi bi-box-seam" aria-hidden="true" />
+                    </div>
+                    <div className="inv-ins-create-hero__copy">
+                      <div className="inv-ins-create-hero__kicker">Inventario</div>
+                      <div id="menu-salsa-inventory-title" className="inv-ins-create-hero__title">
+                        Configurar consumo de {inventorySalsa?.nombre || 'salsa'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {error ? <div className="alert alert-danger mt-3 mb-0">{error}</div> : null}
+
+                  <div className="inv-prod-pmodal__sections mt-3">
+                    <section className="inv-prod-pmodal__section">
+                      <div className="inv-prod-pmodal__section-head">
+                        <div className="inv-prod-pmodal__section-title">Consumo por seleccion</div>
+                        <div className="inv-prod-pmodal__section-sub">Define que insumo se descuenta cada vez que el cliente elige esta salsa.</div>
+                      </div>
+
+                      <div className="mb-2">
+                        <label className="form-label" htmlFor="menu_salsa_inventory_insumo">Insumo que se descontara</label>
+                        <AppSelect
+                          inputId="menu_salsa_inventory_insumo"
+                          className="menu-salsas-receta-admin__recipe-select app-select--compact"
+                          value={inventoryForm.id_insumo}
+                          options={insumoOptions}
+                          onChange={(value) => {
+                            const option = insumoOptions.find((entry) => String(entry.value) === String(value));
+                            setInventoryForm((current) => ({
+                              ...current,
+                              id_insumo: String(value || ''),
+                              id_unidad_consumo: option?.unidadId ? String(option.unidadId) : ''
+                            }));
+                            setInventoryUseCustomUnit(false);
+                            setInventoryFieldErrors((current) => ({ ...current, id_insumo: '', id_unidad_consumo: '' }));
+                          }}
+                          placeholder="Selecciona insumo..."
+                          searchable
+                          searchPlaceholder="Buscar insumo..."
+                          emptyText="No hay insumos disponibles."
+                          disabled={savingSalsa}
+                        />
+                        {displayedInventoryErrors.id_insumo ? <div className="text-danger small mt-1">{displayedInventoryErrors.id_insumo}</div> : null}
+                      </div>
+
+                      <div className="row g-2">
+                        <div className="col-sm-6">
+                          <label className="form-label" htmlFor="menu_salsa_inventory_cantidad">Cantidad por seleccion</label>
+                          <input
+                            id="menu_salsa_inventory_cantidad"
+                            type="number"
+                            className="form-control"
+                            value={inventoryForm.cantidad_porcion}
+                            min="0.0001"
+                            step="0.0001"
+                            onChange={(event) => {
+                              setInventoryForm((current) => ({ ...current, cantidad_porcion: event.target.value }));
+                              setInventoryFieldErrors((current) => ({ ...current, cantidad_porcion: '' }));
+                            }}
+                            disabled={savingSalsa}
+                          />
+                          {displayedInventoryErrors.cantidad_porcion ? <div className="text-danger small mt-1">{displayedInventoryErrors.cantidad_porcion}</div> : null}
+                        </div>
+                        <div className="col-sm-6">
+                          <label className="form-label" htmlFor="menu_salsa_inventory_unidad">Unidad</label>
+                          <AppSelect
+                            inputId="menu_salsa_inventory_unidad"
+                            className="menu-salsas-receta-admin__recipe-select app-select--compact"
+                            value={inventoryForm.id_unidad_consumo}
+                            options={unidadOptions}
+                            onChange={(value) => {
+                              setInventoryForm((current) => ({ ...current, id_unidad_consumo: String(value || '') }));
+                              setInventoryFieldErrors((current) => ({ ...current, id_unidad_consumo: '' }));
+                            }}
+                            placeholder="Unidad..."
+                            searchable={inventoryUseCustomUnit}
+                            searchPlaceholder="Buscar unidad..."
+                            emptyText="No hay conversiones disponibles."
+                            disabled={savingSalsa || !inventoryForm.id_insumo || !inventoryUseCustomUnit}
+                          />
+                          {displayedInventoryErrors.id_unidad_consumo ? <div className="text-danger small mt-1">{displayedInventoryErrors.id_unidad_consumo}</div> : null}
+                        </div>
+                      </div>
+
+                      <div className="form-check form-switch mt-3">
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          role="switch"
+                          id="menu_salsa_inventory_custom_unit"
+                          checked={inventoryUseCustomUnit}
+                          onChange={(event) => {
+                            const enabled = event.target.checked;
+                            setInventoryUseCustomUnit(enabled);
+                            setInventoryForm((current) => ({
+                              ...current,
+                              id_unidad_consumo: enabled ? current.id_unidad_consumo : (selectedInsumoOption?.unidadId || '')
+                            }));
+                          }}
+                          disabled={savingSalsa || !selectedInsumoOption}
+                        />
+                        <label className="form-check-label" htmlFor="menu_salsa_inventory_custom_unit">Usar otra unidad</label>
+                      </div>
+
+                      {inventoryWarning ? <div className="alert alert-warning py-2 mt-2 mb-0">{inventoryWarning}</div> : null}
+
+                      {selectedInsumoOption && inventoryForm.cantidad_porcion && inventoryForm.id_unidad_consumo ? (
+                        <div className="alert alert-info py-2 mt-3 mb-0">
+                          Cada vez que el cliente elija {inventorySalsa?.nombre || 'esta salsa'}, se descontaran {Number(inventoryForm.cantidad_porcion || 0)} {unidadOptions.find((unit) => String(unit.value) === String(inventoryForm.id_unidad_consumo))?.label || 'unidad'} de {selectedInsumoOption.nombre || selectedInsumoOption.label}.
+                        </div>
+                      ) : null}
+                    </section>
+                  </div>
+                </div>
+
+                <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+                  <button className="btn inv-prod-btn-subtle" type="button" onClick={onClearSalsaInventory} disabled={savingSalsa || !inventorySalsa?.id_insumo}>
+                    Retirar configuracion
+                  </button>
+                  <button className="btn inv-prod-btn-subtle" type="button" onClick={closeInventoryModal} disabled={savingSalsa}>
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-primary menu-salsas-admin__submit-btn"
+                    disabled={inventorySaveDisabled}
+                    onClick={() => void onSaveSalsaInventory()}
+                  >
+                    <i className="bi bi-check-circle" aria-hidden="true" />
+                    {savingSalsa ? 'Guardando...' : 'Guardar consumo'}
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      ) : null}
 
       {createModalOpen ? (
         <div className="inv-prod-pmodal inv-prod-pmodal--create show">
@@ -1499,65 +1835,6 @@ const MenuSalsasAdmin = () => {
                       </div>
                     </div>
 
-                    <div className="mt-3">
-                      <label className="form-label" htmlFor="menu_salsa_insumo">Insumo de inventario</label>
-                      <AppSelect
-                        inputId="menu_salsa_insumo"
-                        className="menu-salsas-receta-admin__recipe-select app-select--compact"
-                        value={form.id_insumo}
-                        options={insumoOptions}
-                        onChange={(value) => {
-                          const option = insumoOptions.find((entry) => String(entry.value) === String(value));
-                          setForm((current) => ({
-                            ...current,
-                            id_insumo: String(value || ''),
-                            id_unidad_consumo: option?.unidadId ? String(option.unidadId) : current.id_unidad_consumo
-                          }));
-                        }}
-                        placeholder="Selecciona insumo..."
-                        searchable
-                        searchPlaceholder="Buscar insumo..."
-                        emptyText="No hay insumos activos."
-                        disabled={savingSalsa}
-                      />
-                    </div>
-
-                    <div className="row g-2 mt-1">
-                      <div className="col-sm-6">
-                        <label className="form-label" htmlFor="menu_salsa_cantidad_porcion">Cantidad por porcion</label>
-                        <input
-                          id="menu_salsa_cantidad_porcion"
-                          type="number"
-                          className="form-control"
-                          name="cantidad_porcion"
-                          value={form.cantidad_porcion}
-                          min="0.0001"
-                          step="0.0001"
-                          onChange={onChangeForm}
-                          disabled={savingSalsa}
-                        />
-                      </div>
-                      <div className="col-sm-6">
-                        <label className="form-label" htmlFor="menu_salsa_unidad_consumo">Unidad de consumo</label>
-                        <AppSelect
-                          inputId="menu_salsa_unidad_consumo"
-                          className="menu-salsas-receta-admin__recipe-select app-select--compact"
-                          value={form.id_unidad_consumo}
-                          options={unidadOptions}
-                          onChange={(value) => updateFormField('id_unidad_consumo', String(value || ''))}
-                          placeholder="Unidad..."
-                          searchable
-                          searchPlaceholder="Buscar unidad..."
-                          emptyText="No hay unidades disponibles."
-                          disabled={savingSalsa || !form.id_insumo}
-                        />
-                      </div>
-                    </div>
-                    {inventoryWarning ? (
-                      <div className="alert alert-warning py-2 mt-2 mb-0">
-                        {inventoryWarning}
-                      </div>
-                    ) : null}
                   </section>
                 </div>
               </div>
