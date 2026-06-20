@@ -29,6 +29,8 @@ const isPantallaCocinaRole = (roles) =>
   (Array.isArray(roles) ? roles : []).some((role) => SCREEN_MODE_ROLES.has(normalizeRoleName(role)));
 const isCocinaOperativaRole = (roles) =>
   (Array.isArray(roles) ? roles : []).some((role) => COCINA_OPERATIVA_ROLES.has(normalizeRoleName(role)));
+const shouldAdvanceWithoutConfirm = (action) =>
+  ['EN_PREPARACION', 'LISTO_PARA_ENTREGA'].includes(action?.nextStatus);
 
 export default function CocinaPage() {
   const { user } = useAuth();
@@ -171,25 +173,26 @@ export default function CocinaPage() {
     [isPantallaCocina, isSuperAdmin, canStartPedido, canMarkReady, canDeliverPedido]
   );
 
-  const handleConfirmAction = useCallback(async () => {
-    if (!confirmState.pedido || !confirmState.action) return;
-    if (!canAdvancePedido(confirmState.pedido) && confirmState.action.nextStatus !== 'NO_ENTREGADO') return;
+  const runPedidoAction = useCallback(async (pedido, action) => {
+    if (!pedido || !action?.nextStatus) return;
+    if (!canAdvancePedido(pedido) && action.nextStatus !== 'NO_ENTREGADO') return;
+    if (mutatingIds?.has?.(pedido.id_pedido)) return;
 
     try {
-      await advancePedido(confirmState.pedido, confirmState.action.nextStatus);
+      await advancePedido(pedido, action.nextStatus);
       setConfirmState({ pedido: null, action: null });
-      if (selectedPedido?.id_pedido === confirmState.pedido.id_pedido) {
-        if (['COMPLETADO', 'NO_ENTREGADO'].includes(confirmState.action.nextStatus)) {
+      if (selectedPedido?.id_pedido === pedido.id_pedido) {
+        if (['COMPLETADO', 'NO_ENTREGADO'].includes(action.nextStatus)) {
           setSelectedPedido(null);
         } else {
           setSelectedPedido((current) =>
             current
               ? {
                   ...current,
-                  estado_codigo: confirmState.action.nextStatus,
+                  estado_codigo: action.nextStatus,
                   columna_kds: resolveOrderColumnKey({
                     columna_kds: current.columna_kds,
-                    estado_codigo: confirmState.action.nextStatus
+                    estado_codigo: action.nextStatus
                   })
                 }
               : current
@@ -197,7 +200,22 @@ export default function CocinaPage() {
         }
       }
     } catch { /* el hook ya gestiona el feedback */ }
-  }, [advancePedido, canAdvancePedido, confirmState, selectedPedido]);
+  }, [advancePedido, canAdvancePedido, mutatingIds, selectedPedido]);
+
+  const handleConfirmAction = useCallback(async () => {
+    await runPedidoAction(confirmState.pedido, confirmState.action);
+  }, [confirmState, runPedidoAction]);
+
+  const handleOpenConfirm = useCallback((pedido, action) => {
+    if (!pedido || !action?.nextStatus) return;
+    if (!canAdvancePedido(pedido) && action.nextStatus !== 'NO_ENTREGADO') return;
+    if (mutatingIds?.has?.(pedido.id_pedido)) return;
+    if (shouldAdvanceWithoutConfirm(action)) {
+      runPedidoAction(pedido, action);
+      return;
+    }
+    setConfirmState({ pedido, action });
+  }, [canAdvancePedido, mutatingIds, runPedidoAction]);
 
   const handleOpenInventoryAlerts = useCallback(async (pedido) => {
     if (!pedido?.id_pedido) return;
@@ -310,9 +328,7 @@ export default function CocinaPage() {
               setSelectedPedido(pedido);
             }}
             onOpenInventoryAlerts={handleOpenInventoryAlerts}
-            onOpenConfirm={(pedido, action) => {
-              setConfirmState({ pedido, action });
-            }}
+            onOpenConfirm={handleOpenConfirm}
           />
         )}
       </div>
