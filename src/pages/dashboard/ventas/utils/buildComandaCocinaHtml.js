@@ -33,6 +33,20 @@ const normalizeDetailList = (items, mapItem) => (
   Array.isArray(items) ? items : []
 ).map(mapItem).filter(Boolean);
 
+const resolveItemComplementos = (item) => {
+  const directComplementos = normalizeDetailList(item?.complementos, (complemento, complementoIndex) => ({
+    key: `${complemento?.id_complemento || complementoIndex}-${complementoIndex}`,
+    nombre: toSafeText(complemento?.nombre, 'Complemento')
+  }));
+  if (directComplementos.length > 0) return directComplementos;
+
+  const snapshotComponentes = normalizeDetailList(item?.origen_snapshot?.componentes, (componente, componenteIndex) => ({
+    key: `${componente?.id_complemento || componenteIndex}-${componenteIndex}`,
+    nombre: toSafeText(componente?.nombre, 'Complemento')
+  }));
+  return snapshotComponentes;
+};
+
 const renderTags = (title, items = [], valueBuilder) => {
   if (!Array.isArray(items) || items.length === 0) return '';
   return `
@@ -55,10 +69,7 @@ const normalizeComandaItems = (comanda) => normalizeDetailList(comanda?.items, (
     nombre: toSafeText(extra?.nombre || extra?.nombre_extra, 'Extra'),
     cantidad: Math.max(1, toSafeNumber(extra?.cantidad, 1))
   }));
-  const complementos = normalizeDetailList(item?.complementos, (complemento, complementoIndex) => ({
-    key: `${complemento?.id_complemento || complementoIndex}-${complementoIndex}`,
-    nombre: toSafeText(complemento?.nombre, 'Complemento')
-  }));
+  const complementos = resolveItemComplementos(item);
   const observacion = String(item?.observacion || item?.nota_cocina || item?.nota || '').trim();
 
   return {

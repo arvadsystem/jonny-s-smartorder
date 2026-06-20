@@ -89,7 +89,8 @@ export default function VentasPage() {
     open: false,
     venta: null,
     loading: false,
-    error: ''
+    error: '',
+    mode: 'post-sale'
   });
   const detailRequestRef = useRef(0);
 
@@ -270,7 +271,8 @@ export default function VentasPage() {
         open: true,
         venta: ventaDetail,
         loading: false,
-        error: ''
+        error: '',
+        mode: 'post-sale'
       });
     } else if (facturaPrintWindow) {
       facturaPrintWindow.close();
@@ -281,6 +283,7 @@ export default function VentasPage() {
 
   const closeComandaPrompt = async ({ markAsCancelled = true } = {}) => {
     const venta = comandaPrompt.venta;
+    const mode = comandaPrompt.mode;
     if (markAsCancelled && venta?.id_factura) {
       void ventasService.registerPrintEvent(venta.id_factura, {
         tipo_documento: 'COMANDA',
@@ -288,6 +291,7 @@ export default function VentasPage() {
         nombre_logico: 'COCINA',
         ancho_mm: 80,
         metadata: {
+          promptMode: mode,
           printMode: 'BROWSER',
           logicalPrinterName: 'COCINA'
         }
@@ -297,17 +301,69 @@ export default function VentasPage() {
       open: false,
       venta: null,
       loading: false,
-      error: ''
+      error: '',
+      mode: 'post-sale'
     });
-    if (venta?.id_factura) {
+    if (mode === 'post-sale' && venta?.id_factura) {
       await openDetail(venta);
+    }
+  };
+
+  const handleDetailTicketPrint = async (venta, options = {}) => {
+    if (!venta?.id_factura) return;
+
+    const facturaPrintWindow = openPrintWindow('Preparando factura');
+
+    try {
+      await printVentaTicketPdf(venta.id_factura, facturaPrintWindow);
+      void ventasService.registerPrintEvent(venta.id_factura, {
+        tipo_documento: 'FACTURA',
+        estado: 'GENERADA',
+        nombre_logico: 'FACTURA',
+        ancho_mm: Number(options?.ticketWidthMm) === 58 ? 58 : 80,
+        metadata: {
+          origin: 'DETAIL_REPRINT',
+          printMode: 'BROWSER',
+          logicalPrinterName: 'FACTURA'
+        }
+      }).catch(() => undefined);
+
+      setComandaPrompt({
+        open: true,
+        venta,
+        loading: false,
+        error: '',
+        mode: 'reprint'
+      });
+    } catch (error) {
+      if (facturaPrintWindow) facturaPrintWindow.close();
+      console.error('[Ventas] No se pudo abrir la factura para reimpresion.', error);
+      openToast(
+        'REIMPRESION FACTURA',
+        'No se pudo abrir la factura para imprimir.',
+        'warning'
+      );
+      void ventasService.registerPrintEvent(venta.id_factura, {
+        tipo_documento: 'FACTURA',
+        estado: 'ERROR',
+        nombre_logico: 'FACTURA',
+        ancho_mm: Number(options?.ticketWidthMm) === 58 ? 58 : 80,
+        detalle_error: error?.message || 'No se pudo abrir la factura para imprimir.',
+        metadata: {
+          origin: 'DETAIL_REPRINT',
+          printMode: 'BROWSER',
+          logicalPrinterName: 'FACTURA'
+        }
+      }).catch(() => undefined);
+      throw error;
     }
   };
 
   const handleAcceptComanda = async () => {
     const venta = comandaPrompt.venta;
+    const mode = comandaPrompt.mode;
     if (!venta?.id_factura || comandaPrompt.loading) return;
-    const comandaPrintWindow = openPrintWindow();
+    const comandaPrintWindow = openPrintWindow('Preparando comanda');
 
     setComandaPrompt((current) => ({
       ...current,
@@ -316,7 +372,7 @@ export default function VentasPage() {
     }));
 
     try {
-      const comanda = await ventasService.getComandaById(venta.id_factura);
+      const comanda = venta;
       const validation = validateComandaForPrint(comanda);
       if (!validation.ok) {
         throw new Error(validation.message);
@@ -328,6 +384,7 @@ export default function VentasPage() {
         nombre_logico: 'COCINA',
         ancho_mm: 80,
         metadata: {
+          promptMode: mode,
           printMode: 'BROWSER',
           logicalPrinterName: 'COCINA'
         }
@@ -344,6 +401,7 @@ export default function VentasPage() {
         ancho_mm: 80,
         detalle_error: error?.message || 'No se pudo imprimir la comanda de cocina.',
         metadata: {
+          promptMode: mode,
           printMode: 'BROWSER',
           logicalPrinterName: 'COCINA'
         }
@@ -457,6 +515,7 @@ export default function VentasPage() {
         }}
         canExport={canExportVenta}
         canPrint={canPrintVenta}
+        onPrintTicket={handleDetailTicketPrint}
         onClose={() => {
           detailRequestRef.current += 1;
           setDetailOpen(false);
@@ -468,6 +527,7 @@ export default function VentasPage() {
         venta={comandaPrompt.venta}
         loading={comandaPrompt.loading}
         error={comandaPrompt.error}
+        mode={comandaPrompt.mode}
         onAccept={handleAcceptComanda}
         onCancel={() => {
           void closeComandaPrompt();

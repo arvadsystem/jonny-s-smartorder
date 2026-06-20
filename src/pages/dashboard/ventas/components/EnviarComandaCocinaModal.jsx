@@ -3,6 +3,7 @@ export default function EnviarComandaCocinaModal({
   venta,
   loading = false,
   error = '',
+  mode = 'post-sale',
   onAccept,
   onCancel
 }) {
@@ -11,6 +12,15 @@ export default function EnviarComandaCocinaModal({
   const totalProductos = Array.isArray(venta?.items)
     ? venta.items.reduce((sum, item) => sum + (Number(item?.cantidad ?? 0) || 0), 0)
     : Number(venta?.total_productos || 0) || 0;
+  const isReprint = mode === 'reprint';
+  const title = isReprint ? 'Reimprimir comanda de cocina' : 'Enviar comanda a cocina';
+  const message = isReprint
+    ? 'La factura ya se abrio para impresion. ¿Deseas imprimir tambien la comanda de cocina?'
+    : '¿Deseas enviar la comanda de este pedido a cocina?';
+  const acceptLabel = loading
+    ? (isReprint ? 'Imprimiendo...' : 'Enviando...')
+    : (isReprint ? 'Imprimir comanda' : 'Aceptar');
+  const cancelLabel = isReprint ? 'Solo factura' : 'Cancelar';
 
   return (
     <div className="ventas-finalizar-error-backdrop" role="presentation">
@@ -33,10 +43,10 @@ export default function EnviarComandaCocinaModal({
           <i className="bi bi-printer" />
         </div>
         <div className="ventas-finalizar-error-modal__copy">
-          <h5 id="ventas-enviar-comanda-title">Enviar comanda a cocina</h5>
-          <p>¿Deseas enviar la comanda de este pedido a cocina?</p>
+          <h5 id="ventas-enviar-comanda-title">{title}</h5>
+          <p>{message}</p>
           <p className="ventas-finalizar-error-modal__detail">
-            Pedido: <strong>{venta?.numero_venta || venta?.codigo_venta || 'Sin número'}</strong>
+            Pedido: <strong>{venta?.numero_venta || venta?.codigo_venta || 'Sin numero'}</strong>
           </p>
           <p className="ventas-finalizar-error-modal__detail">
             Productos: <strong>{totalProductos}</strong>
@@ -50,10 +60,10 @@ export default function EnviarComandaCocinaModal({
         </div>
         <div className="ventas-modal-footer">
           <button type="button" className="btn btn-outline-secondary" onClick={onCancel} disabled={loading}>
-            Cancelar
+            {cancelLabel}
           </button>
           <button type="button" className="btn btn-primary" onClick={onAccept} disabled={loading}>
-            {loading ? 'Enviando...' : 'Aceptar'}
+            {acceptLabel}
           </button>
         </div>
       </section>

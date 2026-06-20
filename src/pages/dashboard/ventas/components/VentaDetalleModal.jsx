@@ -60,12 +60,14 @@ export default function VentaDetalleModal({
   venta,
   loading,
   onClose,
+  onPrintTicket,
   onOpenReversion,
   canReversion = false,
   canExport = true,
   canPrint = true
 }) {
   const [ticketWidthMm, setTicketWidthMm] = useState(DEFAULT_TICKET_WIDTH_MM);
+  const [printLoading, setPrintLoading] = useState(false);
   const printInProgressRef = useRef(false);
 
   useEffect(() => {
@@ -135,13 +137,19 @@ export default function VentaDetalleModal({
     }
 
     printInProgressRef.current = true;
+    setPrintLoading(true);
 
     try {
-      await printVentaTicketPdf(venta.id_factura);
+      if (typeof onPrintTicket === 'function') {
+        await onPrintTicket(venta, { ticketWidthMm });
+      } else {
+        await printVentaTicketPdf(venta.id_factura);
+      }
     } catch (error) {
       console.error('[Ventas] No se pudo generar el PDF del ticket', error);
     } finally {
       printInProgressRef.current = false;
+      setPrintLoading(false);
     }
   };
 
@@ -453,8 +461,13 @@ export default function VentaDetalleModal({
                         <option value={80}>80mm</option>
                         <option value={58}>58mm</option>
                       </select>
-                      <button type="button" className="btn btn-primary" onClick={handlePrintTicket}>
-                        <i className="bi bi-printer" /> Imprimir ticket
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={handlePrintTicket}
+                        disabled={printLoading}
+                      >
+                        <i className="bi bi-printer" /> {printLoading ? 'Imprimiendo...' : 'Imprimir ticket'}
                       </button>
                     </>
                   ) : null}
