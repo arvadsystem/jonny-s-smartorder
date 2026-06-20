@@ -75,14 +75,19 @@ export default function ComandaCocina80mm({ comanda }) {
         <div className="comanda-cocina-print__items">
           {items.map((item, index) => (
             <section className="comanda-cocina-print__item" key={`${item?.id_detalle || index}-${index}`}>
+              {(() => {
+                const standaloneExtra = Boolean(item?.es_linea_extra_independiente || item?.origen_snapshot?.es_linea_extra_independiente);
+                const extras = standaloneExtra ? [] : (Array.isArray(item?.extras) ? item.extras : []);
+                return (
+                  <>
               <div className="comanda-cocina-print__item-head">
                 <span className="comanda-cocina-print__qty">{Number(item?.cantidad || 0) || 1}x</span>
                 <span className="comanda-cocina-print__name">{toSafeText(item?.nombre_item, 'Item')}</span>
               </div>
 
-              {Array.isArray(item?.extras) && item.extras.length > 0 ? (
+              {extras.length > 0 ? (
                 <div className="comanda-cocina-print__tags">
-                  {item.extras.map((extra, extraIndex) => (
+                  {extras.map((extra, extraIndex) => (
                     <span className="comanda-cocina-print__tag" key={`${extra?.id_extra || extraIndex}-${extraIndex}`}>
                       Extra: {toSafeText(extra?.nombre, 'Extra')} x{Number(extra?.cantidad || 0) || 1}
                     </span>
@@ -105,6 +110,9 @@ export default function ComandaCocina80mm({ comanda }) {
                   <span className="comanda-cocina-print__note">Nota: {toSafeText(item.observacion)}</span>
                 </div>
               ) : null}
+                  </>
+                );
+              })()}
             </section>
           ))}
         </div>

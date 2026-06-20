@@ -30,7 +30,10 @@ const getExtraSubtotal = (extra) => {
   return toNumber(extra?.precio_unitario ?? extra?.precio) * toNumber(extra?.cantidad);
 };
 
+const isStandaloneExtraItem = (item) => Boolean(item?.es_linea_extra_independiente || item?.origen_snapshot?.es_linea_extra_independiente);
+
 const getItemExtrasSubtotal = (item) => {
+  if (isStandaloneExtraItem(item)) return 0;
   const extras = Array.isArray(item?.extras) ? item.extras : [];
   return extras.reduce((sum, extra) => sum + getExtraSubtotal(extra), 0);
 };
@@ -252,7 +255,7 @@ export default function VentaTicketPrint({
             items.map((item, index) => {
               const subtotalLinea = toNumber(item?.sub_total);
               const descuentoLinea = toNumber(item?.descuento || item?.descuento_linea);
-              const extras = Array.isArray(item?.extras) ? item.extras : [];
+              const extras = isStandaloneExtraItem(item) ? [] : (Array.isArray(item?.extras) ? item.extras : []);
               const extrasSubtotal = getItemExtrasSubtotal(item);
               const netoLinea = roundMoney(Math.max(subtotalLinea - descuentoLinea, 0) + extrasSubtotal);
               const descuentoPorcentaje = getLineDiscountPercent(item);

@@ -37,6 +37,33 @@ export { getComboDepartmentIds } from '../../../../modules/ventas/utils/ventasCa
 const DEFAULT_CATALOG_KEY = 'RECETAS';
 const DEFAULT_DEPARTMENT_NAME = 'ALITAS';
 
+const isQuantityManagedVentaLineKind = (kind) => ['PRODUCTO', 'ITEM'].includes(String(kind || '').toUpperCase());
+
+const resolveStandaloneExtraAvailableUnits = (entry) => {
+  const stock = Number(entry?.stock_disponible);
+  const consumoBase = Number(entry?.cantidad_consumo_base);
+  if (!Number.isFinite(stock) || stock <= 0) return null;
+  if (!Number.isFinite(consumoBase) || consumoBase <= 0) return null;
+  return Math.max(0, Math.floor(stock / consumoBase));
+};
+
+const normalizeGlobalExtraOption = (entry) => ({
+  id_extra: Number(entry.id_extra),
+  codigo: String(entry.codigo || '').trim(),
+  nombre: String(entry.nombre || 'Extra').trim(),
+  precio: roundMoney(entry.precio ?? entry.precio_adicional),
+  descripcion: String(entry.nombre || 'Extra').trim(),
+  id_insumo: Number(entry.id_insumo || 0) || null,
+  id_insumo_maestro: Number(entry.id_insumo_maestro || 0) || null,
+  stock_disponible: entry.stock_disponible ?? null,
+  cantidad_consumo_base: entry.cantidad_consumo_base ?? entry.cantidad_consumo ?? null,
+  id_unidad_base: Number(entry.id_unidad_base || entry.id_unidad_medida || 0) || null,
+  disponible: entry.disponible !== false,
+  inventario_configurado: entry.inventario_configurado !== false,
+  motivo_no_disponible: String(entry.motivo_no_disponible || '').trim() || null,
+  codigo_no_disponible: String(entry.codigo_no_disponible || '').trim() || null
+});
+
 const normalizeFilterText = (value) =>
   String(value || '')
     .normalize('NFD')
@@ -227,6 +254,42 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
     };
   }
 
+  if (kind === 'ITEM') {
+    return {
+      cartKey: buildCartKey(kind, row.id_extra),
+      lineId,
+      kind,
+      entityId: row.id_extra,
+      id_producto: null,
+      id_combo: null,
+      id_receta: null,
+      id_extra: row.id_extra,
+      nombre_item: row.nombre,
+      categoria_label: 'Extras',
+      descripcion_item: row.descripcion || row.nombre || 'Extra',
+      precio_unitario: row.precio,
+      cantidad: 1,
+      stock_disponible: row.stock_disponible ?? null,
+      available_units: resolveStandaloneExtraAvailableUnits(row),
+      observacion: '',
+      imagen_principal_url: null,
+      complementos: [],
+      extras: [],
+      complementos_disponibles: [],
+      complementos_requiere: false,
+      minimo_complementos: 0,
+      maximo_complementos: 0,
+      complementos_incompletos_autorizados: false,
+      tipo_complemento: null,
+      inventario_configurado: row.inventario_configurado !== false,
+      disponible: row.disponible !== false,
+      motivo_no_disponible: row.motivo_no_disponible || null,
+      codigo_no_disponible: row.codigo_no_disponible || null,
+      cantidad_consumo_base: row.cantidad_consumo_base ?? null,
+      id_unidad_base: row.id_unidad_base ?? null
+    };
+  }
+
   if (kind === 'COMBO') {
     return {
       cartKey: buildCartKey(kind, row.id_combo, complementosSeleccionados, [], lineId),
@@ -319,6 +382,12 @@ export const useVentaComposer = ({
     loading: false,
     error: ''
   });
+  const [globalExtrasCatalog, setGlobalExtrasCatalog] = useState({
+    options: [],
+    loading: false,
+    error: '',
+    sucursalId: null
+  });
   const deferredSearch = useDeferredValue(state.search);
 
   useEffect(() => {
@@ -380,6 +449,66 @@ export const useVentaComposer = ({
 
   const selectedSucursalId = toNormalizedId(state.selectedSucursal);
   const hasSelectedSucursal = Boolean(selectedSucursalId);
+
+  useEffect(() => {
+    if (!selectedSucursalId) {
+      setGlobalExtrasCatalog({
+        options: [],
+        loading: false,
+        error: '',
+        sucursalId: null
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setGlobalExtrasCatalog((current) => ({
+      options: current.sucursalId === selectedSucursalId ? current.options : [],
+      loading: true,
+      error: '',
+      sucursalId: selectedSucursalId
+    }));
+
+    void ventasService.getExtrasPermitidos({ id_sucursal: selectedSucursalId })
+      .then((response) => {
+        if (cancelled) return;
+        const options = (Array.isArray(response) ? response : [])
+          .filter((entry) => entry?.estado !== false)
+          .map(normalizeGlobalExtraOption)
+          .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0);
+        setGlobalExtrasCatalog({
+          options,
+          loading: false,
+          error: '',
+          sucursalId: selectedSucursalId
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setGlobalExtrasCatalog({
+          options: [],
+          loading: false,
+          error: error?.message || 'No se pudieron cargar los extras globales.',
+          sucursalId: selectedSucursalId
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSucursalId]);
+
+  useEffect(() => {
+    setExtrasModal((current) => {
+      if (!current.open) return current;
+      return {
+        ...current,
+        options: globalExtrasCatalog.options,
+        loading: globalExtrasCatalog.loading,
+        error: globalExtrasCatalog.error
+      };
+    });
+  }, [globalExtrasCatalog]);
 
   useEffect(() => {
     setState((current) => {
@@ -556,11 +685,17 @@ export const useVentaComposer = ({
     ]);
   }, [deferredSearch, recetas, state.activeCategory]);
 
+  const filteredGlobalExtras = useMemo(
+    () => filterBySearch(globalExtrasCatalog.options, deferredSearch, ['nombre', 'codigo', 'descripcion']),
+    [deferredSearch, globalExtrasCatalog.options]
+  );
+
   const currentCatalogRows = useMemo(() => {
+    if (state.activeCatalog === 'EXTRAS') return filteredGlobalExtras;
     if (state.activeCatalog === 'COMBOS') return filteredCombos;
     if (state.activeCatalog === 'RECETAS') return filteredRecetas;
     return filteredProducts;
-  }, [filteredCombos, filteredProducts, filteredRecetas, state.activeCatalog]);
+  }, [filteredCombos, filteredGlobalExtras, filteredProducts, filteredRecetas, state.activeCatalog]);
 
   const discountCatalogRows = useMemo(() => {
     if (!canApplyDiscount) return [];
@@ -684,15 +819,15 @@ export const useVentaComposer = ({
     );
   const resultsLabel = getResultsLabel(state.activeCatalog, currentCatalogRows.length);
 
-  const getCurrentProductoQuantityInCart = (idProducto, cart) =>
+  const getCurrentQuantityInCartByKind = (kind, entityId, cart) =>
     (Array.isArray(cart) ? cart : []).reduce((acc, line) => {
-      if (line.kind !== 'PRODUCTO') return acc;
-      if (Number(line.id_producto) !== Number(idProducto)) return acc;
+      if (String(line.kind || '').toUpperCase() !== String(kind || '').toUpperCase()) return acc;
+      if (Number(line.entityId ?? line.id_producto ?? line.id_extra ?? 0) !== Number(entityId)) return acc;
       return acc + Number(line.cantidad ?? 0);
     }, 0);
 
   const requiresComplementSelection = (kind, row) => {
-    if (kind === 'PRODUCTO') return false;
+    if (kind === 'PRODUCTO' || kind === 'ITEM') return false;
     const min = Number(row?.minimo_complementos ?? 0) || 0;
     return Boolean(row?.requiere_complementos) || min > 0;
   };
@@ -740,7 +875,7 @@ export const useVentaComposer = ({
           };
         }
 
-        const alreadyInCart = getCurrentProductoQuantityInCart(row.id_producto, nextCart);
+        const alreadyInCart = getCurrentQuantityInCartByKind('PRODUCTO', row.id_producto, nextCart);
         if (alreadyInCart >= stockDisponible) {
           return {
             ...current,
@@ -749,16 +884,49 @@ export const useVentaComposer = ({
         }
       }
 
-      const index = kind === 'PRODUCTO' ? findLineIndex(nextCart, catalogLine.cartKey) : -1;
+      if (kind === 'ITEM') {
+        if (row.disponible === false) {
+          return {
+            ...current,
+            submitError: row.motivo_no_disponible || `${row.nombre || 'Extra'} no esta disponible.`
+          };
+        }
+
+        const availableUnits = resolveStandaloneExtraAvailableUnits(row);
+        if (availableUnits !== null && availableUnits <= 0) {
+          return {
+            ...current,
+            submitError: row.motivo_no_disponible || `No hay existencias suficientes para ${row.nombre || 'este extra'}.`
+          };
+        }
+
+        const alreadyInCart = getCurrentQuantityInCartByKind('ITEM', row.id_extra, nextCart);
+        if (availableUnits !== null && alreadyInCart >= availableUnits) {
+          return {
+            ...current,
+            submitError: `Stock maximo alcanzado para ${row.nombre || 'este extra'}.`
+          };
+        }
+      }
+
+      const index = isQuantityManagedVentaLineKind(kind) ? findLineIndex(nextCart, catalogLine.cartKey) : -1;
       if (index >= 0) {
         const currentLine = nextCart[index];
-        const stockDisponible = Number(currentLine.stock_disponible ?? 0);
         const nextQty = Number(currentLine.cantidad ?? 0) + 1;
-        if (nextQty > stockDisponible) {
+        if (kind === 'PRODUCTO' && nextQty > Number(currentLine.stock_disponible ?? 0)) {
           return {
             ...current,
             submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
           };
+        }
+        if (kind === 'ITEM') {
+          const maxAvailable = Number(currentLine.available_units ?? 0);
+          if (maxAvailable > 0 && nextQty > maxAvailable) {
+            return {
+              ...current,
+              submitError: `Stock maximo alcanzado para ${row.nombre || 'este extra'}.`
+            };
+          }
         }
 
         const autoDiscount = canApplyDiscount && !currentLine.id_descuento_catalogo_linea
@@ -808,7 +976,7 @@ export const useVentaComposer = ({
   const openComplementModalForLine = (cartKey) => {
     const line = state.cart.find((row) => row.cartKey === cartKey);
     if (!line) return;
-    if (line.kind === 'PRODUCTO') return;
+    if (line.kind === 'PRODUCTO' || line.kind === 'ITEM') return;
 
     const requirement = getLineComplementRequirement(line);
     setComplementModal({
@@ -922,6 +1090,17 @@ export const useVentaComposer = ({
             }
           }
 
+          if (candidate.kind === 'ITEM') {
+            const requested = Number(candidate.cantidad ?? 0);
+            const maxAvailable = Number(candidate.available_units ?? 0);
+            if (maxAvailable > 0 && requested > maxAvailable) {
+              return {
+                ...candidate,
+                cantidad: maxAvailable
+              };
+            }
+          }
+
           const adjustedExtras = normalizeExtras(candidate.extras);
           const isCustomLine = isCustomizableVentaLineKind(candidate.kind);
           const lineId = isCustomLine ? String(candidate.lineId || createCartLineId()) : null;
@@ -957,55 +1136,17 @@ export const useVentaComposer = ({
 
   const openExtrasModalForLine = async (cartKey) => {
     const line = state.cart.find((row) => row.cartKey === cartKey);
-    if (!line || line.kind === 'PRODUCTO') return;
+    if (!line || line.kind === 'PRODUCTO' || line.kind === 'ITEM') return;
 
     setExtrasModal({
       open: true,
       cartKey,
       row: line,
-      options: [],
+      options: globalExtrasCatalog.options,
       selected: normalizeExtras(line.extras),
-      loading: true,
-      error: ''
+      loading: globalExtrasCatalog.loading,
+      error: globalExtrasCatalog.error
     });
-
-    try {
-      const response = await ventasService.getExtrasPermitidos({
-        tipo: line.kind,
-        id_item: line.entityId,
-        id_sucursal: selectedSucursalId
-      });
-      const options = (Array.isArray(response) ? response : [])
-        .filter((entry) => entry?.estado !== false)
-        .map((entry) => ({
-          id_extra: Number(entry.id_extra),
-          codigo: String(entry.codigo || '').trim(),
-          nombre: String(entry.nombre || 'Extra').trim(),
-          precio: roundMoney(entry.precio),
-          id_insumo: Number(entry.id_insumo || 0) || null,
-          id_insumo_maestro: Number(entry.id_insumo_maestro || 0) || null,
-          stock_disponible: entry.stock_disponible ?? null,
-          cantidad_consumo_base: entry.cantidad_consumo_base ?? null,
-          id_unidad_base: Number(entry.id_unidad_base || 0) || null,
-          disponible: entry.disponible !== false,
-          inventario_configurado: entry.inventario_configurado !== false,
-          motivo_no_disponible: String(entry.motivo_no_disponible || '').trim() || null,
-          codigo_no_disponible: String(entry.codigo_no_disponible || '').trim() || null
-        }))
-        .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0);
-      setExtrasModal((current) => ({
-        ...current,
-        options,
-        loading: false,
-        error: ''
-      }));
-    } catch (error) {
-      setExtrasModal((current) => ({
-        ...current,
-        loading: false,
-        error: error?.message || 'No se pudieron cargar los extras.'
-      }));
-    }
   };
 
   const closeExtrasModal = () => {
@@ -1070,6 +1211,11 @@ export const useVentaComposer = ({
     if (currentCatalogRows.length === 0) return;
 
     event.preventDefault();
+
+    if (state.activeCatalog === 'EXTRAS') {
+      addCatalogItem('ITEM', currentCatalogRows[0]);
+      return;
+    }
 
     if (state.activeCatalog === 'COMBOS') {
       addCatalogItem('COMBO', currentCatalogRows[0]);
@@ -1243,6 +1389,8 @@ export const useVentaComposer = ({
     submitError: state.submitError,
     incompleteComplementCartKey: state.incompleteComplementCartKey,
     currentCatalogRows,
+    currentCatalogLoading: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.loading : false,
+    currentCatalogError: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.error : '',
     discountCatalogRows,
     resultsLabel,
     cartCount,
@@ -1275,9 +1423,9 @@ export const useVentaComposer = ({
           ...current,
           activeCatalog: nextKey,
           search: '',
-          activeCategory: nextKey === 'PRODUCTOS'
+          activeCategory: ['PRODUCTOS', 'EXTRAS'].includes(nextKey)
             ? 'all'
-            : (current.activeCatalog === 'PRODUCTOS'
+            : (['PRODUCTOS', 'EXTRAS'].includes(current.activeCatalog)
                 ? resolveDefaultDepartmentId(tiposDepartamento)
                 : current.activeCategory)
         };

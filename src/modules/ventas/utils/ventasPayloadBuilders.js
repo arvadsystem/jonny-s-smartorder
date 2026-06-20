@@ -13,8 +13,12 @@ export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) 
       id_producto: line.id_producto,
       id_combo: line.id_combo,
       id_receta: line.id_receta,
+      id_extra: line.kind === 'ITEM' ? line.id_extra : null,
       cantidad: isSimpleProduct ? Number(line.cantidad) : 1
     };
+    if (line.kind === 'ITEM') {
+      payload.cantidad = Number(line.cantidad);
+    }
     const lineDiscountId = Number(line.id_descuento_catalogo_linea || 0);
     if (canApplyDiscount && lineDiscountId > 0) {
       payload.id_descuento_catalogo = lineDiscountId;
@@ -22,16 +26,16 @@ export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) 
     if (line.kind !== 'PRODUCTO') {
       payload.observacion = String(line.observacion || '').trim() || null;
     }
-    const complementos = line.kind === 'PRODUCTO'
+    const complementos = ['PRODUCTO', 'ITEM'].includes(line.kind)
       ? []
       : normalizeValidComplementIds(line);
     if (complementos.length > 0) {
       payload.complementos = complementos.map((id) => ({ id_complemento: id }));
     }
-    if (line.kind !== 'PRODUCTO' && line.complementos_incompletos_autorizados) {
+    if (!['PRODUCTO', 'ITEM'].includes(line.kind) && line.complementos_incompletos_autorizados) {
       payload.complementos_incompletos_autorizados = true;
     }
-    const extras = normalizeExtras(line.extras);
+    const extras = line.kind === 'ITEM' ? [] : normalizeExtras(line.extras);
     if (extras.length > 0) {
       payload.extras = extras.map((entry) => ({
         id_extra: entry.id_extra,

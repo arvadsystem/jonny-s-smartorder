@@ -8,7 +8,7 @@ export const normalizeComplementIds = (value) =>
   )].sort((a, b) => a - b);
 
 export const normalizeValidComplementIds = (line) => {
-  if (!line || line.kind === 'PRODUCTO') return [];
+  if (!line || ['PRODUCTO', 'ITEM'].includes(String(line.kind || '').toUpperCase())) return [];
   const allowedIds = new Set(
     (Array.isArray(line.complementos_disponibles) ? line.complementos_disponibles : [])
       .filter((entry) => entry?.disponible !== false)
@@ -141,6 +141,10 @@ export const getResultsLabel = (catalogKey, count) => {
 
   if (catalogKey === 'RECETAS') {
     return `${count} ${count === 1 ? 'receta' : 'recetas'}`;
+  }
+
+  if (catalogKey === 'EXTRAS') {
+    return `${count} ${count === 1 ? 'extra' : 'extras'}`;
   }
 
   return `${count} ${count === 1 ? 'producto' : 'productos'}`;
