@@ -57,6 +57,16 @@ const parseBool = (value) => {
   return null;
 };
 
+const getInsumoConfigStatusLabel = (status) => {
+  const normalized = String(status || 'OK').trim().toUpperCase();
+  if (normalized === 'OK') return 'Config OK';
+  if (normalized === 'SIN_UNIDAD_BASE') return 'Sin unidad base';
+  if (normalized === 'MAPEO_AMBIGUO') return 'Mapeo ambiguo';
+  if (normalized === 'MAPEO_PENDIENTE') return 'Mapeo pendiente';
+  if (normalized === 'MAPEO_REQUIERE_REVISION') return 'Mapeo en revision';
+  return normalized.replace(/_/g, ' ');
+};
+
 const isRowActive = (value) => {
   const parsed = parseBool(value);
   return parsed === null ? true : parsed;
@@ -164,13 +174,31 @@ const MenuSalsasAdmin = () => {
       if (leftPreferred !== rightPreferred) return leftPreferred - rightPreferred;
       return String(left?.nombre || '').localeCompare(String(right?.nombre || ''), 'es', { sensitivity: 'base' });
     });
-    return rows.map((insumo) => ({
-      value: String(insumo.id_insumo),
-      label: `${insumo.nombre}${insumo.categoria_nombre ? ` · ${insumo.categoria_nombre}` : ''}`,
-      searchText: `${insumo.id_insumo} ${insumo.nombre || ''} ${insumo.categoria_nombre || ''}`,
-      unidadId: insumo.id_unidad_medida ? String(insumo.id_unidad_medida) : '',
-      unidadLabel: String(insumo.unidad_simbolo || insumo.unidad_nombre || '').trim()
-    }));
+    return rows.map((insumo) => {
+      const unidadLabel = String(insumo.unidad_simbolo || insumo.unidad_nombre || '').trim();
+      const configStatus = String(insumo.estado_configuracion || 'OK').trim().toUpperCase();
+      const mappingStatus = String(insumo.estado_mapeo_maestro || (Number(insumo.mapping_count || 0) > 0 ? 'SIN_ESTADO' : 'SIN_MAPEO')).trim().toUpperCase();
+      const catalogIndicator = String(insumo.indicador_maestro_legacy || 'MAESTRO').trim().toUpperCase();
+      const disabled = !insumo.id_unidad_medida || configStatus !== 'OK';
+      const helperParts = [
+        `Unidad base: ${unidadLabel || 'sin unidad'}`,
+        `Catalogo: ${catalogIndicator}`,
+        `Mapeo: ${mappingStatus}`,
+        getInsumoConfigStatusLabel(configStatus)
+      ];
+      return {
+        value: String(insumo.id_insumo),
+        label: `#${insumo.id_insumo} - ${insumo.nombre}`,
+        helperText: helperParts.join(' · '),
+        disabled,
+        searchText: `${insumo.id_insumo} ${insumo.nombre || ''} ${insumo.categoria_nombre || ''} ${unidadLabel} ${catalogIndicator} ${mappingStatus} ${configStatus}`,
+        unidadId: insumo.id_unidad_medida ? String(insumo.id_unidad_medida) : '',
+        unidadLabel,
+        configStatus,
+        mappingStatus,
+        catalogIndicator
+      };
+    });
   }, [insumos]);
   const selectedInsumoOption = useMemo(
     () => insumoOptions.find((option) => String(option.value) === String(form.id_insumo)) || null,
@@ -189,6 +217,9 @@ const MenuSalsasAdmin = () => {
   const inventoryWarning = useMemo(() => {
     if (!form.id_insumo) return '';
     if (!selectedInsumoOption?.unidadId) return 'El insumo seleccionado no tiene unidad base configurada.';
+    if (selectedInsumoOption?.disabled) {
+      return `El insumo seleccionado no puede usarse: ${getInsumoConfigStatusLabel(selectedInsumoOption.configStatus)}.`;
+    }
     if (!form.id_unidad_consumo) return 'Selecciona la unidad de consumo para validar conversion en backend.';
     if (selectedInsumoOption.unidadId !== String(form.id_unidad_consumo)) {
       return 'Si la unidad no coincide con la base, debe existir una conversion activa en presentaciones.';
@@ -584,6 +615,10 @@ const MenuSalsasAdmin = () => {
     }
     if ((payload.id_insumo || payload.id_unidad_consumo) && (!payload.id_insumo || !payload.id_unidad_consumo)) {
       setError('Para enlazar inventario indica insumo y unidad de consumo.');
+      return;
+    }
+    if (payload.id_insumo && selectedInsumoOption?.disabled) {
+      setError(`El insumo seleccionado no puede usarse: ${getInsumoConfigStatusLabel(selectedInsumoOption.configStatus)}.`);
       return;
     }
     if (!Number.isFinite(payload.cantidad_porcion) || payload.cantidad_porcion <= 0) {
