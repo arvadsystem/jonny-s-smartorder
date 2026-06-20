@@ -91,6 +91,13 @@ const DEFAULT_INVENTORY_FORM = Object.freeze({
   id_unidad_consumo: ''
 });
 
+const DEFAULT_INVENTORY_SUMMARY = Object.freeze({
+  activas: 0,
+  listas: 0,
+  pendientes: 0,
+  errores: 0
+});
+
 const INVENTORY_STATUS_LABELS = Object.freeze({
   LISTA: 'Lista',
   PENDIENTE: 'Sin configurar',
@@ -145,6 +152,7 @@ const MenuSalsasAdmin = () => {
   const [recipeDiscardConfirm, setRecipeDiscardConfirm] = useState(null);
 
   const [salsas, setSalsas] = useState([]);
+  const [recipeSalsasCatalog, setRecipeSalsasCatalog] = useState([]);
   const [recetas, setRecetas] = useState([]);
   const [insumos, setInsumos] = useState([]);
 
@@ -168,6 +176,8 @@ const MenuSalsasAdmin = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [inventorySummary, setInventorySummary] = useState(DEFAULT_INVENTORY_SUMMARY);
+  const [nextOperationalOrder, setNextOperationalOrder] = useState(1);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [inventoryModalOpen, setInventoryModalOpen] = useState(false);
   const [recipeConfigModalOpen, setRecipeConfigModalOpen] = useState(false);
@@ -179,21 +189,17 @@ const MenuSalsasAdmin = () => {
   const canToggleSalsaEstado = canAny([PERMISSIONS.MENU_SALSAS_ESTADO_CAMBIAR, PERMISSIONS.MENU_VER]);
 
   const activeSalsas = useMemo(
-    () => salsas.filter((row) => isRowActive(row?.estado)),
-    [salsas]
+    () => recipeSalsasCatalog.filter((row) => isRowActive(row?.estado)),
+    [recipeSalsasCatalog]
   );
   const inventoryStats = useMemo(() => {
-    const activeRows = salsas.filter((row) => isRowActive(row?.estado));
-    const ready = activeRows.filter((row) => row?.inventario_estado === 'LISTA').length;
-    const pending = activeRows.filter((row) => row?.inventario_estado === 'PENDIENTE' || !row?.inventario_estado).length;
-    const errorsCount = activeRows.length - ready - pending;
     return {
-      active: activeRows.length,
-      ready,
-      pending,
-      errors: Math.max(0, errorsCount)
+      active: Number(inventorySummary.activas || 0),
+      ready: Number(inventorySummary.listas || 0),
+      pending: Number(inventorySummary.pendientes || 0),
+      errors: Number(inventorySummary.errores || 0)
     };
-  }, [salsas]);
+  }, [inventorySummary]);
   const recetaOptions = useMemo(
     () => recetas.map((receta) => ({
       value: String(receta.id_receta),
@@ -330,15 +336,6 @@ const MenuSalsasAdmin = () => {
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
-  const nextOperationalOrder = useMemo(() => {
-    const maxOrder = salsas.reduce((max, row) => {
-      const current = Number(row?.orden);
-      if (!Number.isFinite(current)) return max;
-      return Math.max(max, current);
-    }, 0);
-    return Math.max(1, maxOrder + 1);
-  }, [salsas]);
-
   const loadBase = useCallback(async () => {
     try {
       setLoading(true);
@@ -381,6 +378,7 @@ const MenuSalsasAdmin = () => {
             bloqueados: Array.isArray(insumosRows?.bloqueados) ? insumosRows.bloqueados : []
           };
       const apiPagination = Array.isArray(salsasRows) ? null : (salsasRows?.pagination || salsasRows?.meta || null);
+      const apiSummary = Array.isArray(salsasRows) ? null : (salsasRows?.summary || null);
       const safeTotalItems = Number(
         apiPagination?.total
         ?? apiPagination?.totalItems
@@ -401,6 +399,13 @@ const MenuSalsasAdmin = () => {
       setInsumos(normalizedInsumos);
       setTotalItems(safeTotalItems);
       setTotalPages(safeTotalPages);
+      setInventorySummary({
+        activas: Number(apiSummary?.activas || 0),
+        listas: Number(apiSummary?.listas || 0),
+        pendientes: Number(apiSummary?.pendientes || 0),
+        errores: Number(apiSummary?.errores || 0)
+      });
+      setNextOperationalOrder(Math.max(1, Number(salsasRows?.next_order || 1)));
 
       setSelectedRecetaId((current) => {
         if (normalizedRecetas.some((row) => String(row?.id_receta) === String(current))) {
@@ -411,10 +416,13 @@ const MenuSalsasAdmin = () => {
     } catch (e) {
       setError(e?.message || 'No se pudo cargar el modulo de salsas.');
       setSalsas([]);
+      setRecipeSalsasCatalog([]);
       setRecetas([]);
       setInsumos([]);
       setTotalItems(0);
       setTotalPages(1);
+      setInventorySummary(DEFAULT_INVENTORY_SUMMARY);
+      setNextOperationalOrder(1);
       setSelectedRecetaId('');
     } finally {
       setLoading(false);
@@ -425,6 +433,7 @@ const MenuSalsasAdmin = () => {
     const id = toPositiveInt(idReceta);
     if (!id) {
       setSelectedSauceIds([]);
+      setRecipeSalsasCatalog([]);
       setRules([]);
       setRecipeConfigSnapshot(normalizeRecipeConfigState([], []));
       return;
@@ -438,6 +447,7 @@ const MenuSalsasAdmin = () => {
         ? response.salsas_asignadas.map((row) => Number(row)).filter((row) => Number.isInteger(row) && row > 0)
         : [];
       const incomingRules = Array.isArray(response?.reglas) ? response.reglas : [];
+      const incomingCatalog = Array.isArray(response?.salsas_catalogo) ? response.salsas_catalogo : [];
       const normalizedRules = incomingRules.map((rule) => ({
         id_local: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
         min_unidades: String(rule?.min_unidades ?? 1),
@@ -445,11 +455,13 @@ const MenuSalsasAdmin = () => {
         salsas_requeridas: String(rule?.salsas_requeridas ?? 0)
       }));
 
+      setRecipeSalsasCatalog(incomingCatalog);
       setSelectedSauceIds(assigned);
       setRules(normalizedRules);
       setRecipeConfigSnapshot(normalizeRecipeConfigState(assigned, normalizedRules));
     } catch (e) {
       setError(e?.message || 'No se pudo cargar la configuracion de salsas por receta.');
+      setRecipeSalsasCatalog([]);
       setSelectedSauceIds([]);
       setRules([]);
       setRecipeConfigSnapshot(normalizeRecipeConfigState([], []));
@@ -647,14 +659,14 @@ const MenuSalsasAdmin = () => {
 
   const persistSalsa = async (mode = 'create') => {
     const resolvedOrden = mode === 'create'
-      ? nextOperationalOrder
+      ? null
       : toIntOrNull(form.orden, { min: 0, max: 9999, allowNull: true });
 
     const payload = {
       nombre: String(form.nombre || '').trim(),
-      nivel_picante: toIntOrNull(form.nivel_picante, { min: 0, max: 5 }),
-      orden: resolvedOrden
+      nivel_picante: toIntOrNull(form.nivel_picante, { min: 0, max: 5 })
     };
+    if (mode === 'edit') payload.orden = resolvedOrden;
 
     if (!payload.nombre) {
       setError('Nombre de salsa es obligatorio.');
