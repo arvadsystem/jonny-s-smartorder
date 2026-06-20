@@ -139,15 +139,16 @@ const normalizeRecipeConfigState = (sauceIds, ruleRows) => ({
 
 const recipeConfigStatesMatch = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
-const normalizeInsumosPayload = (rows) => (
-  Array.isArray(rows)
-    ? rows
-    : {
-        recomendados: Array.isArray(rows?.recomendados) ? rows.recomendados : [],
-        otros_disponibles: Array.isArray(rows?.otros_disponibles) ? rows.otros_disponibles : [],
-        bloqueados: Array.isArray(rows?.bloqueados) ? rows.bloqueados : []
-      }
+const isSalsaInsumo = (row) => (
+  String(row?.codigo_categoria || '').trim().toUpperCase() === 'INS-002'
+  && String(row?.categoria || row?.categoria_nombre || '').trim().toUpperCase() === 'SALSAS Y ADEREZOS'
 );
+
+const normalizeInsumosPayload = (rows) => ({
+  recomendados: (Array.isArray(rows?.recomendados) ? rows.recomendados : []).filter(isSalsaInsumo),
+  otros_disponibles: [],
+  bloqueados: (Array.isArray(rows?.bloqueados) ? rows.bloqueados : []).filter(isSalsaInsumo)
+});
 
 const MenuSalsasAdmin = () => {
   const { canAny } = usePermisos();
@@ -226,10 +227,8 @@ const MenuSalsasAdmin = () => {
     [recetas]
   );
   const flatInsumos = useMemo(() => {
-    if (Array.isArray(insumos)) return insumos;
     return [
       ...(Array.isArray(insumos?.recomendados) ? insumos.recomendados.map((row) => ({ ...row, grupo: 'Recomendados' })) : []),
-      ...(Array.isArray(insumos?.otros_disponibles) ? insumos.otros_disponibles.map((row) => ({ ...row, grupo: 'Otros disponibles' })) : []),
       ...(Array.isArray(insumos?.bloqueados) ? insumos.bloqueados.map((row) => ({ ...row, grupo: 'Bloqueados' })) : [])
     ];
   }, [insumos]);
