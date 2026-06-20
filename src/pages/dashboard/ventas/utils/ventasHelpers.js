@@ -415,26 +415,30 @@ export const normalizeVentaDetail = (row) => {
     return map;
   }, new Map());
   const items = Array.isArray(row?.items)
-    ? row.items.map((item) => ({
-      ...item,
-      id_detalle: Number(item?.id_detalle ?? 0) || null,
-      id_producto: Number(item?.id_producto ?? 0) || null,
-      id_combo: Number(item?.id_combo ?? 0) || null,
-      id_receta: Number(item?.id_receta ?? 0) || null,
-      tipo_item: String(item?.tipo_item ?? 'PRODUCTO'),
-      cantidad: Number(item?.cantidad ?? 0) || 0,
-      precio_unitario: roundMoney(item?.precio_unitario),
-      sub_total: roundMoney(item?.sub_total),
-      total_linea: roundMoney(item?.total_linea),
-      descuento: roundMoney(item?.descuento),
-      descuento_linea: roundMoney(item?.descuento_linea),
-      descuento_global: roundMoney(item?.descuento_global),
-      descuento_porcentaje_linea: getLineDiscountPercent(item),
-      nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
-      nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
-      cantidad_revertida: reversedQtyByDetail.get(Number(item?.id_detalle ?? 0)) || 0,
-      observacion: String(item?.observacion ?? '').trim()
-    }))
+    ? row.items.map((item) => {
+      const esLineaExtraIndependiente = Boolean(item?.es_linea_extra_independiente ?? item?.origen_snapshot?.es_linea_extra_independiente);
+      return {
+        ...item,
+        id_detalle: Number(item?.id_detalle ?? 0) || null,
+        id_producto: Number(item?.id_producto ?? 0) || null,
+        id_combo: Number(item?.id_combo ?? 0) || null,
+        id_receta: Number(item?.id_receta ?? 0) || null,
+        tipo_item: esLineaExtraIndependiente ? 'EXTRA' : String(item?.tipo_item ?? 'PRODUCTO'),
+        cantidad: Number(item?.cantidad ?? 0) || 0,
+        precio_unitario: roundMoney(item?.precio_unitario),
+        sub_total: roundMoney(item?.sub_total),
+        total_linea: roundMoney(item?.total_linea),
+        descuento: roundMoney(item?.descuento),
+        descuento_linea: roundMoney(item?.descuento_linea),
+        descuento_global: roundMoney(item?.descuento_global),
+        descuento_porcentaje_linea: getLineDiscountPercent(item),
+        nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
+        nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
+        es_linea_extra_independiente: esLineaExtraIndependiente,
+        cantidad_revertida: reversedQtyByDetail.get(Number(item?.id_detalle ?? 0)) || 0,
+        observacion: String(item?.observacion ?? '').trim()
+      };
+    })
     : [];
   const resolvedReversedTotal = roundMoney(
     reversiones.reduce((acc, item) => acc + Number(item?.monto_reversado || 0), 0)

@@ -64,7 +64,10 @@ const renderTags = (title, items = [], valueBuilder) => {
 const normalizeComandaItems = (comanda) => normalizeDetailList(comanda?.items, (item, index) => {
   const cantidad = Math.max(1, toSafeNumber(item?.cantidad, 1));
   const nombreItem = toSafeText(item?.nombre_item || item?.nombre_producto, 'Item');
-  const extras = normalizeDetailList(item?.extras, (extra, extraIndex) => ({
+  const isStandaloneExtra = Boolean(item?.es_linea_extra_independiente || item?.origen_snapshot?.es_linea_extra_independiente);
+  const extras = isStandaloneExtra
+    ? []
+    : normalizeDetailList(item?.extras, (extra, extraIndex) => ({
     key: `${extra?.id_extra || extraIndex}-${extraIndex}`,
     nombre: toSafeText(extra?.nombre || extra?.nombre_extra, 'Extra'),
     cantidad: Math.max(1, toSafeNumber(extra?.cantidad, 1))

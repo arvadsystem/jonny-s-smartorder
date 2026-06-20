@@ -27,6 +27,7 @@ export default function VentaComposerSummary({
   onClose
 }) {
   const [expandedNotes, setExpandedNotes] = useState({});
+  const isStandaloneExtraLine = (line) => String(line?.kind || '').toUpperCase() === 'ITEM';
   const pendingCount = Number(pendingPaymentsSummary?.total ?? 0) || 0;
   const pendingAmount = Number(pendingPaymentsSummary?.monto ?? 0) || 0;
   const pendingLabel = pendingPaymentsSummary?.error
@@ -96,8 +97,14 @@ export default function VentaComposerSummary({
               const discountDetail = lineDiscountDetailsByKey.get(String(line.cartKey)) || null;
               const thumb = line.imagen_principal_url || null;
               const isSimpleProduct = line.kind === 'PRODUCTO';
+              const isStandaloneExtra = isStandaloneExtraLine(line);
+              const isQuantityManaged = isSimpleProduct || isStandaloneExtra;
               const canIncrease =
-                isSimpleProduct && Number(line.cantidad ?? 0) < Number(line.stock_disponible ?? 0);
+                isSimpleProduct
+                  ? Number(line.cantidad ?? 0) < Number(line.stock_disponible ?? 0)
+                  : isStandaloneExtra
+                    ? (Number(line.available_units ?? 0) <= 0 || Number(line.cantidad ?? 0) < Number(line.available_units ?? 0))
+                    : false;
               const hasKitchenNote = String(line.observacion || '').trim().length > 0;
               const noteExpanded = Boolean(expandedNotes[line.cartKey]);
               const complementIssue = typeof composer.getLineComplementSelectionIssue === 'function'
@@ -136,8 +143,10 @@ export default function VentaComposerSummary({
                       ) : null}
                       {hasKitchenNote ? <span className="ventas-cart__note-badge">Con observacion</span> : null}
                     </div>
-                    {line.kind === 'PRODUCTO' ? (
-                      <small className="ventas-cart__stock">Disponible: {Number(line.stock_disponible ?? 0)}</small>
+                    {isQuantityManaged ? (
+                      <small className="ventas-cart__stock">
+                        Disponible: {Number(isStandaloneExtra ? (line.available_units ?? 0) : (line.stock_disponible ?? 0))}
+                      </small>
                     ) : (
                       <small className="ventas-cart__stock">
                         {line.complementos_requiere ? buildComplementSummaryLabel(line, composer) : 'Cocina'}
@@ -145,7 +154,7 @@ export default function VentaComposerSummary({
                     )}
 
                     <div className="ventas-cart__item-row">
-                      {isSimpleProduct ? (
+                      {isQuantityManaged ? (
                         <div className="ventas-create-modal__qty-control" data-testid="ventas-cart-product-qty">
                           <button
                             type="button"
@@ -191,10 +200,10 @@ export default function VentaComposerSummary({
                       </button>
                     </div>
 
-                    {line.kind !== 'PRODUCTO' ? (
+                    {!isSimpleProduct ? (
                       <div className={`ventas-cart__kitchen-note ${noteExpanded ? 'is-expanded' : 'is-collapsed'}`}>
                         <div className="ventas-cart__line-actions-row">
-                          {line.complementos_requiere ? (
+                          {!isStandaloneExtra && line.complementos_requiere ? (
                             <button
                               type="button"
                               className={`ventas-cart__action-btn ${isComplementIncomplete ? 'is-attention' : ''}`}
@@ -207,9 +216,10 @@ export default function VentaComposerSummary({
                           ) : null}
                           <button
                             type="button"
-                            className={`ventas-cart__action-btn ${extrasCount > 0 ? 'is-active' : ''}`}
+                            className={`ventas-cart__action-btn ${extrasCount > 0 ? 'is-active' : ''} ${isStandaloneExtra ? 'd-none' : ''}`}
                             data-testid="ventas-cart-extras"
                             onClick={() => composer.openExtrasModalForLine(line.cartKey)}
+                            disabled={isStandaloneExtra}
                           >
                             <i className="bi bi-plus-square-dotted" aria-hidden="true" />
                             <span>Extra +{extrasCount > 0 ? ` · ${extrasCount}` : ''}</span>

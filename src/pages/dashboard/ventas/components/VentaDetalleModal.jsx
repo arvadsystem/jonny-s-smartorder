@@ -25,7 +25,10 @@ const getExtraSubtotal = (extra) => {
   return toMoneyNumber(extra?.precio_unitario ?? extra?.precio) * toMoneyNumber(extra?.cantidad);
 };
 
+const isStandaloneExtraItem = (item) => Boolean(item?.es_linea_extra_independiente || item?.origen_snapshot?.es_linea_extra_independiente);
+
 const getItemExtrasSubtotal = (item) => {
+  if (isStandaloneExtraItem(item)) return 0;
   const extras = Array.isArray(item?.extras) ? item.extras : [];
   return extras.reduce((sum, extra) => sum + getExtraSubtotal(extra), 0);
 };
@@ -241,7 +244,7 @@ export default function VentaDetalleModal({
                                   {item.observacion ? (
                                     <small className="ventas-detail-modal__item-note">{item.observacion}</small>
                                   ) : null}
-                                  {Array.isArray(item.extras) && item.extras.length > 0 ? (
+                                  {!isStandaloneExtraItem(item) && Array.isArray(item.extras) && item.extras.length > 0 ? (
                                     <small className="ventas-detail-modal__item-note">
                                       Extras: {item.extras.map(formatExtraLabel).join(', ')}
                                     </small>
@@ -286,7 +289,7 @@ export default function VentaDetalleModal({
                             {getLineDiscountPercent(item) !== null ? (
                               <div><dt>Desc. %</dt><dd>{formatDiscountPercent(getLineDiscountPercent(item))}</dd></div>
                             ) : null}
-                            {Array.isArray(item.extras) && item.extras.length > 0 ? (
+                            {!isStandaloneExtraItem(item) && Array.isArray(item.extras) && item.extras.length > 0 ? (
                               <div><dt>Extras</dt><dd>{item.extras.map(formatExtraLabel).join(', ')}</dd></div>
                             ) : null}
                             <div><dt>Subtotal</dt><dd>{formatCurrency(item.total_linea || item.sub_total)}</dd></div>
