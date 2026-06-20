@@ -82,9 +82,19 @@ const normalizeOptionSearchText = (cliente) => [
   cliente.id_telefono,
   cliente.dni,
   cliente.rtn,
+  cliente.tipo_cliente,
   cliente.correo,
   cliente.id_correo
 ].filter(Boolean).join(' ');
+
+const buildClienteHelperText = (cliente = {}) => {
+  if (cliente.es_consumidor_final) return 'Venta sin cliente registrado';
+  return [
+    cliente.telefono,
+    cliente.dni || cliente.rtn,
+    cliente.tipo_cliente
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(' · ');
+};
 
 export default function VentaFinalizarOperacionModal({
   open,
@@ -472,7 +482,7 @@ export default function VentaFinalizarOperacionModal({
   const clienteOptions = (Array.isArray(composer.clientes) ? composer.clientes : []).map((cliente) => ({
     value: String(cliente.value ?? cliente.id_cliente ?? ''),
     label: String(cliente.label ?? cliente.nombre_cliente ?? 'Cliente'),
-    helperText: cliente.es_consumidor_final ? 'Venta sin cliente registrado' : '',
+    helperText: buildClienteHelperText(cliente),
     searchText: normalizeOptionSearchText(cliente)
   }));
   const selectedCliente = (Array.isArray(composer.clientes) ? composer.clientes : []).find((cliente) => {

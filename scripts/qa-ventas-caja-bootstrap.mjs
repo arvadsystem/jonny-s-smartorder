@@ -6,11 +6,13 @@ import { validateComandaForPrint } from '../src/pages/dashboard/ventas/utils/bui
 const useVentasSource = readFileSync(new URL('../src/pages/dashboard/ventas/hooks/useVentas.js', import.meta.url), 'utf8');
 const serviceSource = readFileSync(new URL('../src/services/ventasService.js', import.meta.url), 'utf8');
 const cajaSource = readFileSync(new URL('../src/pages/dashboard/ventas/components/CajaView.jsx', import.meta.url), 'utf8');
+const finalizarModalSource = readFileSync(new URL('../src/pages/dashboard/ventas/components/VentaFinalizarOperacionModal.jsx', import.meta.url), 'utf8');
 const composerSource = readFileSync(new URL('../src/pages/dashboard/ventas/hooks/useVentaComposer.js', import.meta.url), 'utf8');
 const catalogSource = readFileSync(new URL('../src/pages/dashboard/ventas/components/VentaComposerCatalog.jsx', import.meta.url), 'utf8');
 const optionsSource = readFileSync(new URL('../src/modules/ventas/constants/ventasOptions.js', import.meta.url), 'utf8');
 const composerSummarySource = readFileSync(new URL('../src/pages/dashboard/ventas/components/VentaComposerSummary.jsx', import.meta.url), 'utf8');
 const payloadBuildersSource = readFileSync(new URL('../src/modules/ventas/utils/ventasPayloadBuilders.js', import.meta.url), 'utf8');
+const ventasHelpersSource = readFileSync(new URL('../src/pages/dashboard/ventas/utils/ventasHelpers.js', import.meta.url), 'utf8');
 
 assert.match(serviceSource, /getCajaBootstrap[\s\S]*\/ventas\/caja\/bootstrap/, 'debe existir el servicio bootstrap');
 assert.match(useVentasSource, /activeTab[\s\S]*=== 'caja'[\s\S]*loadCajaBootstrap/, 'Caja debe cargar bootstrap sin esperar historial');
@@ -76,6 +78,11 @@ const initialCajaBranch = useVentasSource.slice(
   useVentasSource.indexOf('const ventasResult = await loadVentas()', useVentasSource.indexOf("if (String(activeTab || '').toLowerCase() === 'caja')"))
 );
 assert.doesNotMatch(initialCajaBranch, /getClientesCatalog|getProductosCatalog|getCombosCatalog|getDescuentosCatalog|loadVentas\(/);
+assert.match(ventasHelpersSource, /CLIENTE_NOMBRE_PLACEHOLDERS/, 'clientes debe sanear placeholders legacy en frontend');
+assert.match(ventasHelpersSource, /\^0\+\\d\{2,\}\$/, 'clientes no debe mostrar codigos con ceros como nombre');
+assert.match(ventasHelpersSource, /Cliente #\$\{idCliente\}/, 'clientes sin nombre valido deben mostrarse como Cliente #id');
+assert.match(finalizarModalSource, /buildClienteHelperText/, 'selector de clientes debe mostrar metadata secundaria');
+assert.match(finalizarModalSource, /cliente\.telefono[\s\S]*cliente\.dni \|\| cliente\.rtn[\s\S]*cliente\.tipo_cliente/, 'metadata de cliente debe incluir telefono, documento y tipo');
 
 const names = ['ALITA UNIDAD', '30 ALITAS', '8 ALITAS', '12 ALITAS', '6 ALITAS', '24 ALITAS', '18 ALITAS'];
 assert.deepEqual([...names].sort(compareRecipeNamesNaturally), [

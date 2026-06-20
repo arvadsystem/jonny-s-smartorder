@@ -245,16 +245,57 @@ export const normalizeRecetaRecord = (row) => ({
     .filter((entry) => entry.id_complemento)
 });
 
+const CLIENTE_NOMBRE_PLACEHOLDERS = new Set([
+  'sin nombre',
+  'sin apellido',
+  'sin nombres',
+  'sin apellidos',
+  'delivery',
+  'no registrado',
+  'no registra',
+  'n/a',
+  'na',
+  'null',
+  'undefined'
+]);
+
+const normalizeClienteNamePart = (value) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (CLIENTE_NOMBRE_PLACEHOLDERS.has(text.toLowerCase())) return '';
+  if (!/\p{L}/u.test(text)) return '';
+  if (/^0+\d{2,}$/.test(text)) return '';
+  return text;
+};
+
+const buildClienteDisplayName = (row = {}) => {
+  const explicitLabel = normalizeClienteNamePart(row?.nombre_cliente || row?.label);
+  if (explicitLabel && !/^Cliente\s+#\d+$/i.test(explicitLabel)) return explicitLabel;
+
+  const empresa = normalizeClienteNamePart(row?.nombre_empresa);
+  if (empresa) return empresa;
+
+  const persona = [
+    normalizeClienteNamePart(row?.nombre),
+    normalizeClienteNamePart(row?.apellido)
+  ].filter(Boolean).join(' ').trim();
+  if (persona) return persona;
+
+  const idCliente = Number(row?.id_cliente ?? row?.value ?? 0) || null;
+  return idCliente ? `Cliente #${idCliente}` : (explicitLabel || 'Cliente sin nombre');
+};
+
 export const normalizeClienteOption = (row) => ({
   ...row,
   id_cliente: Number(row?.id_cliente ?? 0) || null,
   value: String(row?.id_cliente ?? ''),
-  label: String(row?.nombre_cliente ?? 'Consumidor final'),
-  nombre_cliente: String(row?.nombre_cliente ?? 'Consumidor final'),
+  label: buildClienteDisplayName(row),
+  nombre_cliente: buildClienteDisplayName(row),
   telefono: String(row?.telefono ?? '').trim(),
   id_telefono: Number(row?.id_telefono ?? 0) || null,
   dni: String(row?.dni ?? '').trim(),
   rtn: String(row?.rtn ?? '').trim(),
+  tipo_cliente: String(row?.tipo_cliente ?? '').trim(),
   es_consumidor_final: Boolean(row?.es_consumidor_final)
 });
 
