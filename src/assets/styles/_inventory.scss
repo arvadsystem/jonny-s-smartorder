@@ -554,6 +554,10 @@
     transform: none;
   }
 
+  .inv-catpro-carousel-stage .inv-prod-carousel-float:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.03);
+  }
+
   .inv-catpro-carousel-stage .inv-prod-carousel-float.is-prev {
     left: 0;
   }
@@ -4270,6 +4274,10 @@
     top: auto;
     bottom: -0.35rem;
     transform: none;
+  }
+
+  .inv-ins-carousel-stage .inv-prod-carousel-float:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.03);
   }
 
   .inv-ins-carousel-stage .inv-prod-carousel-float.is-prev {
