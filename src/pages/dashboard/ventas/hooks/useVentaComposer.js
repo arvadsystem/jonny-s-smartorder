@@ -643,7 +643,9 @@ export const useVentaComposer = ({
     return Number.isFinite(numeric) && numeric >= 0 ? roundMoney(numeric) : 0;
   }, [state.cashReceived]);
 
-  const change = roundMoney(Math.max(cashValue - total, 0));
+  const change = state.paymentMethod === 'efectivo'
+    ? roundMoney(Math.max(cashValue - total, 0))
+    : 0;
   const canContinue = hasSelectedSucursal && state.cart.length > 0;
   const canSubmit = hasSelectedSucursal
     && state.cart.length > 0
@@ -1178,6 +1180,16 @@ export const useVentaComposer = ({
     return submitPaidSale();
   };
 
+  const resetPaymentDraft = () => {
+    setState((current) => ({
+      ...current,
+      paymentMethod: 'efectivo',
+      cashReceived: '',
+      referenciaPago: '',
+      submitError: ''
+    }));
+  };
+
   return {
     activeCatalog: state.activeCatalog,
     activeCategory: state.activeCategory,
@@ -1283,10 +1295,13 @@ export const useVentaComposer = ({
         clientPickerOpen: false
       }),
     setPaymentMethod: (value) =>
-      setPartialState({
+      setState((current) => ({
+        ...current,
         paymentMethod: value,
+        cashReceived: value === 'efectivo' ? current.cashReceived : '',
+        referenciaPago: value === 'efectivo' ? '' : current.referenciaPago,
         submitError: ''
-      }),
+      })),
     setSelectedDiscountId: (value) => {
       if (!canApplyDiscount) {
         setPartialState({
@@ -1342,6 +1357,7 @@ export const useVentaComposer = ({
     },
     setCashReceived: (value) => setPartialState({ cashReceived: value }),
     setReferenciaPago: (value) => setPartialState({ referenciaPago: value }),
+    resetPaymentDraft,
     addCatalogItem,
     openComplementModalForLine,
     closeComplementModal,

@@ -64,7 +64,7 @@ export const buildPaidSalePayload = ({
     id_sucursal: selectedSucursalId,
     metodo_pago: state.paymentMethod,
     referencia_pago: state.paymentMethod !== 'efectivo' ? state.referenciaPago.trim() : null,
-    efectivo_entregado: cashValue,
+    efectivo_entregado: state.paymentMethod === 'efectivo' ? cashValue : null,
     id_sesion_caja: toNormalizedId(state.temporarySessionId),
     descripcion_pedido: null,
     items: buildVentaItemsPayload(state.cart, { canApplyDiscount }),
