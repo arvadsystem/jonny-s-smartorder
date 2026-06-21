@@ -699,9 +699,9 @@ export default function VentasPage() {
   const handleAcceptComanda = async () => {
     const venta = comandaPrompt.venta;
     const mode = comandaPrompt.mode;
-    if ((!venta?.id_factura && !venta?.id_pedido) || comandaPrompt.loading) return;
-
     const isPendingOrderComanda = mode === 'pending-order';
+    if ((isPendingOrderComanda ? !venta?.id_pedido : !venta?.id_factura) || comandaPrompt.loading) return;
+
     const comandaPrintWindow = isPendingOrderComanda ? null : openPrintWindow('Preparando comanda');
 
     setComandaPrompt((current) => ({
@@ -710,27 +710,37 @@ export default function VentasPage() {
       error: ''
     }));
 
-    const resolvedSucursalId = Number.parseInt(String(venta?.id_sucursal ?? ''), 10);
-    const resolvedCajaId = Number.parseInt(String(venta?.id_caja ?? ''), 10);
-    const runtimePrinterConfig = Number.isInteger(resolvedSucursalId) && resolvedSucursalId > 0
-      ? await getRuntimePrinterConfig({
-        idSucursal: resolvedSucursalId,
-        idCaja: Number.isInteger(resolvedCajaId) && resolvedCajaId > 0 ? resolvedCajaId : null
-      }).catch(() => null)
-      : null;
-    const cocinaPrinterConfig = resolvePrinterByType(runtimePrinterConfig, 'COCINA');
-    const cocinaWidthMm = resolvePrintWidthMm(cocinaPrinterConfig?.ancho_mm);
-    const attemptedQzMode = isQzMode(cocinaPrinterConfig)
-      ? String(cocinaPrinterConfig?.modo_impresion || 'QZ_HTML').trim().toUpperCase()
-      : null;
-    const canUseQzComanda = Boolean(
-      cocinaPrinterConfig?.activa !== false
-      && attemptedQzMode
-      && String(cocinaPrinterConfig?.nombre_impresora_sistema || '').trim()
-    );
+    let comandaForPrint = venta;
+    let cocinaPrinterConfig = null;
+    let cocinaWidthMm = 80;
+    let attemptedQzMode = null;
+    let canUseQzComanda = false;
 
     try {
-      const comanda = venta;
+      const comanda = isPendingOrderComanda
+        ? await ventasService.getPedidoComanda(venta.id_pedido)
+        : venta;
+      comandaForPrint = comanda;
+
+      const resolvedSucursalId = Number.parseInt(String(comanda?.id_sucursal ?? ''), 10);
+      const resolvedCajaId = Number.parseInt(String(comanda?.id_caja ?? ''), 10);
+      const runtimePrinterConfig = Number.isInteger(resolvedSucursalId) && resolvedSucursalId > 0
+        ? await getRuntimePrinterConfig({
+          idSucursal: resolvedSucursalId,
+          idCaja: Number.isInteger(resolvedCajaId) && resolvedCajaId > 0 ? resolvedCajaId : null
+        }).catch(() => null)
+        : null;
+      cocinaPrinterConfig = resolvePrinterByType(runtimePrinterConfig, 'COCINA');
+      cocinaWidthMm = resolvePrintWidthMm(cocinaPrinterConfig?.ancho_mm);
+      attemptedQzMode = isQzMode(cocinaPrinterConfig)
+        ? String(cocinaPrinterConfig?.modo_impresion || 'QZ_HTML').trim().toUpperCase()
+        : null;
+      canUseQzComanda = Boolean(
+        cocinaPrinterConfig?.activa !== false
+        && attemptedQzMode
+        && String(cocinaPrinterConfig?.nombre_impresora_sistema || '').trim()
+      );
+
       const validation = validateComandaForPrint(comanda);
       if (!validation.ok) {
         throw new Error(validation.message);
@@ -767,15 +777,19 @@ export default function VentasPage() {
       await closeComandaPrompt({ markAsCancelled: false });
     } catch (error) {
       const printErrorMessage = error?.message || 'No se pudo imprimir la comanda de cocina.';
-      const pendingOrderErrorMessage = 'El pedido fue creado, pero la comanda no se imprimio.';
 
       if (isPendingOrderComanda) {
         if (comandaPrintWindow) comandaPrintWindow.close();
         console.error('[Ventas] No se pudo imprimir la comanda del pedido pendiente.', error);
+        const pendingOrderErrorMessage = comandaForPrint === venta
+          ? 'El pedido fue creado, pero no se pudo cargar la comanda para imprimir'
+          : 'El pedido fue creado, pero la comanda no se imprimio.';
         setComandaPrompt((current) => ({
           ...current,
           loading: false,
-          error: `${pendingOrderErrorMessage} ${printErrorMessage}`.trim()
+          error: comandaForPrint === venta
+            ? pendingOrderErrorMessage
+            : `${pendingOrderErrorMessage} ${printErrorMessage}`.trim()
         }));
         openToast('COMANDA COCINA', pendingOrderErrorMessage, 'warning');
         return;
@@ -802,7 +816,7 @@ export default function VentasPage() {
         }
 
         try {
-          await printComandaCocinaInWindow(venta, comandaPrintWindow, { widthMm: cocinaWidthMm });
+          await printComandaCocinaInWindow(comandaForPrint, comandaPrintWindow, { widthMm: cocinaWidthMm });
           openToast(
             'COMANDA COCINA',
             'La comanda no se pudo imprimir automaticamente con QZ Tray, pero se abrio la impresion manual.',
