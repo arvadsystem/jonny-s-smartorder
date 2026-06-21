@@ -1,5 +1,5 @@
-const TICKET_WIDTH_MM = 80;
-const CONTENT_WIDTH_MM = 76;
+const resolveTicketWidthMm = (value) => Number(value) === 58 ? 58 : 80;
+const resolveContentWidthMm = (ticketWidthMm) => ticketWidthMm === 58 ? 54 : 76;
 
 const escapeHtml = (value) =>
   String(value ?? '')
@@ -126,12 +126,16 @@ export const validateComandaForPrint = (comanda) => {
   };
 };
 
-export const buildComandaCocinaHtml = (comanda) => {
+export const buildComandaCocinaHtml = (comanda, options = {}) => {
   const validation = validateComandaForPrint(comanda);
   if (!validation.ok) {
     throw new Error(validation.message);
   }
 
+  const ticketWidthMm = resolveTicketWidthMm(options?.widthMm);
+  const contentWidthMm = resolveContentWidthMm(ticketWidthMm);
+  const itemQtyMinWidth = ticketWidthMm === 58 ? '10mm' : '14mm';
+  const itemDetailPaddingLeft = ticketWidthMm === 58 ? '8mm' : '14mm';
   const items = validation.items;
   const fecha = formatDateTime(comanda?.fecha_hora_pedido || comanda?.fecha_hora_facturacion);
   const numeroPedido = toSafeText(comanda?.numero_pedido || comanda?.numero_venta || comanda?.codigo_venta);
@@ -164,10 +168,18 @@ export const buildComandaCocinaHtml = (comanda) => {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Comanda cocina</title>
     <style>
-      @page { size: ${TICKET_WIDTH_MM}mm auto; margin: 2mm; }
+      @page { size: ${ticketWidthMm}mm auto; margin: 2mm; }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
       html, body {
         margin: 0;
         padding: 0;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
         background: #fff;
         color: #111;
         font-family: Arial, sans-serif;
@@ -177,14 +189,20 @@ export const buildComandaCocinaHtml = (comanda) => {
         print-color-adjust: exact;
       }
       .comanda-cocina-print-root {
-        width: ${CONTENT_WIDTH_MM}mm;
+        width: ${contentWidthMm}mm;
+        max-width: 100%;
         margin: 0 auto;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .comanda-cocina-print {
         width: 100%;
+        max-width: 100%;
         font-size: 13px;
         line-height: 1.4;
         font-weight: 500;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .comanda-cocina-print__header {
         text-align: center;
@@ -218,6 +236,7 @@ export const buildComandaCocinaHtml = (comanda) => {
         justify-content: space-between;
         gap: 8px;
         align-items: flex-start;
+        min-width: 0;
       }
       .comanda-cocina-print__meta-row span:first-child {
         font-weight: 700;
@@ -225,6 +244,10 @@ export const buildComandaCocinaHtml = (comanda) => {
       }
       .comanda-cocina-print__meta-row span:last-child {
         text-align: right;
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .comanda-cocina-print__items {
         display: grid;
@@ -238,30 +261,42 @@ export const buildComandaCocinaHtml = (comanda) => {
         display: flex;
         gap: 8px;
         align-items: baseline;
+        min-width: 0;
       }
       .comanda-cocina-print__qty {
         font-size: 22px;
         line-height: 1;
         font-weight: 800;
-        min-width: 14mm;
+        min-width: ${itemQtyMinWidth};
+        flex: 0 0 auto;
       }
       .comanda-cocina-print__name {
         font-size: 19px;
         line-height: 1.15;
         font-weight: 800;
         text-transform: uppercase;
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .comanda-cocina-print__tags,
       .comanda-cocina-print__notes {
         margin-top: 5px;
-        padding-left: 14mm;
+        padding-left: ${itemDetailPaddingLeft};
         display: grid;
         gap: 4px;
+        min-width: 0;
+        max-width: 100%;
       }
       .comanda-cocina-print__tag,
       .comanda-cocina-print__note {
         font-size: 13px;
         line-height: 1.35;
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .comanda-cocina-print__tag-title,
       .comanda-cocina-print__note-title {
@@ -273,6 +308,10 @@ export const buildComandaCocinaHtml = (comanda) => {
         line-height: 1.35;
         font-weight: 700;
         text-transform: uppercase;
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
     </style>
   </head>

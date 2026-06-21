@@ -292,8 +292,8 @@ export const printHtmlDocument = async (html, options = {}) => {
 
 export const printComandaCocina = async (comanda) => printComandaCocinaInWindow(comanda, openPrintWindow('Preparando comanda'));
 
-export const printComandaCocinaInWindow = async (comanda, printWindow) => {
-  const html = buildComandaCocinaHtml(comanda);
+export const printComandaCocinaInWindow = async (comanda, printWindow, options = {}) => {
+  const html = buildComandaCocinaHtml(comanda, { widthMm: options?.widthMm });
   return printHtmlDocument(html, {
     title: 'Comanda cocina',
     printWindow
@@ -323,8 +323,8 @@ export const printComandaCocinaWithQz = async (comanda, printerConfig = {}) => {
     throw new Error('No hay una impresora COCINA configurada para QZ Tray.');
   }
 
-  const html = buildComandaCocinaHtml(comanda);
   const widthMm = resolveWidthMm(printerConfig?.ancho_mm, 80);
+  const html = buildComandaCocinaHtml(comanda, { widthMm });
   const mode = String(printerConfig?.modo_impresion || 'QZ_HTML').trim().toUpperCase();
 
   if (mode === 'QZ_RAW') {

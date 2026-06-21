@@ -683,7 +683,7 @@ export default function VentasPage() {
         await printComandaCocinaWithQz(comanda, cocinaPrinterConfig);
         if (comandaPrintWindow && !comandaPrintWindow.closed) comandaPrintWindow.close();
       } else {
-        await printComandaCocinaInWindow(comanda, comandaPrintWindow);
+        await printComandaCocinaInWindow(comanda, comandaPrintWindow, { widthMm: cocinaWidthMm });
       }
 
       void ventasService.registerPrintEvent(venta.id_factura, {
@@ -725,7 +725,7 @@ export default function VentasPage() {
         }).catch(() => undefined);
 
         try {
-          await printComandaCocinaInWindow(venta, comandaPrintWindow);
+          await printComandaCocinaInWindow(venta, comandaPrintWindow, { widthMm: cocinaWidthMm });
           openToast(
             'COMANDA COCINA',
             'La comanda no se pudo imprimir automaticamente con QZ Tray, pero se abrio la impresion manual.',
