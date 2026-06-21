@@ -2089,14 +2089,6 @@
   font-size: 0.68rem;
 }
 
-.cocina-page--tv-mode .kds-card__item-name,
-.cocina-page--tv-mode .kds-mod-line,
-.cocina-page--tv-mode .kds-card__order-note-text {
-  display: -webkit-box;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .cocina-page--tv-mode .kds-card__item-name {
   font-size: 0.9rem;
   line-height: 1.18;
@@ -2359,4 +2351,48 @@
 .cocina-page--tv-mode .kds-column.is-pending .kds-column__body,
 .cocina-page--tv-mode .kds-column.is-prep .kds-column__body {
   align-items: stretch;
+}
+
+/* AM: TV cards must size from their complete kitchen content. */
+.cocina-page--tv-mode .kds-column.is-pending .kds-column__body {
+  grid-auto-rows: max-content;
+  align-items: start;
+  align-content: start;
+}
+
+.cocina-page--tv-mode .kds-card,
+.cocina-page--tv-mode .kds-column.is-pending .kds-card,
+.cocina-page--tv-mode .kds-column.is-prep .kds-card {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: max-content;
+  max-height: none;
+  overflow: visible;
+  align-self: start;
+}
+
+.cocina-page--tv-mode .kds-card__content,
+.cocina-page--tv-mode .kds-card__body-scroll,
+.cocina-page--tv-mode .kds-card__items,
+.cocina-page--tv-mode .kds-card__item,
+.cocina-page--tv-mode .kds-card__item > div,
+.cocina-page--tv-mode .kds-card__item-mods,
+.cocina-page--tv-mode .kds-card__order-note {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.cocina-page--tv-mode .kds-card__item-name,
+.cocina-page--tv-mode .kds-mod-line,
+.cocina-page--tv-mode .kds-mod-line__values,
+.cocina-page--tv-mode .kds-card__order-note-text {
+  display: block;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
