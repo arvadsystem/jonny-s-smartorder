@@ -2331,7 +2331,9 @@
 
 .cocina-page--tv-mode .kds-card__content,
 .cocina-page--tv-mode .kds-card__body-scroll {
-  overflow: hidden;
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
   max-height: none;
   height: auto;
 }
