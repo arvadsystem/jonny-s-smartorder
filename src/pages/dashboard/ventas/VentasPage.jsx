@@ -73,6 +73,7 @@ export default function VentasPage() {
     descuentosCatalogo,
     tiposDepartamento,
     clientes,
+    clientesMeta,
     loading,
     catalogLoading,
     bootstrapLoading,
@@ -859,6 +860,7 @@ export default function VentasPage() {
           categorias={categorias}
           tiposDepartamento={tiposDepartamento}
           clientes={clientes}
+          clientesMeta={clientesMeta}
           combos={combos}
           recetas={recetas}
           descuentosCatalogo={descuentosCatalogo}

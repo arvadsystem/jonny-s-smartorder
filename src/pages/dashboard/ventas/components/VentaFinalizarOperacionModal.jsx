@@ -105,6 +105,7 @@ export default function VentaFinalizarOperacionModal({
   onDeliveryCostChange,
   onClientesRefresh,
   onClienteCatalogUpsert,
+  clientesMeta = { limit: 100, has_more: false },
   clientsLoading = false,
   clientsStatus = 'idle',
   clientsError = '',
@@ -148,15 +149,13 @@ export default function VentaFinalizarOperacionModal({
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   }, [delivery.costo_envio]);
 
-  const requestClientes = useCallback((rawSearch = '', { force = false, all } = {}) => {
+  const requestClientes = useCallback((rawSearch = '', { force = false } = {}) => {
     if (!open) return undefined;
     const query = String(rawSearch || '').trim();
-    if (query && query.length < 2 && !/^\d+$/.test(query)) return undefined;
-    const requestAll = Boolean(query) && all !== false;
-    const requestKey = `${query}:${requestAll ? 'all' : '20'}`;
+    const requestKey = `${query}:100`;
     if (!force && lastClientSearchRequestRef.current === requestKey) return undefined;
     lastClientSearchRequestRef.current = requestKey;
-    return onClientesRefresh?.({ search: query, limit: 20, all: requestAll, force, noCache: true }).catch((error) => {
+    return onClientesRefresh?.({ search: query, limit: 100, force, noCache: true }).catch((error) => {
       if (lastClientSearchRequestRef.current === requestKey) {
         lastClientSearchRequestRef.current = null;
       }
@@ -168,6 +167,7 @@ export default function VentaFinalizarOperacionModal({
     if (!open) {
       lastClientSearchRequestRef.current = null;
       setClientSearch('');
+      void onClientesRefresh?.({ search: '', limit: 100, noCache: true });
       return undefined;
     }
     const query = clientSearch.trim();
@@ -176,7 +176,7 @@ export default function VentaFinalizarOperacionModal({
       void requestClientes(query).catch(() => null);
     }, query ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [clientSearch, open, requestClientes]);
+  }, [clientSearch, onClientesRefresh, open, requestClientes]);
 
   useEffect(() => {
     if (!open) return;
@@ -534,7 +534,7 @@ export default function VentaFinalizarOperacionModal({
     setQuickCreateOpen(false);
     const refreshSearch = String(idCliente || selected?.id_cliente || '').trim();
     if (!refreshSearch) return;
-    void requestClientes(refreshSearch, { force: true, all: true })
+    void requestClientes(refreshSearch, { force: true })
       .then((refreshedClientes) => {
         const refreshed = (Array.isArray(refreshedClientes) ? refreshedClientes : []).find(
           (item) => Number(item?.id_cliente) === Number(idCliente)
@@ -641,7 +641,6 @@ export default function VentaFinalizarOperacionModal({
                 onSearchChange={setClientSearch}
                 onOpen={() => {
                   setClientSearch('');
-                  void requestClientes('').catch(() => null);
                 }}
                 emptyText={clientsLoading || clientsStatus === 'loading'
                   ? 'Buscando clientes...'
@@ -656,6 +655,11 @@ export default function VentaFinalizarOperacionModal({
                   setQuickCreateOpen(true);
                 }}
                 className="app-select--compact app-select--warm ventas-finalizar-modal__field-wide"
+                helperText={!clientSearch.trim()
+                  ? 'Escribe un nombre, teléfono, DNI, RTN o ID para buscar un cliente.'
+                  : clientesMeta.has_more
+                    ? 'Se muestran los primeros 100 resultados. Refina la búsqueda.'
+                    : ''}
               />
               {clientsStatus === 'error' ? (
                 <div className="ventas-create-modal__error ventas-finalizar-modal__field-wide" role="alert">

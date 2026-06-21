@@ -193,6 +193,7 @@ export default function CajaView({
   categorias,
   tiposDepartamento,
   clientes,
+  clientesMeta,
   combos,
   recetas,
   descuentosCatalogo,
@@ -1349,6 +1350,7 @@ export default function CajaView({
           onDeliveryCostChange={setDeliveryCostPreview}
           onClientesRefresh={onClientesRefresh}
           onClienteCatalogUpsert={onClienteCatalogUpsert}
+          clientesMeta={clientesMeta}
           clientsLoading={Boolean(catalogLoadingStates.clientsLoading)}
           clientsStatus={catalogStatuses.clientes || 'idle'}
           clientsError={catalogErrors.clientes || ''}

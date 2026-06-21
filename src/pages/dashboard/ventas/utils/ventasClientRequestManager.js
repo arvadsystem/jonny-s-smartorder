@@ -41,3 +41,8 @@ export const isCancelledVentasClientRequest = (error, signal) => Boolean(
   || error?.code === 'ABORT_ERR'
 );
 
+export const shouldRequestVentasClients = (value) => {
+  const search = String(value || '').trim();
+  if (!search) return false;
+  return /^\d+$/.test(search) || search.length >= 2;
+};

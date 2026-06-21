@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {
   createVentasClientRequestManager,
-  isCancelledVentasClientRequest
+  isCancelledVentasClientRequest,
+  shouldRequestVentasClients
 } from '../src/pages/dashboard/ventas/utils/ventasClientRequestManager.js';
 import {
   createInitialPersonaForm,
@@ -13,6 +14,10 @@ import {
 } from '../src/pages/dashboard/personas/components/common/empresa-form-shared.js';
 
 const manager = createVentasClientRequestManager();
+assert.equal(shouldRequestVentasClients(''), false, 'busqueda vacia no debe solicitar clientes');
+assert.equal(shouldRequestVentasClients('f'), false, 'texto requiere dos caracteres');
+assert.equal(shouldRequestVentasClients('fe'), true, 'texto con dos caracteres es valido');
+assert.equal(shouldRequestVentasClients('1'), true, 'ID numerico permite un caracter');
 const slow = manager.start('fernando');
 const current = manager.start('jose');
 assert.equal(slow.controller.signal.aborted, true, 'nueva busqueda debe cancelar la anterior');

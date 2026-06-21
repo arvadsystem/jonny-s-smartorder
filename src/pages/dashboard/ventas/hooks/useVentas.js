@@ -24,7 +24,8 @@ import {
 import { compareRecipeNamesNaturally } from '../utils/ventasRecipeSort';
 import {
   createVentasClientRequestManager,
-  isCancelledVentasClientRequest
+  isCancelledVentasClientRequest,
+  shouldRequestVentasClients
 } from '../utils/ventasClientRequestManager';
 import { mergeVentasClienteCatalogOption } from '../utils/ventasClientesCatalogUtils';
 
@@ -88,6 +89,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const [productsLoading, setProductsLoading] = useState(false);
   const [combosLoading, setCombosLoading] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientesMeta, setClientesMeta] = useState({ limit: 100, has_more: false });
   const [discountsLoading, setDiscountsLoading] = useState(false);
   const [catalogStatuses, setCatalogStatuses] = useState({
     recetas: String(activeTab).toLowerCase() === 'caja' ? 'loading' : 'idle',
@@ -986,27 +988,43 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const refreshClientesCatalog = useCallback(async (options = {}) => {
     const search = String(options?.search ?? '').trim();
     const manager = clientesRequestManagerRef.current;
+    if (!shouldRequestVentasClients(search)) {
+      manager.abort();
+      const emptyClientes = [createConsumidorFinalCliente()];
+      setClientes(emptyClientes);
+      setClientsLoading(false);
+      setClientesMeta({ limit: 100, has_more: false });
+      setCatalogStatuses((current) => ({ ...current, clientes: 'idle' }));
+      setCatalogErrors((current) => ({ ...current, clientes: '' }));
+      return emptyClientes;
+    }
     const request = manager.start(search);
     setClientsLoading(true);
+    setClientesMeta({ limit: 100, has_more: false });
     setCatalogStatuses((current) => ({ ...current, clientes: 'loading' }));
     setCatalogErrors((current) => ({ ...current, clientes: '' }));
     try {
       const clientesResponse = await ventasService.getClientesCatalog(
         {
           search,
-          limit: Math.min(50, Math.max(1, Number(options?.limit || 20))),
-          all: Boolean(search) && options?.all !== false
+          limit: Math.min(100, Math.max(1, Number(options?.limit || 100)))
         },
         { signal: request.controller.signal, noCache: true, timeoutMs: 10_000 }
       );
       if (!manager.isCurrent(request)) return null;
+      const clientesData = Array.isArray(clientesResponse)
+        ? clientesResponse
+        : Array.isArray(clientesResponse?.data) ? clientesResponse.data : [];
       const normalizedClientes = [
         createConsumidorFinalCliente(),
-        ...(Array.isArray(clientesResponse) ? clientesResponse : [])
+        ...clientesData
           .map(normalizeClienteOption)
-          .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
       ];
       setClientes(normalizedClientes);
+      setClientesMeta({
+        limit: Math.min(100, Math.max(1, Number(clientesResponse?.meta?.limit || 100))),
+        has_more: Boolean(clientesResponse?.meta?.has_more)
+      });
       setCatalogStatuses((current) => ({ ...current, clientes: 'success' }));
       return normalizedClientes;
     } catch (error) {
@@ -1220,6 +1238,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     descuentosCatalogo,
     tiposDescuento,
     clientes,
+    clientesMeta,
     loading,
     catalogLoading,
     bootstrapLoading,
