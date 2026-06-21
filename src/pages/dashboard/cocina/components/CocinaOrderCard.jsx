@@ -55,7 +55,6 @@ const buildItemModGroups = (item) => {
   mods
     .map(classifyModification)
     .filter(Boolean)
-    .slice(0, 8)
     .forEach((mod) => {
       const parts = splitModLabel(mod.label);
       const rawTitle = String(parts.title || '').trim();
