@@ -21,7 +21,24 @@ const buildVentasListQuery = (params = {}) => buildQuery({
     ? 'false'
     : params.includePaginationTotals
 });
-const VENTAS_CREATE_TIMEOUT_MS = 30000;
+const parseTimeoutMs = (value, fallback) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const VENTAS_CREATE_TIMEOUT_MS = parseTimeoutMs(import.meta.env.VITE_VENTAS_CREATE_TIMEOUT_MS, 90000);
+const VENTAS_CREATE_RECOVERY_TIMEOUT_MS = parseTimeoutMs(
+  import.meta.env.VITE_VENTAS_CREATE_RECOVERY_TIMEOUT_MS,
+  20000
+);
+const VENTAS_CREATE_RECOVERY_RETRIES = parseTimeoutMs(
+  import.meta.env.VITE_VENTAS_CREATE_RECOVERY_RETRIES,
+  3
+);
+const VENTAS_CREATE_RECOVERY_DELAY_MS = parseTimeoutMs(
+  import.meta.env.VITE_VENTAS_CREATE_RECOVERY_DELAY_MS,
+  1500
+);
 
 const createIdempotencyKey = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -30,13 +47,73 @@ const createIdempotencyKey = () => {
   return `idem_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 };
 
-const withIdempotencyKey = (config = {}) => ({
+const withIdempotencyKey = (config = {}, providedKey = null) => ({
   ...config,
   headers: {
     ...(config.headers || {}),
-    'Idempotency-Key': createIdempotencyKey()
+    'Idempotency-Key': String(providedKey || createIdempotencyKey()).trim()
   }
 });
+
+const delay = (ms) => new Promise((resolve) => {
+  setTimeout(resolve, ms);
+});
+
+const isVentaCreateTimeoutError = (error) =>
+  Number(error?.status || 0) === 408 || String(error?.code || error?.data?.code || '').trim().toUpperCase() === 'REQUEST_TIMEOUT';
+
+const isVentaCreateInProgressError = (error) =>
+  Number(error?.status || 0) === 409 && String(error?.code || error?.data?.code || '').trim().toUpperCase() === 'REQUEST_ALREADY_IN_PROGRESS';
+
+const createVentaRequest = (payload, { idempotencyKey, timeoutMs }) =>
+  apiFetch(
+    '/ventas',
+    'POST',
+    payload,
+    withIdempotencyKey({ timeoutMs }, idempotencyKey)
+  );
+
+const createVentaWithRecovery = async (payload, options = {}) => {
+  const idempotencyKey = String(options?.idempotencyKey || createIdempotencyKey()).trim();
+  const initialTimeoutMs = parseTimeoutMs(options?.timeoutMs, VENTAS_CREATE_TIMEOUT_MS);
+
+  try {
+    return await createVentaRequest(payload, { idempotencyKey, timeoutMs: initialTimeoutMs });
+  } catch (error) {
+    if (!isVentaCreateTimeoutError(error) && !isVentaCreateInProgressError(error)) {
+      throw error;
+    }
+
+    let lastError = error;
+    for (let attempt = 1; attempt <= VENTAS_CREATE_RECOVERY_RETRIES; attempt += 1) {
+      await delay(VENTAS_CREATE_RECOVERY_DELAY_MS * attempt);
+      try {
+        return await createVentaRequest(payload, {
+          idempotencyKey,
+          timeoutMs: VENTAS_CREATE_RECOVERY_TIMEOUT_MS
+        });
+      } catch (recoveryError) {
+        lastError = recoveryError;
+        if (isVentaCreateTimeoutError(recoveryError) || isVentaCreateInProgressError(recoveryError)) {
+          continue;
+        }
+        throw recoveryError;
+      }
+    }
+
+    if (isVentaCreateInProgressError(lastError) || isVentaCreateTimeoutError(lastError)) {
+      const fallbackError = new Error(
+        'La venta sigue procesandose en el servidor. Espera unos segundos, revisa el historial de ventas y evita reenviar el cobro inmediatamente.'
+      );
+      fallbackError.status = Number(lastError?.status || 0) || 409;
+      fallbackError.code = 'VENTA_EN_PROCESO';
+      fallbackError.data = lastError?.data || null;
+      throw fallbackError;
+    }
+
+    throw lastError;
+  }
+};
 
 const readBlobError = async (response) => {
   const text = await response.text().catch(() => '');
@@ -82,7 +159,7 @@ const ventasService = {
   registerPrintEvent: (id, payload) => apiFetch(`/ventas/${id}/impresiones`, 'POST', payload),
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload, withIdempotencyKey()),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
-  create: (payload) => apiFetch('/ventas', 'POST', payload, withIdempotencyKey({ timeoutMs: VENTAS_CREATE_TIMEOUT_MS })),
+  create: (payload, options = {}) => createVentaWithRecovery(payload, options),
   createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload, withIdempotencyKey()),
   listPedidosPendientesPago: (params = {}) =>
     apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET'),

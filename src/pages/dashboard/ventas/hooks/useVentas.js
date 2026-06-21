@@ -1150,12 +1150,12 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   }, [openToast]);
 
   const createVenta = useCallback(
-    async (payload, { suppressErrorToast = false } = {}) => {
+    async (payload, { suppressErrorToast = false, ...serviceOptions } = {}) => {
       setSaving(true);
       setError('');
 
       try {
-        const response = await ventasService.create(payload);
+        const response = await ventasService.create(payload, serviceOptions);
         openToast(
           'VENTA CREADA',
           `${response?.numero_venta || response?.codigo_venta || 'La venta'} se registro correctamente.`,
