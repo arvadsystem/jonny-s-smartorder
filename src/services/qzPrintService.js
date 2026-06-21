@@ -10,6 +10,9 @@ const QZ_LIBRARY_SOURCES = [
 let qzLoadPromise = null;
 let qzSecuritySetupPromise = null;
 
+const QZ_DEBUG_ENABLED = String(import.meta.env.DEV || '').trim() === 'true'
+  || /qa\.jonnyshn\.com$/i.test(typeof window !== 'undefined' ? window.location.hostname : '');
+
 const createQzError = (code, message, cause = null) => {
   const error = new Error(message);
   error.name = 'QzPrintError';
@@ -150,6 +153,17 @@ const ensureConnectedQz = async () => {
 
 const normalizePrinterName = (value) => String(value || '').trim();
 
+const normalizePrinterToken = (value) =>
+  normalizePrinterName(value)
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9]+/g, '');
+
+const debugQz = (...args) => {
+  if (!QZ_DEBUG_ENABLED || typeof console === 'undefined' || typeof console.info !== 'function') return;
+  console.info('[QZ]', ...args);
+};
+
 const buildPixelConfig = (qz, printerName, options = {}) =>
   qz.configs.create(printerName, {
     copies: Math.max(1, Number(options.copies || 1)),
@@ -205,9 +219,11 @@ export const disconnectQz = async () => {
 export const getPrinters = async () => {
   const qz = await ensureConnectedQz();
   const printers = await qz.printers.find();
-  return Array.isArray(printers)
+  const normalized = Array.isArray(printers)
     ? printers.map((item) => String(item || '').trim()).filter(Boolean)
     : [];
+  debugQz('Impresoras detectadas:', normalized);
+  return normalized;
 };
 
 export const findPrinter = async (printerName) => {
@@ -217,11 +233,24 @@ export const findPrinter = async (printerName) => {
   }
 
   const printers = await getPrinters();
+  debugQz('Impresora configurada:', exactName);
   const exactMatch = printers.find((item) => item.toLowerCase() === exactName.toLowerCase());
-  if (!exactMatch) {
-    throw createQzError('PRINTER_NOT_FOUND', `No se encontro la impresora "${exactName}".`);
-  }
-  return exactMatch;
+  if (exactMatch) return exactMatch;
+
+  const normalizedTarget = normalizePrinterToken(exactName);
+  const normalizedMatch = printers.find((item) => normalizePrinterToken(item) === normalizedTarget);
+  if (normalizedMatch) return normalizedMatch;
+
+  const containsMatch = printers.find((item) => {
+    const normalizedCandidate = normalizePrinterToken(item);
+    return normalizedCandidate.includes(normalizedTarget) || normalizedTarget.includes(normalizedCandidate);
+  });
+  if (containsMatch) return containsMatch;
+
+  throw createQzError(
+    'PRINTER_NOT_FOUND',
+    `No se encontro la impresora "${exactName}". Detectadas: ${printers.join(', ') || 'ninguna'}.`
+  );
 };
 
 export const findPrinterByContains = async (text) => {
