@@ -105,7 +105,8 @@ export default function VentasPage() {
     loadCajaBootstrap,
     loadCajaCatalog,
     loadCajaRecipesDepartment,
-    refreshClientesCatalog
+    refreshClientesCatalog,
+    upsertClienteCatalog
   } = useVentas({
     activeTab: requestedVentasTab,
     initialSucursalId: user?.id_sucursal,
@@ -883,6 +884,7 @@ export default function VentasPage() {
           onCatalogDemand={loadCajaCatalog}
           onRecipesDepartmentDemand={loadCajaRecipesDepartment}
           onClientesRefresh={refreshClientesCatalog}
+          onClienteCatalogUpsert={upsertClienteCatalog}
           onNotify={openToast}
         />
       ) : null}

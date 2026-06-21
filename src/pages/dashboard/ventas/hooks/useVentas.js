@@ -22,6 +22,11 @@ import {
   normalizeVentaRecord
 } from '../utils/ventasHelpers';
 import { compareRecipeNamesNaturally } from '../utils/ventasRecipeSort';
+import {
+  createVentasClientRequestManager,
+  isCancelledVentasClientRequest
+} from '../utils/ventasClientRequestManager';
+import { mergeVentasClienteCatalogOption } from '../utils/ventasClientesCatalogUtils';
 
 const isTruthyState = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
@@ -101,7 +106,10 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const catalogRequestRef = useRef(0);
   const cajaBootstrapAbortRef = useRef(null);
   const cajaCatalogAbortRef = useRef(new Map());
-  const clientesAbortRef = useRef(null);
+  const clientesRequestManagerRef = useRef(null);
+  if (!clientesRequestManagerRef.current) {
+    clientesRequestManagerRef.current = createVentasClientRequestManager();
+  }
   const cajaCatalogLoadedRef = useRef(new Set());
   const cajaCatalogInFlightRef = useRef(new Map());
   const cajaBootstrapDataCacheRef = useRef(new Map());
@@ -961,6 +969,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     return () => {
       active = false;
       cajaBootstrapAbortRef.current?.abort();
+      clientesRequestManagerRef.current?.abort();
       for (const controller of catalogAbortControllers.values()) controller.abort();
       catalogAbortControllers.clear();
     };
@@ -976,17 +985,21 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
 
   const refreshClientesCatalog = useCallback(async (options = {}) => {
     const search = String(options?.search ?? '').trim();
-    clientesAbortRef.current?.abort();
-    const controller = new AbortController();
-    clientesAbortRef.current = controller;
+    const manager = clientesRequestManagerRef.current;
+    const request = manager.start(search);
     setClientsLoading(true);
     setCatalogStatuses((current) => ({ ...current, clientes: 'loading' }));
+    setCatalogErrors((current) => ({ ...current, clientes: '' }));
     try {
       const clientesResponse = await ventasService.getClientesCatalog(
-        { search, limit: Math.min(50, Math.max(1, Number(options?.limit || 20))) },
-        { signal: controller.signal }
+        {
+          search,
+          limit: Math.min(50, Math.max(1, Number(options?.limit || 20))),
+          all: Boolean(search) && options?.all !== false
+        },
+        { signal: request.controller.signal, noCache: true, timeoutMs: 10_000 }
       );
-        if (controller.signal.aborted || !isCurrentRequest()) return null;
+      if (!manager.isCurrent(request)) return null;
       const normalizedClientes = [
         createConsumidorFinalCliente(),
         ...(Array.isArray(clientesResponse) ? clientesResponse : [])
@@ -997,17 +1010,35 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       setCatalogStatuses((current) => ({ ...current, clientes: 'success' }));
       return normalizedClientes;
     } catch (error) {
+      if (isCancelledVentasClientRequest(error, request.controller.signal) || !manager.isCurrent(request)) {
+        return null;
+      }
       setCatalogStatuses((current) => ({
         ...current,
-        clientes: controller.signal.aborted ? 'idle' : 'error'
+        clientes: 'error'
+      }));
+      setCatalogErrors((current) => ({
+        ...current,
+        clientes: extractApiMessage(error, 'No se pudieron cargar los clientes.')
       }));
       throw error;
     } finally {
-      if (clientesAbortRef.current === controller) {
-        clientesAbortRef.current = null;
+      if (manager.finish(request)) {
         setClientsLoading(false);
       }
     }
+  }, []);
+
+  const upsertClienteCatalog = useCallback((rawCliente) => {
+    const normalized = normalizeClienteOption(rawCliente);
+    if (!normalized?.value || normalized.es_consumidor_final) return null;
+    setClientes((current) => {
+      const merged = mergeVentasClienteCatalogOption(current, rawCliente);
+      return merged.clientes;
+    });
+    setCatalogStatuses((current) => ({ ...current, clientes: 'success' }));
+    setCatalogErrors((current) => ({ ...current, clientes: '' }));
+    return normalized;
   }, []);
 
   const setVentasSearch = useCallback((search) => {
@@ -1213,6 +1244,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     loadCajaCatalog,
     loadCajaRecipesDepartment,
     refreshClientesCatalog,
+    upsertClienteCatalog,
     setVentasSearch,
     setVentasPage,
     setVentasPageSize,

@@ -147,16 +147,16 @@ export const buildEmpresaPayloadFromForm = (sourceForm = {}) => {
   return payload;
 };
 
-export const validateEmpresaForm = (form = {}) => {
+export const validateEmpresaForm = (form = {}, options = {}) => {
   const currentErrors = {};
   const rtnRaw = limitText(digitsOnly(form.rtn), RTN_DIGITS_LENGTH);
   const telefonoRaw = digitsOnly(form.id_telefono);
   const correoValue = normalizeText(form.id_correo);
 
   if (!form.nombre_empresa?.trim()) currentErrors.nombre_empresa = "Requerido";
-  if (!rtnRaw) {
+  if (!rtnRaw && options?.requireRtn !== false) {
     currentErrors.rtn = "Requerido";
-  } else if (rtnRaw.length !== RTN_DIGITS_LENGTH) {
+  } else if (rtnRaw && rtnRaw.length !== RTN_DIGITS_LENGTH) {
     currentErrors.rtn = RTN_FORMAT_ERROR;
   }
 

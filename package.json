@@ -11,7 +11,8 @@
     "test:e2e:ventas-caja": "playwright test tests/e2e/ventas-caja.spec.js",
     "qa:ventas-caja-bootstrap": "node scripts/qa-ventas-caja-bootstrap.mjs",
     "qa:personas-planillas:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/qa-personas-planillas-smoke.ps1",
-    "qa:ventas-contacto-entrega": "node scripts/qa-ventas-contacto-entrega.mjs"
+    "qa:ventas-contacto-entrega": "node scripts/qa-ventas-contacto-entrega.mjs",
+    "qa:ventas-clientes-caja": "node scripts/qa-ventas-clientes-caja.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

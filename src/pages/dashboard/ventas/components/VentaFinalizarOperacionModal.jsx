@@ -104,7 +104,11 @@ export default function VentaFinalizarOperacionModal({
   onCreatePedidoPendiente,
   onDeliveryCostChange,
   onClientesRefresh,
-  clientsLoading = false
+  onClienteCatalogUpsert,
+  clientsLoading = false,
+  clientsStatus = 'idle',
+  clientsError = '',
+  onNotify
 }) {
   const [activeTab, setActiveTab] = useState('pagar');
   const [contact, setContact] = useState(CONTACT_INITIAL);
@@ -144,14 +148,15 @@ export default function VentaFinalizarOperacionModal({
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   }, [delivery.costo_envio]);
 
-  const requestClientes = useCallback((rawSearch = '', { force = false } = {}) => {
+  const requestClientes = useCallback((rawSearch = '', { force = false, all } = {}) => {
     if (!open) return undefined;
     const query = String(rawSearch || '').trim();
     if (query && query.length < 2 && !/^\d+$/.test(query)) return undefined;
-    const requestKey = `${query}:20`;
+    const requestAll = Boolean(query) && all !== false;
+    const requestKey = `${query}:${requestAll ? 'all' : '20'}`;
     if (!force && lastClientSearchRequestRef.current === requestKey) return undefined;
     lastClientSearchRequestRef.current = requestKey;
-    return onClientesRefresh?.({ search: query, limit: 20 }).catch((error) => {
+    return onClientesRefresh?.({ search: query, limit: 20, all: requestAll, force, noCache: true }).catch((error) => {
       if (lastClientSearchRequestRef.current === requestKey) {
         lastClientSearchRequestRef.current = null;
       }
@@ -512,16 +517,37 @@ export default function VentaFinalizarOperacionModal({
     }))
   ];
 
-  const handleClienteCreated = async ({ id_cliente: idCliente, label }) => {
-    const refreshedClientes = await onClientesRefresh?.({ search: String(idCliente || label || ''), limit: 20 });
-    const selected = (Array.isArray(refreshedClientes) ? refreshedClientes : []).find((cliente) => {
-      if (idCliente && Number(cliente.id_cliente) === Number(idCliente)) return true;
-      return label && String(cliente.label || '').trim().toLowerCase() === String(label).trim().toLowerCase();
-    });
+  const handleClienteCreated = ({ id_cliente: idCliente, label, cliente }) => {
+    const localCliente = {
+      ...(cliente && typeof cliente === 'object' ? cliente : {}),
+      id_cliente: idCliente || cliente?.id_cliente,
+      nombre_cliente: cliente?.nombre_cliente || label
+    };
+    const selected = onClienteCatalogUpsert?.(localCliente) || {
+      ...localCliente,
+      value: String(localCliente.id_cliente || ''),
+      label: String(localCliente.nombre_cliente || label || '').trim()
+    };
     if (selected?.value) {
-      handleClienteChange(String(selected.value), refreshedClientes);
+      handleClienteChange(String(selected.value), [selected, ...(composer.clientes || [])]);
     }
     setQuickCreateOpen(false);
+    const refreshSearch = String(idCliente || selected?.id_cliente || '').trim();
+    if (!refreshSearch) return;
+    void requestClientes(refreshSearch, { force: true, all: true })
+      .then((refreshedClientes) => {
+        const refreshed = (Array.isArray(refreshedClientes) ? refreshedClientes : []).find(
+          (item) => Number(item?.id_cliente) === Number(idCliente)
+        );
+        if (refreshed?.value) handleClienteChange(String(refreshed.value), refreshedClientes);
+      })
+      .catch(() => {
+        onNotify?.(
+          'CLIENTE CREADO',
+          'El cliente fue creado y seleccionado, pero no se pudo actualizar el catalogo. Puedes reintentar la busqueda.',
+          'warning'
+        );
+      });
   };
 
   const handleClienteChange = (value, sourceClientes = composer.clientes) => {
@@ -617,14 +643,30 @@ export default function VentaFinalizarOperacionModal({
                   setClientSearch('');
                   void requestClientes('').catch(() => null);
                 }}
-                emptyText={clientsLoading ? 'Buscando clientes...' : 'No se encontro ese cliente.'}
+                emptyText={clientsLoading || clientsStatus === 'loading'
+                  ? 'Buscando clientes...'
+                  : clientsStatus === 'error'
+                    ? 'No se pudieron cargar los clientes.'
+                    : clientsStatus === 'cancelled'
+                      ? 'Busqueda cancelada.'
+                      : 'No se encontro ese cliente.'}
                 createActionLabel={(query) => (query ? `Crear cliente "${query}"` : 'Crear cliente')}
-                onCreateAction={(query) => {
+                onCreateAction={clientsStatus === 'error' ? undefined : (query) => {
                   setQuickCreateSearch(query);
                   setQuickCreateOpen(true);
                 }}
                 className="app-select--compact app-select--warm ventas-finalizar-modal__field-wide"
               />
+              {clientsStatus === 'error' ? (
+                <div className="ventas-create-modal__error ventas-finalizar-modal__field-wide" role="alert">
+                  <span>{clientsError || 'No se pudieron cargar los clientes.'}</span>{' '}
+                  <button type="button" className="btn btn-link btn-sm p-0" onClick={() => {
+                    void requestClientes(clientSearch, { force: true }).catch(() => null);
+                  }}>
+                    Reintentar
+                  </button>
+                </div>
+              ) : null}
 
               <label className="ventas-create-modal__field">
                   <span>Nombre contacto (opcional)</span>

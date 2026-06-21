@@ -259,6 +259,7 @@ export const validatePersonaField = (fieldName, value, _form, options = {}) => {
   const trimmedValue = currentValue.trim();
   const today = new Date().toISOString().split("T")[0];
   const requireLastName = options?.requireLastName !== false;
+  const requireGender = options?.requireGender !== false;
 
   switch (fieldName) {
     case "nombre":
@@ -281,7 +282,7 @@ export const validatePersonaField = (fieldName, value, _form, options = {}) => {
       }
       return "";
     case "genero":
-      return trimmedValue ? "" : "Seleccione";
+      return trimmedValue || !requireGender ? "" : "Seleccione";
     case "fecha_nacimiento":
       if (trimmedValue && trimmedValue > today) return "Fecha invalida";
       return "";

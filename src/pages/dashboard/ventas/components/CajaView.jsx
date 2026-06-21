@@ -67,15 +67,6 @@ const buildCajaDismissKey = (assignment, userKey) => {
     : `${CAJA_APERTURA_DISMISS_PREFIX}:${scopedUserKey}`;
 };
 
-const isCajaDecisionDismissed = (assignment, userKey) => {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.sessionStorage.getItem(buildCajaDismissKey(assignment, userKey)) === '1';
-  } catch {
-    return false;
-  }
-};
-
 const markCajaDecisionDismissed = (assignment, userKey) => {
   if (typeof window === 'undefined') return;
   try {
@@ -220,6 +211,7 @@ export default function CajaView({
   onCatalogDemand,
   onRecipesDepartmentDemand,
   onClientesRefresh,
+  onClienteCatalogUpsert,
   onNotify
 }) {
   const { user } = useAuth();
@@ -1356,7 +1348,11 @@ export default function CajaView({
           onCreatePedidoPendiente={handleCreatePedidoPendiente}
           onDeliveryCostChange={setDeliveryCostPreview}
           onClientesRefresh={onClientesRefresh}
+          onClienteCatalogUpsert={onClienteCatalogUpsert}
           clientsLoading={Boolean(catalogLoadingStates.clientsLoading)}
+          clientsStatus={catalogStatuses.clientes || 'idle'}
+          clientsError={catalogErrors.clientes || ''}
+          onNotify={onNotify}
         />
       ) : null}
       {registrarPagoOpen ? (
