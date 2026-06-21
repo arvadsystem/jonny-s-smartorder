@@ -1,7 +1,6 @@
 // Etiquetas de seccion para mantener consistencia visual en los rails.
 export const PROMO_SECTION_LABELS = Object.freeze({
   BEST_SELLERS: '\u{1F525} Mas vendidos',
-  COMBOS: '\u{1F354} Combos recomendados',
   CRAVINGS: '\u{1F32E} Antojos del momento'
 });
 
@@ -30,10 +29,6 @@ export const buildCatalogPromoSections = (products = []) => {
     (item) => Boolean(item?.disponibilidad?.available)
   );
 
-  const combos = takeUniqueById(
-    available.filter((item) => categoryIncludes(item, 'combo'))
-  );
-
   const cravings = takeUniqueById(
     available.filter((item) => {
       const category = normalizeText(item?.categoria?.nombre);
@@ -46,9 +41,7 @@ export const buildCatalogPromoSections = (products = []) => {
     })
   );
 
-  const bestSellers = takeUniqueById(
-    available.filter((item) => !combos.some((combo) => combo.id_detalle_menu === item.id_detalle_menu))
-  );
+  const bestSellers = takeUniqueById(available);
 
   return [
     {
@@ -56,12 +49,6 @@ export const buildCatalogPromoSections = (products = []) => {
       title: PROMO_SECTION_LABELS.BEST_SELLERS,
       badgeLabel: 'Popular',
       items: bestSellers
-    },
-    {
-      id: 'combos',
-      title: PROMO_SECTION_LABELS.COMBOS,
-      badgeLabel: 'Combo top',
-      items: combos
     },
     {
       id: 'cravings',

@@ -47,7 +47,7 @@ const computeBadgeData = (product) => {
   const idBase = Number(product?.id_detalle_menu || 0);
   const rating = toFiniteNumber(product?.rating_promedio) ?? (4.5 + ((idBase % 5) * 0.1));
   const prepTime = toFiniteNumber(product?.tiempo_preparacion_minutos) ?? (18 + (idBase % 6) * 2);
-  const firstLabel = category.includes('combo') ? 'Combo top' : 'Popular';
+  const firstLabel = 'Popular';
 
   return [
     { text: firstLabel, type: 'highlight' },

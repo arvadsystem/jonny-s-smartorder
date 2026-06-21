@@ -8,7 +8,11 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "qa:personas-planillas:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/qa-personas-planillas-smoke.ps1"
+    "test:e2e:ventas-caja": "playwright test tests/e2e/ventas-caja.spec.js",
+    "qa:ventas-caja-bootstrap": "node scripts/qa-ventas-caja-bootstrap.mjs",
+    "qa:personas-planillas:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/qa-personas-planillas-smoke.ps1",
+    "qa:ventas-contacto-entrega": "node scripts/qa-ventas-contacto-entrega.mjs",
+    "qa:ventas-clientes-caja": "node scripts/qa-ventas-clientes-caja.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
@@ -16,6 +20,7 @@
     "bootstrap-icons": "^1.13.1",
     "framer-motion": "^12.34.3",
     "nodemailer": "^8.0.4",
+    "qz-tray": "^2.2.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-icons": "^5.5.0",

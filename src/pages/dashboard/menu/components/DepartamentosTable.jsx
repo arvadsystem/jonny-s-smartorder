@@ -11,10 +11,8 @@ const getDepartamentoId = (departamento) => Number(departamento?.id_tipo_departa
 
 const formatContenidoAsociado = (departamento) => {
   const recetas = Number(departamento?.cantidad_recetas || 0);
-  const combos = Number(departamento?.cantidad_combos || 0);
   const parts = [];
   if (recetas > 0) parts.push(`${recetas} ${recetas === 1 ? 'receta' : 'recetas'}`);
-  if (combos > 0) parts.push(`${combos} ${combos === 1 ? 'combo' : 'combos'}`);
   return parts.length > 0 ? parts.join(' · ') : 'Sin contenido';
 };
 

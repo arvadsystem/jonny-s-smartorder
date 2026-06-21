@@ -4,7 +4,6 @@ import '../../../assets/styles/_menu.scss';
 import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
 import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from '../../../utils/permissions';
-import CombosAdmin from './CombosAdmin';
 import DepartamentosAdmin from './DepartamentosAdmin';
 import ExtrasAdmin from './ExtrasAdmin';
 import MenuCarruselAdmin from './MenuCarruselAdmin';
@@ -14,7 +13,7 @@ import MenuVistaPreviaAdmin from './MenuVistaPreviaAdmin';
 import RecetasAdmin from './RecetasAdmin';
 
 // El tab "productos-menu" se retira por decision operativa.
-const MENU_TAB_KEYS = ['departamentos', 'recetas', 'combos', 'extras', 'salsas', 'publicacion', 'carrusel', 'vista-previa'];
+const MENU_TAB_KEYS = ['departamentos', 'recetas', 'extras', 'salsas', 'publicacion', 'carrusel', 'vista-previa'];
 
 const Menu = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -47,7 +46,6 @@ const Menu = () => {
   const renderView = () => {
     if (activeTab === 'departamentos') return <DepartamentosAdmin />;
     if (activeTab === 'recetas') return <RecetasAdmin />;
-    if (activeTab === 'combos') return <CombosAdmin />;
     if (activeTab === 'extras') return <ExtrasAdmin />;
     if (activeTab === 'salsas') return <MenuSalsasAdmin />;
     if (activeTab === 'publicacion') return <MenuPublicacionAdmin showPreview={false} />;

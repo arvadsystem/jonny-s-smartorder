@@ -1,4 +1,4 @@
-import { roundMoney } from './ventasMoneyUtils';
+import { roundMoney } from './ventasMoneyUtils.js';
 
 export const normalizeComplementIds = (value) =>
   [...new Set(
@@ -8,7 +8,7 @@ export const normalizeComplementIds = (value) =>
   )].sort((a, b) => a - b);
 
 export const normalizeValidComplementIds = (line) => {
-  if (!line || line.kind === 'PRODUCTO') return [];
+  if (!line || ['PRODUCTO', 'ITEM'].includes(String(line.kind || '').toUpperCase())) return [];
   const allowedIds = new Set(
     (Array.isArray(line.complementos_disponibles) ? line.complementos_disponibles : [])
       .filter((entry) => entry?.disponible !== false)
@@ -57,15 +57,26 @@ export const getExtrasSubtotal = (value) =>
 export const getExtrasCount = (value) =>
   normalizeExtras(value).reduce((sum, entry) => sum + Number(entry.cantidad || 0), 0);
 
-export const clampExtrasToQuantity = (extras, quantity) => {
-  const max = Math.max(0, Number(quantity || 0));
-  return normalizeExtras(extras)
-    .map((entry) => ({ ...entry, cantidad: Math.min(Number(entry.cantidad || 0), max) }))
-    .filter((entry) => entry.cantidad > 0);
+let cartLineCounter = 0;
+
+export const isCustomizableVentaLineKind = (kind) => String(kind || '').toUpperCase() === 'RECETA';
+
+export const createCartLineId = () => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  cartLineCounter += 1;
+  const randomPart = Math.random().toString(36).slice(2, 12);
+  return `line_${Date.now().toString(36)}_${cartLineCounter.toString(36)}_${randomPart}`;
 };
 
-export const buildCartKey = (kind, entityId, complementos = [], extras = []) =>
-  `${kind}:${entityId}:${buildComplementSignature(complementos)}:${buildExtrasSignature(extras)}`;
+export const buildCartKey = (kind, entityId, complementos = [], extras = [], lineId = null) => {
+  const normalizedKind = String(kind || '').toUpperCase();
+  if (isCustomizableVentaLineKind(normalizedKind) && lineId) {
+    return `${normalizedKind}:line:${lineId}`;
+  }
+  return `${normalizedKind}:${entityId}:${buildComplementSignature(complementos)}:${buildExtrasSignature(extras)}`;
+};
 
 export const findLineIndex = (cart, cartKey) =>
   cart.findIndex((line) => String(line.cartKey) === String(cartKey));
@@ -78,35 +89,6 @@ export const toNormalizedId = (value) => {
   }
   const parsed = Number.parseInt(asString, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-};
-
-const addComboDepartmentId = (ids, value) => {
-  const id = toNormalizedId(value);
-  if (id) ids.add(id);
-};
-
-const addComboDepartmentArrayIds = (ids, value) => {
-  if (!Array.isArray(value)) return;
-  value.forEach((entry) => {
-    if (entry && typeof entry === 'object') {
-      addComboDepartmentId(
-        ids,
-        entry.id_tipo_departamento ?? entry.id_departamento ?? entry.id ?? entry.value
-      );
-      return;
-    }
-    addComboDepartmentId(ids, entry);
-  });
-};
-
-export const getComboDepartmentIds = (combo) => {
-  const ids = new Set();
-  addComboDepartmentId(ids, combo?.id_tipo_departamento);
-  addComboDepartmentId(ids, combo?.id_tipo_departamento_principal);
-  addComboDepartmentArrayIds(ids, combo?.departamentos_ids);
-  addComboDepartmentArrayIds(ids, combo?.departamentos);
-  addComboDepartmentArrayIds(ids, combo?.departamentos_derivados);
-  return [...ids];
 };
 
 export const filterBySearch = (rows, search, fields) => {
@@ -124,12 +106,12 @@ export const filterBySearch = (rows, search, fields) => {
 };
 
 export const getResultsLabel = (catalogKey, count) => {
-  if (catalogKey === 'COMBOS') {
-    return `${count} ${count === 1 ? 'combo' : 'combos'}`;
-  }
-
   if (catalogKey === 'RECETAS') {
     return `${count} ${count === 1 ? 'receta' : 'recetas'}`;
+  }
+
+  if (catalogKey === 'EXTRAS') {
+    return `${count} ${count === 1 ? 'extra' : 'extras'}`;
   }
 
   return `${count} ${count === 1 ? 'producto' : 'productos'}`;

@@ -23,6 +23,13 @@ const pickAllowedFields = (payload, allowedFields = []) => {
   );
 };
 
+const createRequestIdempotencyKey = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `cliente_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+};
+
 const parseBooleanFlag = (value) => {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') {
@@ -1049,7 +1056,9 @@ export const personaService = {
     });
   },
 
-  createClienteFull: async (payload = {}) => {
+  createClienteIdempotencyKey: () => createRequestIdempotencyKey(),
+
+  createClienteFull: async (payload = {}, options = {}) => {
     const requestPayload = isPlainObject(payload) ? { ...payload } : {};
     const clientePayload = isPlainObject(requestPayload.cliente)
       ? { ...requestPayload.cliente }
@@ -1081,11 +1090,16 @@ export const personaService = {
     }
 
     requestPayload.rbac_context = 'clientes';
+    const idempotencyKey = String(options?.idempotencyKey || createRequestIdempotencyKey()).trim();
+    const requestConfig = {
+      timeoutMs: 30_000,
+      headers: { 'Idempotency-Key': idempotencyKey }
+    };
     try {
-      return await apiFetch('/clientes/full-create', 'POST', requestPayload);
+      return await apiFetch('/clientes/full-create', 'POST', requestPayload, requestConfig);
     } catch (error) {
       if (isAtomicEndpointUnavailable(error)) {
-        return apiFetch('/clientes/atomico', 'POST', requestPayload);
+        return apiFetch('/clientes/atomico', 'POST', requestPayload, requestConfig);
       }
       throw error;
     }

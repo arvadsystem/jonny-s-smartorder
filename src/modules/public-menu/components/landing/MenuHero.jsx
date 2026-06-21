@@ -29,7 +29,7 @@ const MenuHero = ({
       </div>
       <nav className="pm-landing-hero__nav" aria-label="Secciones">
         <span>Menu</span>
-        <span>Combos</span>
+        <span>Especialidades</span>
         <span>Bebidas</span>
         <span>Postres</span>
         <span>Promociones</span>

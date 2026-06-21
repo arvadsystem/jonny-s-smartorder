@@ -44,7 +44,7 @@ export default function VentaComplementosModal({
       return;
     }
     setCurrent(normalizeIds(selected));
-  }, [open, row?.cartKey, row?.id_combo, row?.id_receta, selected]);
+  }, [open, row?.cartKey, row?.id_receta, selected]);
 
   if (!open || !row) return null;
 
@@ -102,7 +102,7 @@ export default function VentaComplementosModal({
               <span>Item</span>
               <strong>{row?.nombre_item || row?.descripcion_item || 'Item'}</strong>
             </div>
-            <span className="ventas-complementos-modal__type">{row?.kind === 'COMBO' ? 'Combo' : 'Receta'}</span>
+            <span className="ventas-complementos-modal__type">Receta</span>
           </div>
 
           <div className="ventas-complementos-modal__hint">
@@ -128,6 +128,7 @@ export default function VentaComplementosModal({
                       checked ? 'is-selected' : '',
                       !option.disponible ? 'is-disabled' : ''
                     ].filter(Boolean).join(' ')}
+                    data-testid="ventas-complemento-option"
                   >
                     <input
                       type="checkbox"
@@ -191,7 +192,7 @@ export default function VentaComplementosModal({
             <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
               Cancelar
             </button>
-            <button type="button" className="btn btn-warning" onClick={handleConfirm}>
+            <button type="button" className="btn btn-warning" data-testid="ventas-complementos-confirmar" onClick={handleConfirm}>
               {mode === 'EDIT' ? 'Guardar complementos' : 'Agregar al carrito'}
             </button>
           </div>

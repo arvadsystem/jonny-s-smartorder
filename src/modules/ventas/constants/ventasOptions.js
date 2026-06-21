@@ -5,7 +5,7 @@ export const PAYMENT_OPTIONS = [
 ];
 
 export const CATALOG_TABS = [
+  { key: 'RECETAS', label: 'Recetas', icon: 'bi bi-journal-richtext' },
   { key: 'PRODUCTOS', label: 'Productos', icon: 'bi bi-bag' },
-  { key: 'COMBOS', label: 'Combos', icon: 'bi bi-collection' },
-  { key: 'RECETAS', label: 'Recetas', icon: 'bi bi-journal-richtext' }
+  { key: 'EXTRAS', label: 'Extras', icon: 'bi bi-plus-square-dotted' }
 ];

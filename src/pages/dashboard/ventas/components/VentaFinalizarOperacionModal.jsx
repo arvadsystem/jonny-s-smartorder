@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppSelect from '../../../../components/common/AppSelect';
 import ventasService from '../../../../services/ventasService';
 import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
@@ -82,9 +82,19 @@ const normalizeOptionSearchText = (cliente) => [
   cliente.id_telefono,
   cliente.dni,
   cliente.rtn,
+  cliente.tipo_cliente,
   cliente.correo,
   cliente.id_correo
 ].filter(Boolean).join(' ');
+
+const buildClienteHelperText = (cliente = {}) => {
+  if (cliente.es_consumidor_final) return 'Venta sin cliente registrado';
+  return [
+    cliente.telefono,
+    cliente.dni || cliente.rtn,
+    cliente.tipo_cliente
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(' · ');
+};
 
 export default function VentaFinalizarOperacionModal({
   open,
@@ -93,7 +103,13 @@ export default function VentaFinalizarOperacionModal({
   onClose,
   onCreatePedidoPendiente,
   onDeliveryCostChange,
-  onClientesRefresh
+  onClientesRefresh,
+  onClienteCatalogUpsert,
+  clientesMeta = { limit: 100, has_more: false },
+  clientsLoading = false,
+  clientsStatus = 'idle',
+  clientsError = '',
+  onNotify
 }) {
   const [activeTab, setActiveTab] = useState('pagar');
   const [contact, setContact] = useState(CONTACT_INITIAL);
@@ -102,6 +118,7 @@ export default function VentaFinalizarOperacionModal({
   const [submitDialogError, setSubmitDialogError] = useState('');
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateSearch, setQuickCreateSearch] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
   const [phoneSaveDialog, setPhoneSaveDialog] = useState({
     open: false,
     pendingAction: '',
@@ -116,15 +133,51 @@ export default function VentaFinalizarOperacionModal({
   const pendingSubmittingRef = useRef(false);
   const paidErrorPendingRef = useRef(false);
   const lastAutoPhoneRef = useRef('');
+  const lastAutoNameRef = useRef('');
+  const lastClientSearchRequestRef = useRef(null);
   const phoneSaveAskedRef = useRef(new Set());
   const phoneSaveBypassRef = useRef(false);
   const isSubmitting = saving || paidSubmitting || pendingSubmitting;
+  const resetPaymentDraft = composer.resetPaymentDraft;
+  const handleModalClose = useCallback(() => {
+    resetPaymentDraft?.();
+    onClose();
+  }, [onClose, resetPaymentDraft]);
 
   const deliveryCost = useMemo(() => {
     if (!String(delivery.costo_envio || '').trim()) return 0;
     const parsed = Number(delivery.costo_envio);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   }, [delivery.costo_envio]);
+
+  const requestClientes = useCallback((rawSearch = '', { force = false } = {}) => {
+    if (!open) return undefined;
+    const query = String(rawSearch || '').trim();
+    const requestKey = `${query}:100`;
+    if (!force && lastClientSearchRequestRef.current === requestKey) return undefined;
+    lastClientSearchRequestRef.current = requestKey;
+    return onClientesRefresh?.({ search: query, limit: 100, force, noCache: true }).catch((error) => {
+      if (lastClientSearchRequestRef.current === requestKey) {
+        lastClientSearchRequestRef.current = null;
+      }
+      return Promise.reject(error);
+    });
+  }, [onClientesRefresh, open]);
+
+  useEffect(() => {
+    if (!open) {
+      lastClientSearchRequestRef.current = null;
+      setClientSearch('');
+      void onClientesRefresh?.({ search: '', limit: 100, noCache: true });
+      return undefined;
+    }
+    const query = clientSearch.trim();
+    if (query && query.length < 2 && !/^\d+$/.test(query)) return undefined;
+    const timer = setTimeout(() => {
+      void requestClientes(query).catch(() => null);
+    }, query ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [clientSearch, onClientesRefresh, open, requestClientes]);
 
   useEffect(() => {
     if (!open) return;
@@ -138,15 +191,25 @@ export default function VentaFinalizarOperacionModal({
     if (!selected || selected.es_consumidor_final) return;
 
     const nextPhone = normalizePhoneText(selected.telefono);
-    if (!nextPhone) return;
+    const nextName = normalizeOptionalText(
+      selected?.label ||
+      selected?.nombre_cliente ||
+      [selected?.nombre, selected?.apellido].filter(Boolean).join(' ')
+    );
+    if (!nextPhone && !nextName) return;
 
     setContact((current) => {
       const currentPhone = normalizePhoneText(current.telefono_contacto);
-      if (currentPhone && currentPhone !== lastAutoPhoneRef.current) return current;
-      lastAutoPhoneRef.current = nextPhone;
+      const currentName = normalizeOptionalText(current.nombre_contacto);
+      const phoneLockedByUser = currentPhone && currentPhone !== lastAutoPhoneRef.current;
+      const nameLockedByUser = currentName && currentName !== lastAutoNameRef.current;
+      if (phoneLockedByUser && nameLockedByUser) return current;
+      if (nextPhone && !phoneLockedByUser) lastAutoPhoneRef.current = nextPhone;
+      if (nextName && !nameLockedByUser) lastAutoNameRef.current = nextName;
       return {
         ...current,
-        telefono_contacto: nextPhone
+        telefono_contacto: phoneLockedByUser ? current.telefono_contacto : nextPhone,
+        nombre_contacto: nameLockedByUser ? current.nombre_contacto : (nextName || current.nombre_contacto)
       };
     });
   }, [composer.clientes, composer.selectedClient, open]);
@@ -174,12 +237,12 @@ export default function VentaFinalizarOperacionModal({
     if (!open) return undefined;
 
     const onKeyDown = (event) => {
-      if (event.key === 'Escape' && !isSubmitting) onClose();
+      if (event.key === 'Escape' && !isSubmitting) handleModalClose();
     };
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isSubmitting, onClose, open]);
+  }, [handleModalClose, isSubmitting, open]);
 
   useEffect(() => {
     if (open) return;
@@ -190,8 +253,12 @@ export default function VentaFinalizarOperacionModal({
     setSubmitDialogError('');
     paidErrorPendingRef.current = false;
     lastAutoPhoneRef.current = '';
+    lastAutoNameRef.current = '';
     phoneSaveAskedRef.current = new Set();
     phoneSaveBypassRef.current = false;
+    setActiveTab('pagar');
+    setContact(CONTACT_INITIAL);
+    setDelivery(DELIVERY_INITIAL);
     setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
   }, [open]);
 
@@ -262,14 +329,14 @@ export default function VentaFinalizarOperacionModal({
     try {
       setPhoneSaveDialog((current) => ({ ...current, saving: true, error: '' }));
       await ventasService.guardarTelefonoCliente(selectedClienteId, { telefono });
-      await onClientesRefresh?.();
+      await onClientesRefresh?.({ search: String(selectedClienteId), limit: 20 });
       setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
       continuePhoneSaveAction(pendingAction);
     } catch (error) {
       const status = Number(error?.status ?? error?.data?.status ?? 0);
       const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
       if (status === 409 && code === 'CLIENTE_TELEFONO_EXISTENTE') {
-        await onClientesRefresh?.();
+        await onClientesRefresh?.({ search: String(selectedClienteId), limit: 20 });
         setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
         continuePhoneSaveAction(pendingAction);
         return;
@@ -296,37 +363,7 @@ export default function VentaFinalizarOperacionModal({
       return false;
     }
 
-    if (requiresPendingContactName && !normalizeOptionalText(contact.nombre_contacto)) {
-      setLocalError('Nombre contacto es obligatorio para pedido pendiente sin cliente registrado.');
-      return false;
-    }
-
-    const phoneRequired =
-      activeTab === 'pendiente' ||
-      contact.canal === 'TELEFONO' ||
-      contact.canal === 'WHATSAPP' ||
-      contact.modalidad === 'RECOGER';
-
-    if (phoneRequired && !normalizeOptionalText(contact.telefono_contacto)) {
-      setLocalError(activeTab === 'pendiente'
-        ? 'Telefono es obligatorio para crear un pedido pendiente.'
-        : 'Telefono es obligatorio para este canal o modalidad.');
-      return false;
-    }
-
     if (activeTab === 'pendiente' && contact.modalidad === 'DELIVERY') {
-      const missing = [
-        ['nombre_receptor', 'Nombre receptor'],
-        ['telefono_receptor', 'Telefono receptor'],
-        ['direccion_entrega', 'Direccion entrega'],
-        ['referencia_entrega', 'Referencia entrega']
-      ].find(([field]) => !normalizeOptionalText(delivery[field]));
-
-      if (missing) {
-        setLocalError(`${missing[1]} es obligatorio para delivery.`);
-        return false;
-      }
-
       const hasDeliveryCost = Boolean(String(delivery.costo_envio || '').trim());
       const parsedCost = Number(delivery.costo_envio);
       if (hasDeliveryCost && (!Number.isFinite(parsedCost) || parsedCost < 0)) {
@@ -347,7 +384,20 @@ export default function VentaFinalizarOperacionModal({
     setSubmitDialogError('');
     paidErrorPendingRef.current = true;
     try {
-      const response = await composer.submitPaidSale();
+      const response = await composer.submitPaidSale({
+        contacto: {
+          nombre_contacto: resolvedContactName,
+          telefono_contacto: normalizeOptionalText(contact.telefono_contacto),
+          dni: null,
+          rtn: null,
+          correo: null
+        },
+        contexto: {
+          canal: contact.canal,
+          modalidad: contact.modalidad,
+          observacion_contexto: normalizeOptionalText(contact.observacion_contexto)
+        }
+      });
       if (response) {
         paidErrorPendingRef.current = false;
         onClose();
@@ -371,9 +421,6 @@ export default function VentaFinalizarOperacionModal({
 
       const modalidad = contact.modalidad;
       const canal = contact.canal;
-      const resolvedContactName =
-        normalizeOptionalText(contact.nombre_contacto) ||
-        (hasRegisteredClient ? selectedClienteLabel : null);
       const payload = composer.buildPedidoPendientePayload({
         contacto: {
           nombre_contacto: resolvedContactName,
@@ -436,7 +483,7 @@ export default function VentaFinalizarOperacionModal({
   const clienteOptions = (Array.isArray(composer.clientes) ? composer.clientes : []).map((cliente) => ({
     value: String(cliente.value ?? cliente.id_cliente ?? ''),
     label: String(cliente.label ?? cliente.nombre_cliente ?? 'Cliente'),
-    helperText: cliente.es_consumidor_final ? 'Venta sin cliente registrado' : '',
+    helperText: buildClienteHelperText(cliente),
     searchText: normalizeOptionSearchText(cliente)
   }));
   const selectedCliente = (Array.isArray(composer.clientes) ? composer.clientes : []).find((cliente) => {
@@ -455,7 +502,7 @@ export default function VentaFinalizarOperacionModal({
     selectedCliente?.nombre_cliente ||
     [selectedCliente?.nombre, selectedCliente?.apellido].filter(Boolean).join(' ')
   );
-  const requiresPendingContactName = activeTab === 'pendiente' && !hasRegisteredClient;
+  const resolvedContactName = normalizeOptionalText(contact.nombre_contacto) || selectedClienteLabel;
   const canalOptions = [
     { value: 'LOCAL', label: 'LOCAL' },
     { value: 'TELEFONO', label: 'TELEFONO' },
@@ -483,16 +530,37 @@ export default function VentaFinalizarOperacionModal({
     }))
   ];
 
-  const handleClienteCreated = async ({ id_cliente: idCliente, label }) => {
-    const refreshedClientes = await onClientesRefresh?.();
-    const selected = (Array.isArray(refreshedClientes) ? refreshedClientes : []).find((cliente) => {
-      if (idCliente && Number(cliente.id_cliente) === Number(idCliente)) return true;
-      return label && String(cliente.label || '').trim().toLowerCase() === String(label).trim().toLowerCase();
-    });
+  const handleClienteCreated = ({ id_cliente: idCliente, label, cliente }) => {
+    const localCliente = {
+      ...(cliente && typeof cliente === 'object' ? cliente : {}),
+      id_cliente: idCliente || cliente?.id_cliente,
+      nombre_cliente: cliente?.nombre_cliente || label
+    };
+    const selected = onClienteCatalogUpsert?.(localCliente) || {
+      ...localCliente,
+      value: String(localCliente.id_cliente || ''),
+      label: String(localCliente.nombre_cliente || label || '').trim()
+    };
     if (selected?.value) {
-      handleClienteChange(String(selected.value), refreshedClientes);
+      handleClienteChange(String(selected.value), [selected, ...(composer.clientes || [])]);
     }
     setQuickCreateOpen(false);
+    const refreshSearch = String(idCliente || selected?.id_cliente || '').trim();
+    if (!refreshSearch) return;
+    void requestClientes(refreshSearch, { force: true })
+      .then((refreshedClientes) => {
+        const refreshed = (Array.isArray(refreshedClientes) ? refreshedClientes : []).find(
+          (item) => Number(item?.id_cliente) === Number(idCliente)
+        );
+        if (refreshed?.value) handleClienteChange(String(refreshed.value), refreshedClientes);
+      })
+      .catch(() => {
+        onNotify?.(
+          'CLIENTE CREADO',
+          'El cliente fue creado y seleccionado, pero no se pudo actualizar el catalogo. Puedes reintentar la busqueda.',
+          'warning'
+        );
+      });
   };
 
   const handleClienteChange = (value, sourceClientes = composer.clientes) => {
@@ -543,7 +611,7 @@ export default function VentaFinalizarOperacionModal({
               <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
             </div>
           </div>
-          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={isSubmitting} aria-label="Cerrar">
+          <button type="button" className="ventas-modal__close-btn" onClick={handleModalClose} disabled={isSubmitting} aria-label="Cerrar">
             <i className="bi bi-x-lg" />
           </button>
         </header>
@@ -554,6 +622,7 @@ export default function VentaFinalizarOperacionModal({
             role="tab"
             aria-selected={activeTab === 'pagar'}
             className={activeTab === 'pagar' ? 'is-active' : ''}
+            data-testid="ventas-finalizar-tab-pagar"
             onClick={() => setActiveTab('pagar')}
           >
             <i className="bi bi-credit-card" /> Pagar ahora
@@ -563,6 +632,7 @@ export default function VentaFinalizarOperacionModal({
             role="tab"
             aria-selected={activeTab === 'pendiente'}
             className={activeTab === 'pendiente' ? 'is-active' : ''}
+            data-testid="ventas-finalizar-tab-pendiente"
             onClick={() => setActiveTab('pendiente')}
           >
             <i className="bi bi-clock-history" /> Pago pendiente
@@ -581,50 +651,58 @@ export default function VentaFinalizarOperacionModal({
                 placeholder="Selecciona cliente"
                 searchable
                 searchPlaceholder="Buscar cliente..."
-                emptyText="No se encontro ese cliente."
+                onSearchChange={setClientSearch}
+                onOpen={() => {
+                  setClientSearch('');
+                }}
+                emptyText={clientsLoading || clientsStatus === 'loading'
+                  ? 'Buscando clientes...'
+                  : clientsStatus === 'error'
+                    ? 'No se pudieron cargar los clientes.'
+                    : clientsStatus === 'cancelled'
+                      ? 'Busqueda cancelada.'
+                      : 'No se encontro ese cliente.'}
                 createActionLabel={(query) => (query ? `Crear cliente "${query}"` : 'Crear cliente')}
-                onCreateAction={(query) => {
+                onCreateAction={clientsStatus === 'error' ? undefined : (query) => {
                   setQuickCreateSearch(query);
                   setQuickCreateOpen(true);
                 }}
                 className="app-select--compact app-select--warm ventas-finalizar-modal__field-wide"
+                helperText={!clientSearch.trim()
+                  ? 'Escribe un nombre, teléfono, DNI, RTN o ID para buscar un cliente.'
+                  : clientesMeta.has_more
+                    ? 'Se muestran los primeros 100 resultados. Refina la búsqueda.'
+                    : ''}
               />
-
-              {activeTab === 'pendiente' ? (
-                <label className="ventas-create-modal__field">
-                  <span>
-                    Nombre contacto
-                    {requiresPendingContactName ? (
-                      <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
-                    ) : null}
-                  </span>
-                  <input
-                    type="text"
-                    value={contact.nombre_contacto}
-                    placeholder="Ej. Angel Perez"
-                    onChange={(event) => setContactField('nombre_contacto', event.target.value)}
-                    required={requiresPendingContactName}
-                    aria-required={requiresPendingContactName}
-                  />
-                  {requiresPendingContactName ? (
-                    <small className="ventas-finalizar-modal__field-hint">
-                      Requerido si no seleccionas un cliente registrado.
-                    </small>
-                  ) : null}
-                </label>
+              {clientsStatus === 'error' ? (
+                <div className="ventas-create-modal__error ventas-finalizar-modal__field-wide" role="alert">
+                  <span>{clientsError || 'No se pudieron cargar los clientes.'}</span>{' '}
+                  <button type="button" className="btn btn-link btn-sm p-0" onClick={() => {
+                    void requestClientes(clientSearch, { force: true }).catch(() => null);
+                  }}>
+                    Reintentar
+                  </button>
+                </div>
               ) : null}
 
               <label className="ventas-create-modal__field">
-                <span>
-                  Telefono
-                  <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
-                </span>
+                  <span>Nombre contacto (opcional)</span>
+                  <input
+                    type="text"
+                    value={contact.nombre_contacto}
+                    data-testid="ventas-pendiente-nombre-contacto"
+                    placeholder="Ej. Angel Perez"
+                    onChange={(event) => setContactField('nombre_contacto', event.target.value)}
+                  />
+              </label>
+
+              <label className="ventas-create-modal__field">
+                <span>Telefono (opcional)</span>
                 <input
                   type="text"
                   value={contact.telefono_contacto}
+                  data-testid="ventas-contacto-telefono"
                   onChange={(event) => setContactField('telefono_contacto', event.target.value)}
-                  required={activeTab === 'pendiente'}
-                  aria-required={activeTab === 'pendiente'}
                 />
               </label>
 
@@ -660,19 +738,19 @@ export default function VentaFinalizarOperacionModal({
               <strong>Delivery</strong>
               <div className="ventas-finalizar-modal__grid">
                 <label className="ventas-create-modal__field">
-                  <span>Nombre receptor</span>
+                  <span>Nombre receptor (opcional)</span>
                   <input type="text" value={delivery.nombre_receptor} onChange={(event) => setDeliveryField('nombre_receptor', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">
-                  <span>Telefono receptor</span>
+                  <span>Telefono receptor (opcional)</span>
                   <input type="text" value={delivery.telefono_receptor} onChange={(event) => setDeliveryField('telefono_receptor', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
-                  <span>Direccion entrega</span>
+                  <span>Direccion de entrega (opcional)</span>
                   <input type="text" value={delivery.direccion_entrega} onChange={(event) => setDeliveryField('direccion_entrega', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
-                  <span>Referencia entrega</span>
+                  <span>Referencia de entrega (opcional)</span>
                   <input type="text" value={delivery.referencia_entrega} onChange={(event) => setDeliveryField('referencia_entrega', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">
@@ -717,6 +795,7 @@ export default function VentaFinalizarOperacionModal({
                         type="text"
                         inputMode="decimal"
                         value={composer.cashReceived}
+                        data-testid="ventas-pago-monto-recibido"
                         placeholder="0.00"
                         onChange={handleCashReceivedChange}
                         className="ventas-finalizar-modal__money-input"
@@ -737,7 +816,11 @@ export default function VentaFinalizarOperacionModal({
 
                 <div className="ventas-finalizar-modal__payment-summary">
                   <span><i className={selectedPayment.icon} /> {selectedPayment.label}</span>
-                  <strong>Cambio: {composer.formatCurrency(composer.change)}</strong>
+                  <strong>
+                    {composer.paymentMethod === 'efectivo'
+                      ? `Cambio: ${composer.formatCurrency(composer.change)}`
+                      : 'Referencia requerida'}
+                  </strong>
                 </div>
               </div>
             </section>
@@ -807,15 +890,15 @@ export default function VentaFinalizarOperacionModal({
         </div>
 
         <footer className="ventas-modal-footer">
-          <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={isSubmitting}>
+          <button type="button" className="btn btn-outline-secondary" onClick={handleModalClose} disabled={isSubmitting}>
             Cancelar
           </button>
           {activeTab === 'pagar' ? (
-            <button type="button" className="btn btn-primary" onClick={handlePaidSubmit} disabled={!composer.canSubmit || isSubmitting}>
+            <button type="button" className="btn btn-primary" data-testid="ventas-confirmar-pago" onClick={handlePaidSubmit} disabled={!composer.canSubmit || isSubmitting}>
               {paidSubmitting || saving ? 'Guardando...' : 'Confirmar pago y enviar pedido'}
             </button>
           ) : (
-            <button type="button" className="btn btn-primary" onClick={handlePendingSubmit} disabled={isSubmitting}>
+            <button type="button" className="btn btn-primary" data-testid="ventas-crear-pedido-pendiente" onClick={handlePendingSubmit} disabled={isSubmitting}>
               {pendingSubmitting || saving ? 'Creando...' : 'Crear pedido pendiente'}
             </button>
           )}

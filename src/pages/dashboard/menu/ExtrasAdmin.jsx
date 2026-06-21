@@ -18,8 +18,7 @@ const emptyForm = {
   id_almacenes: [],
   orden: '0',
   estado: true,
-  recetas: [],
-  combos: []
+  recetas: []
 };
 
 const normalizePositiveIdList = (ids) => [...new Set(
@@ -35,8 +34,19 @@ const normalizeRows = (response) => {
   return [];
 };
 
-const money = (value) => {
+const roundMoneyAmount = (value) => {
   const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return NaN;
+  return Math.round((parsed + Number.EPSILON) * 100) / 100;
+};
+
+const normalizeExtraRow = (extra = {}) => ({
+  ...extra,
+  precio_adicional: roundMoneyAmount(extra?.precio_adicional)
+});
+
+const money = (value) => {
+  const parsed = roundMoneyAmount(value);
   return `L. ${Number.isFinite(parsed) ? parsed.toFixed(2) : '0.00'}`;
 };
 
@@ -54,7 +64,6 @@ const ExtrasAdmin = () => {
   const [extras, setExtras] = useState([]);
   const [insumos, setInsumos] = useState([]);
   const [recetas, setRecetas] = useState([]);
-  const [combos, setCombos] = useState([]);
   const [almacenes, setAlmacenes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingAlmacenes, setLoadingAlmacenes] = useState(false);
@@ -86,19 +95,16 @@ const ExtrasAdmin = () => {
         extrasResponse,
         insumosResponse,
         recetasResponse,
-        combosResponse,
         almacenesResponse
       ] = await Promise.all([
         extrasAdminService.listarExtras(),
         extrasAdminService.listarInsumos(),
         extrasAdminService.listarRecetas(),
-        extrasAdminService.listarCombos(),
         extrasAdminService.listarAlmacenesExtras()
       ]);
-      setExtras(normalizeRows(extrasResponse));
+      setExtras(normalizeRows(extrasResponse).map((extra) => normalizeExtraRow(extra)));
       setInsumos(normalizeRows(insumosResponse));
       setRecetas(normalizeRows(recetasResponse));
-      setCombos(normalizeRows(combosResponse));
       setAlmacenes(normalizeRows(almacenesResponse));
     } catch (e) {
       setError(e?.message || 'No se pudieron cargar los extras.');
@@ -209,8 +215,7 @@ const ExtrasAdmin = () => {
         id_almacenes: selectedIds,
         orden: String(extra?.orden ?? '0'),
         estado: Boolean(extra?.estado ?? true),
-        recetas: Array.isArray(extra?.recetas) ? extra.recetas.map((id) => Number(id)) : [],
-        combos: Array.isArray(extra?.combos) ? extra.combos.map((id) => Number(id)) : []
+        recetas: Array.isArray(extra?.recetas) ? extra.recetas.map((id) => Number(id)) : []
       });
       setDrawerOpen(true);
     } catch (e) {
@@ -251,20 +256,6 @@ const ExtrasAdmin = () => {
 
   const clearRecetas = () => {
     setForm((prev) => ({ ...prev, recetas: [] }));
-  };
-
-  const toggleCombo = (idCombo) => {
-    setForm((prev) => {
-      const id = Number(idCombo);
-      const current = new Set(prev.combos);
-      if (current.has(id)) current.delete(id);
-      else current.add(id);
-      return { ...prev, combos: [...current] };
-    });
-  };
-
-  const clearCombos = () => {
-    setForm((prev) => ({ ...prev, combos: [] }));
   };
 
   const activeAlmacenes = useMemo(() => (
@@ -453,7 +444,7 @@ const ExtrasAdmin = () => {
   const validate = () => {
     if (!String(form.nombre || '').trim()) return 'El nombre del extra es obligatorio.';
     if (!String(form.codigo || '').trim()) return 'El codigo del extra es obligatorio.';
-    const price = Number(form.precio_adicional);
+    const price = roundMoneyAmount(form.precio_adicional);
     if (!Number.isFinite(price) || price < 0) return 'El precio adicional debe ser mayor o igual a 0.';
     const hasInventory = Boolean(form.id_insumo || form.cant || form.id_unidad_medida);
     if (hasInventory && (!form.id_insumo || !form.cant || !form.id_unidad_medida)) {
@@ -482,10 +473,11 @@ const ExtrasAdmin = () => {
     }
 
     const idAlmacenes = normalizePositiveIdList(form.id_almacenes);
+    const normalizedPrice = roundMoneyAmount(form.precio_adicional);
     const payload = {
       codigo: buildCode(form.nombre),
       nombre: form.nombre,
-      precio_adicional: Number(form.precio_adicional),
+      precio_adicional: normalizedPrice,
       id_insumo: form.id_insumo || null,
       cant: form.cant || null,
       id_unidad_medida: form.id_unidad_medida || null,
@@ -493,23 +485,37 @@ const ExtrasAdmin = () => {
       id_almacenes: idAlmacenes,
       orden: Number(form.orden || 0),
       estado: Boolean(form.estado),
-      recetas: form.recetas,
-      combos: form.combos
+      recetas: form.recetas
     };
 
     try {
       setSaving(true);
+      let response = null;
       if (editingId) {
-        await extrasAdminService.actualizarExtra(editingId, payload);
+        response = await extrasAdminService.actualizarExtra(editingId, payload);
         setSuccess('Extra actualizado correctamente.');
       } else {
-        await extrasAdminService.crearExtra(payload);
+        response = await extrasAdminService.crearExtra(payload);
         setSuccess('Extra creado correctamente.');
       }
       setDrawerOpen(false);
       setEditingId(null);
       setForm({ ...emptyForm });
       await cargarDatos();
+      const hydratedExtra = response?.extra ? normalizeExtraRow(response.extra) : null;
+      if (hydratedExtra?.id_extra) {
+        setExtras((current) => {
+          const next = Array.isArray(current) ? [...current] : [];
+          const existingIndex = next.findIndex(
+            (item) => Number(item?.id_extra) === Number(hydratedExtra.id_extra)
+          );
+          if (existingIndex >= 0) {
+            next[existingIndex] = { ...next[existingIndex], ...hydratedExtra };
+            return next;
+          }
+          return [hydratedExtra, ...next];
+        });
+      }
     } catch (e) {
       setError(e?.message || 'No se pudo guardar el extra.');
     } finally {
@@ -636,10 +642,6 @@ const ExtrasAdmin = () => {
                       <div className="menu-extras-card__meta">
                         <span>Recetas</span>
                         <strong>{Number(extra.total_recetas || 0)}</strong>
-                      </div>
-                      <div className="menu-extras-card__meta">
-                        <span>Combos</span>
-                        <strong>{Number(extra.total_combos || 0)}</strong>
                       </div>
                     </div>
                     <footer className="menu-recetas-card__actions">
@@ -858,42 +860,6 @@ const ExtrasAdmin = () => {
                       </div>
                     </section>
 
-                    <section className="menu-extras-admin__recipes">
-                      <div className="menu-extras-admin__section-head">
-                        <div className="menu-recetas-admin__detalle-title">Combos donde aparece</div>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-secondary"
-                          onClick={clearCombos}
-                          disabled={saving || form.combos.length === 0 || (editingId ? !canEditExtra : !canCreateExtra)}
-                        >
-                          Limpiar
-                        </button>
-                      </div>
-                      <div className="menu-extras-admin__recipe-list">
-                        {combos.map((combo) => {
-                          const idCombo = Number(combo?.id_combo);
-                          const comboNombre = String(
-                            combo?.nombre_combo || combo?.descripcion || `Combo #${idCombo}`
-                          ).trim();
-
-                          return (
-                            <label className="menu-extras-admin__recipe-option" key={idCombo}>
-                              <input
-                                type="checkbox"
-                                checked={form.combos.includes(idCombo)}
-                                onChange={() => toggleCombo(idCombo)}
-                                disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
-                              />
-                              <span>{comboNombre}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                      <div className="menu-extras-admin__selection-count">
-                        {form.combos.length} combos seleccionados
-                      </div>
-                    </section>
                   </div>
                 </div>
 

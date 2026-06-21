@@ -276,6 +276,7 @@ const Login = () => {
               <FiUser className="field-icon" />
               <input
                 id="login-identifier"
+                data-testid="login-identifier"
                 type="text"
                 placeholder="usuario123 o ejemplo@correo.com"
                 value={identifier}
@@ -291,6 +292,7 @@ const Login = () => {
               <FiLock className="field-icon" />
               <input
                 id="login-password"
+                data-testid="login-password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="**********"
                 value={password}
@@ -370,6 +372,7 @@ const Login = () => {
           <motion.button
             type="submit"
             className="btn-cta"
+            data-testid="login-submit"
             disabled={loading}
             whileHover={!loading ? { y: -1 } : {}}
             whileTap={!loading ? { scale: 0.98 } : {}}

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Select from "react-select";
 import InlineLoader from "../../../../components/common/InlineLoader";
 import { usePermisos } from "../../../../context/PermisosContext";
 import { rolesPermisosService } from "../../../../services/rolesPermisosService";
-import { PERMISSIONS } from "../../../../utils/permissions";
+import { isSuperAdminRole, PERMISSIONS } from "../../../../utils/permissions";
 import "./common/crud-modal-theme.css";
 import "./roles-permisos-ui.css";
 
@@ -196,7 +197,6 @@ const MENU_SUBGROUPS = [
   { key: "publicacion", label: "Publicacion por sucursal", order: 4 },
   { key: "temporada", label: "Menu de temporada", order: 5 },
   { key: "extras", label: "Extras", order: 6 },
-  { key: "combos", label: "Combos", order: 7 },
   { key: "pos", label: "POS / Menu publico", order: 8 },
   { key: "departamentos", label: "Departamentos", order: 9 },
   { key: "pedido_cliente", label: "Pedido cliente", order: 10 },
@@ -298,9 +298,6 @@ const resolveMenuSubgroup = (nombrePermiso) => {
   }
   if (technicalName.startsWith("MENU_EXTRAS_")) {
     return MENU_SUBGROUPS_BY_KEY.get("extras");
-  }
-  if (technicalName.startsWith("MENU_COMBOS_")) {
-    return MENU_SUBGROUPS_BY_KEY.get("combos");
   }
   if (technicalName.startsWith("MENU_POS_")) {
     return MENU_SUBGROUPS_BY_KEY.get("pos");
@@ -472,10 +469,17 @@ const buildPermisoRenderBlocks = (rows) => {
 
   return [...plainEntries, ...groupedEntries]
     .sort((left, right) => left.sortIndex - right.sortIndex)
-    .map((entry) => ({
-      type: entry.type,
-      groups: entry.groups
-    }));
+    .map((entry) => (
+      entry.type === "permiso"
+        ? {
+          type: entry.type,
+          permiso: entry.permiso
+        }
+        : {
+          type: entry.type,
+          groups: entry.groups
+        }
+    ));
 };
 
 const resolvePreviewGroup = (nombrePermiso) => {
@@ -521,6 +525,60 @@ const getPermissionIconClass = (technicalName) => {
   return "bi bi-shield-lock";
 };
 
+const PREVIEW_GROUP_LABELS = new Map(ROLE_PREVIEW_GROUPS.map((group) => [group.key, group.label]));
+
+const getPermisoModuleKey = (technicalName) => resolvePreviewGroup(technicalName);
+
+const getPermisoModuleLabel = (technicalName) =>
+  PREVIEW_GROUP_LABELS.get(getPermisoModuleKey(technicalName)) || "Otros";
+
+const getPermisoActionKey = (technicalName) => {
+  const tokens = String(technicalName ?? "").trim().toUpperCase().split("_").filter(Boolean);
+  if (tokens.length === 0) return "otros";
+
+  const lastToken = tokens[tokens.length - 1];
+  if (ACTION_WORDS[lastToken]) return lastToken.toLowerCase();
+  if (lastToken === "GLOBAL" && tokens.length > 1) {
+    const previousToken = tokens[tokens.length - 2];
+    if (ACTION_WORDS[previousToken]) return previousToken.toLowerCase();
+  }
+
+  return "otros";
+};
+
+const getPermisoActionLabel = (technicalName) => {
+  const actionKey = getPermisoActionKey(technicalName);
+  return ACTION_WORDS[actionKey.toUpperCase()] || "Otros";
+};
+
+const getSensitivePermisoMeta = (technicalName) => {
+  const raw = String(technicalName ?? "").trim().toUpperCase();
+  if (!raw) return null;
+
+  if (raw.includes("SEGURIDAD") || raw.includes("CONFIG")) {
+    return {
+      label: "Sensible",
+      reason: "Afecta seguridad o configuracion"
+    };
+  }
+
+  if (raw.endsWith("_ELIMINAR")) {
+    return {
+      label: "Critico",
+      reason: "Permite eliminar informacion"
+    };
+  }
+
+  if (raw.includes("SESIONES") || raw.endsWith("_GLOBAL") || raw.includes("_CERRAR")) {
+    return {
+      label: "Alto impacto",
+      reason: "Puede afectar acceso o alcance global"
+    };
+  }
+
+  return null;
+};
+
 const normalizePagination = ({
   pagination,
   fallbackPage = 1,
@@ -549,10 +607,44 @@ const normalizePagination = ({
 
 const RolesPermisosTab = () => {
   const { canAny } = usePermisos();
-  const canEditRolesPermisos = canAny([
+  const canCreateRole = canAny([
+    PERMISSIONS.ROLES_PERMISOS_ROLES_CREAR,
+    PERMISSIONS.ROLES_PERMISOS_EDITAR
+  ]);
+  const canEditRole = canAny([
     PERMISSIONS.ROLES_PERMISOS_ROLES_EDITAR,
-    PERMISSIONS.ROLES_PERMISOS_PERMISOS_GUARDAR,
+    PERMISSIONS.ROLES_PERMISOS_EDITAR
+  ]);
+  const canDeleteRole = canAny([
+    PERMISSIONS.ROLES_PERMISOS_ROLES_ELIMINAR,
+    PERMISSIONS.ROLES_PERMISOS_EDITAR
+  ]);
+  const canSearchRoles = canAny([
+    PERMISSIONS.ROLES_PERMISOS_ROLES_BUSCAR,
+    PERMISSIONS.ROLES_PERMISOS_ROLES_LISTADO_VER,
+    PERMISSIONS.ROLES_PERMISOS_MODULO_VER
+  ]);
+  const canSearchPermisos = canAny([
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_BUSCAR,
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_LISTADO_VER,
+    PERMISSIONS.ROLES_PERMISOS_MODULO_VER
+  ]);
+  const canTogglePermisos = canAny([
     PERMISSIONS.ROLES_PERMISOS_PERMISOS_TOGGLE,
+    PERMISSIONS.ROLES_PERMISOS_EDITAR
+  ]);
+  const canSelectAllPermisos = canAny([
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_SELECCIONAR_TODOS,
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_TOGGLE,
+    PERMISSIONS.ROLES_PERMISOS_EDITAR
+  ]);
+  const canClearAllPermisos = canAny([
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_QUITAR_TODOS,
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_TOGGLE,
+    PERMISSIONS.ROLES_PERMISOS_EDITAR
+  ]);
+  const canSavePermisos = canAny([
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_GUARDAR,
     PERMISSIONS.ROLES_PERMISOS_EDITAR
   ]);
   const [roles, setRoles] = useState([]);
@@ -563,6 +655,8 @@ const RolesPermisosTab = () => {
   const [checkedPermisos, setCheckedPermisos] = useState(new Set());
   const [roleSearch, setRoleSearch] = useState("");
   const [search, setSearch] = useState("");
+  const [moduleFilter, setModuleFilter] = useState("all");
+  const [actionFilter, setActionFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [pagination, setPagination] = useState({
@@ -833,25 +927,41 @@ const RolesPermisosTab = () => {
   }, []);
 
   const openCreateRoleDrawer = useCallback(() => {
-    if (!canEditRolesPermisos) return;
+    if (!canCreateRole) return;
     setRoleDrawerMode("create");
     setRoleEditingTarget(null);
     setRoleForm(buildRoleFormState());
     setRoleFormErrors({});
     setRoleDrawerOpen(true);
-  }, [canEditRolesPermisos]);
+  }, [canCreateRole]);
 
   const openEditRoleDrawer = useCallback((role) => {
-    if (!canEditRolesPermisos || !role?.id_rol) return;
+    if (!canEditRole || !role?.id_rol) return;
+    if (isSuperAdminRole(role?.nombre)) {
+      openToast(
+        "PROTEGIDO",
+        "El rol SUPER_ADMIN es protegido y no se puede renombrar desde este módulo.",
+        "warning"
+      );
+      return;
+    }
     setRoleDrawerMode("edit");
     setRoleEditingTarget(role);
     setRoleForm(buildRoleFormState(role));
     setRoleFormErrors({});
     setRoleDrawerOpen(true);
-  }, [canEditRolesPermisos]);
+  }, [canEditRole, openToast]);
 
   const openDeleteRoleDialog = useCallback(async (role) => {
-    if (!canEditRolesPermisos || !role?.id_rol) return;
+    if (!canDeleteRole || !role?.id_rol) return;
+    if (isSuperAdminRole(role?.nombre)) {
+      openToast(
+        "PROTEGIDO",
+        "El rol SUPER_ADMIN es protegido y no se puede eliminar.",
+        "warning"
+      );
+      return;
+    }
 
     setDeleteDialog({
       open: true,
@@ -885,7 +995,7 @@ const RolesPermisosTab = () => {
           : current
       );
     }
-  }, [canEditRolesPermisos]);
+  }, [canDeleteRole, openToast]);
 
   useEffect(() => {
     void loadRoles();
@@ -938,19 +1048,81 @@ const RolesPermisosTab = () => {
 
   const filteredPermisos = useMemo(() => {
     const searchTerm = normalizeSearchText(search);
-    if (!searchTerm) return allPermisos;
-
     return allPermisos.filter((permiso) => {
       const technical = String(permiso?.nombre_permiso || "");
       const humanized = humanizePermissionName(permiso?.nombre_permiso);
       const description = String(permiso?.descripcion || "");
-      return (
+      const matchesSearch =
+        !searchTerm ||
         includesSearch(technical, searchTerm) ||
         includesSearch(humanized, searchTerm) ||
-        includesSearch(description, searchTerm)
+        includesSearch(description, searchTerm);
+      const matchesModule =
+        moduleFilter === "all" || getPermisoModuleKey(technical) === moduleFilter;
+      const matchesAction =
+        actionFilter === "all" || getPermisoActionKey(technical) === actionFilter;
+
+      return (
+        matchesSearch &&
+        matchesModule &&
+        matchesAction
       );
     });
-  }, [allPermisos, search]);
+  }, [actionFilter, allPermisos, moduleFilter, search]);
+
+  const moduleFilterOptions = useMemo(() => {
+    const uniqueModules = new Map();
+    allPermisos.forEach((permiso) => {
+      const technicalName = String(permiso?.nombre_permiso || "").trim();
+      if (!technicalName) return;
+      const key = getPermisoModuleKey(technicalName);
+      if (!uniqueModules.has(key)) {
+        uniqueModules.set(key, getPermisoModuleLabel(technicalName));
+      }
+    });
+
+    return Array.from(uniqueModules.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label, "es", { sensitivity: "base" }));
+  }, [allPermisos]);
+
+  const actionFilterOptions = useMemo(() => {
+    const uniqueActions = new Map();
+    allPermisos.forEach((permiso) => {
+      const technicalName = String(permiso?.nombre_permiso || "").trim();
+      if (!technicalName) return;
+      const key = getPermisoActionKey(technicalName);
+      if (!uniqueActions.has(key)) {
+        uniqueActions.set(key, getPermisoActionLabel(technicalName));
+      }
+    });
+
+    return Array.from(uniqueActions.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label, "es", { sensitivity: "base" }));
+  }, [allPermisos]);
+  const selectedModuleOption = useMemo(
+    () =>
+      [{ value: "all", label: "Todos" }, ...moduleFilterOptions].find(
+        (option) => option.value === moduleFilter
+      ) || null,
+    [moduleFilter, moduleFilterOptions]
+  );
+  const selectedActionOption = useMemo(
+    () =>
+      [{ value: "all", label: "Todas" }, ...actionFilterOptions].find(
+        (option) => option.value === actionFilter
+      ) || null,
+    [actionFilter, actionFilterOptions]
+  );
+  const limitOptions = useMemo(
+    () => LIMIT_OPTIONS.map((option) => ({ value: String(option), label: String(option) })),
+    []
+  );
+  const selectedLimitOption = useMemo(
+    () => limitOptions.find((option) => Number(option.value) === Number(limit)) || limitOptions[0] || null,
+    [limit, limitOptions]
+  );
 
   const filteredRoles = useMemo(() => {
     const searchTerm = normalizeSearchText(roleSearch);
@@ -985,13 +1157,35 @@ const RolesPermisosTab = () => {
     if (selectedRole) return selectedRole;
     return roles.find((role) => role.id_rol === selectedRoleId) || null;
   }, [roles, selectedRole, selectedRoleId]);
+  const isSuperAdminSelected = useMemo(
+    () => isSuperAdminRole(currentRole?.nombre),
+    [currentRole?.nombre]
+  );
 
   const allVisibleChecked =
     permisos.length > 0 &&
     permisos.every((permiso) => checkedPermisos.has(Number(permiso.id_permiso)));
 
+  const confirmDiscardPendingChanges = useCallback(() => {
+    const assigned = new Set(
+      allPermisos
+        .filter((permiso) => permiso.asignado)
+        .map((permiso) => Number(permiso.id_permiso))
+    );
+    const hasUnsavedChanges =
+      assigned.size !== checkedPermisos.size ||
+      Array.from(assigned).some((permisoId) => !checkedPermisos.has(permisoId));
+
+    if (!hasUnsavedChanges) return true;
+    if (typeof window === "undefined" || typeof window.confirm !== "function") return true;
+    return window.confirm(
+      "Hay cambios de permisos sin guardar. Si continúas, se descartarán para cambiar de rol."
+    );
+  }, [allPermisos, checkedPermisos]);
+
   const handleSelectRole = (idRol) => {
     if (Number(idRol) === Number(selectedRoleId)) return;
+    if (!confirmDiscardPendingChanges()) return;
     setSearch("");
     setPage(1);
     setSelectedRole(null);
@@ -1011,7 +1205,7 @@ const RolesPermisosTab = () => {
   };
 
   const handleTogglePermiso = (idPermiso) => {
-    if (!canEditRolesPermisos) return;
+    if (!canTogglePermisos) return;
     setCheckedPermisos((current) => {
       const next = new Set(current);
       if (next.has(idPermiso)) {
@@ -1024,7 +1218,7 @@ const RolesPermisosTab = () => {
   };
 
   const handleSelectAllVisible = () => {
-    if (!canEditRolesPermisos) return;
+    if (!canSelectAllPermisos) return;
     setCheckedPermisos((current) => {
       const next = new Set(current);
       permisos.forEach((permiso) => next.add(Number(permiso.id_permiso)));
@@ -1033,7 +1227,7 @@ const RolesPermisosTab = () => {
   };
 
   const handleClearAllVisible = () => {
-    if (!canEditRolesPermisos) return;
+    if (!canClearAllPermisos) return;
     setCheckedPermisos((current) => {
       const next = new Set(current);
       permisos.forEach((permiso) => next.delete(Number(permiso.id_permiso)));
@@ -1044,6 +1238,16 @@ const RolesPermisosTab = () => {
   const handleSearchChange = (event) => {
     const nextSearch = event.target.value;
     setSearch(nextSearch);
+    setPage(1);
+  };
+
+  const handleModuleFilterChange = (event) => {
+    setModuleFilter(event.target.value);
+    setPage(1);
+  };
+
+  const handleActionFilterChange = (event) => {
+    setActionFilter(event.target.value);
     setPage(1);
   };
 
@@ -1071,7 +1275,7 @@ const RolesPermisosTab = () => {
   };
 
   const handleSave = async () => {
-    if (!canEditRolesPermisos) return;
+    if (!canSavePermisos) return;
     if (!selectedRoleId) return;
 
     setSaving(true);
@@ -1132,7 +1336,7 @@ const RolesPermisosTab = () => {
 
   const handleRoleSubmit = async (event) => {
     event.preventDefault();
-    if (!canEditRolesPermisos || roleFormSubmitting) return;
+    if ((!canCreateRole && roleDrawerMode === "create") || (!canEditRole && roleDrawerMode === "edit") || roleFormSubmitting) return;
 
     const nextErrors = {};
     if (!String(roleForm.displayName || "").trim()) {
@@ -1146,6 +1350,14 @@ const RolesPermisosTab = () => {
       setRoleFormErrors(nextErrors);
       return;
     }
+
+    if (roleDrawerMode === "edit" && isSuperAdminRole(roleEditingTarget?.nombre)) {
+      const message = "El rol SUPER_ADMIN es protegido y no se puede renombrar desde este módulo.";
+      setRoleFormErrors({ general: message });
+      openToast("BLOQUEADO", message, "warning");
+      return;
+    }
+
 
     setRoleFormSubmitting(true);
 
@@ -1177,7 +1389,13 @@ const RolesPermisosTab = () => {
   };
 
   const handleDeleteRole = async () => {
-    if (!canEditRolesPermisos || !deleteDialog.role?.id_rol || deleteDialog.deleting) return;
+    if (!canDeleteRole || !deleteDialog.role?.id_rol || deleteDialog.deleting) return;
+    if (isSuperAdminRole(deleteDialog.role?.nombre)) {
+      const message = "El rol SUPER_ADMIN es protegido y no se puede eliminar.";
+      setDeleteDialog((current) => ({ ...current, deleting: false, error: message }));
+      openToast("BLOQUEADO", message, "warning");
+      return;
+    }
 
     setDeleteDialog((current) => ({ ...current, deleting: true, error: "" }));
 
@@ -1227,6 +1445,10 @@ const RolesPermisosTab = () => {
 
   const permisoRenderBlocks = useMemo(() => buildPermisoRenderBlocks(permisos), [permisos]);
   const previewGroups = useMemo(() => groupPreviewPermisos(previewPermisos), [previewPermisos]);
+  const isPreviewSuperAdmin = useMemo(
+    () => isSuperAdminRole(previewRole?.nombre),
+    [previewRole?.nombre]
+  );
   const activePreviewGroup =
     previewGroups.find((group) => group.key === activePreviewGroupKey) || previewGroups[0] || null;
   const activePreviewInventarioGroups = useMemo(() => {
@@ -1277,25 +1499,49 @@ const RolesPermisosTab = () => {
   }, [isMobileLayout, mobileSection]);
 
   const renderPermisoItem = (permiso) => {
-    const idPermiso = Number(permiso.id_permiso);
+    const idPermiso = Number(permiso?.id_permiso);
+    const technicalName = String(permiso?.nombre_permiso || "").trim();
+    if (!Number.isInteger(idPermiso) || idPermiso <= 0 || !technicalName) return null;
+
     const checked = checkedPermisos.has(idPermiso);
     const inputId = `permiso-${idPermiso}`;
+    const sensitiveMeta = getSensitivePermisoMeta(technicalName);
 
     return (
-      <div key={idPermiso} className="roles-permisos-item">
+      <div
+        key={idPermiso}
+        className={`roles-permisos-item ${sensitiveMeta ? "roles-permisos-item--sensitive" : ""}`.trim()}
+      >
         <div className="roles-permisos-item-main">
           <span className="roles-permisos-item-icon" aria-hidden="true">
-            <i className={getPermissionIconClass(permiso.nombre_permiso)} />
+            <i className={getPermissionIconClass(technicalName)} />
           </span>
           <div className="roles-permisos-item-copy">
             <label htmlFor={inputId} className="roles-permisos-item-label">
-              {humanizePermissionName(permiso.nombre_permiso)}
+              {humanizePermissionName(technicalName)}
             </label>
+            <div className="roles-permisos-item-meta">
+              <span className="roles-permisos-item-chip">
+                <i className="bi bi-grid-1x2" />
+                {getPermisoModuleLabel(technicalName)}
+              </span>
+              <span className="roles-permisos-item-chip">
+                <i className="bi bi-lightning-charge" />
+                {getPermisoActionLabel(technicalName)}
+              </span>
+              {sensitiveMeta ? (
+                <span className="roles-permisos-item-chip roles-permisos-item-chip--sensitive">
+                  <i className="bi bi-exclamation-diamond" />
+                  {sensitiveMeta.label}
+                </span>
+              ) : null}
+            </div>
             <small className="roles-permisos-item-technical">
-              {permiso.nombre_permiso}
+              {technicalName}
             </small>
             <small className="roles-permisos-item-description">
               {permiso.descripcion || "Sin descripcion registrada."}
+              {sensitiveMeta ? ` ${sensitiveMeta.reason}.` : ""}
             </small>
           </div>
         </div>
@@ -1307,7 +1553,7 @@ const RolesPermisosTab = () => {
             type="checkbox"
             role="switch"
             checked={checked}
-            disabled={!canEditRolesPermisos}
+            disabled={!canTogglePermisos}
             onChange={() => handleTogglePermiso(idPermiso)}
           />
         </div>
@@ -1332,7 +1578,7 @@ const RolesPermisosTab = () => {
               </div>
             </div>
 
-            {canEditRolesPermisos ? (
+            {canCreateRole ? (
               <div className="roles-permisos-header-actions">
                 <button
                   type="button"
@@ -1402,7 +1648,7 @@ const RolesPermisosTab = () => {
                     placeholder="Buscar rol..."
                     value={roleSearch}
                     onChange={handleRoleSearchChange}
-                    disabled={loadingRoles}
+                    disabled={loadingRoles || !canSearchRoles}
                   />
                 </label>
               </div>
@@ -1453,6 +1699,12 @@ const RolesPermisosTab = () => {
                             <small className="roles-permisos-role-card__meta">
                               {Number(role.total_permisos || 0)} permisos
                             </small>
+                            {isSuperAdminRole(role?.nombre) ? (
+                              <span className="roles-permisos-role-badge roles-permisos-role-badge--protected">
+                                <i className="bi bi-shield-lock" />
+                                Protegido
+                              </span>
+                            ) : null}
                           </div>
 
                           <span className="roles-permisos-role-count">
@@ -1481,7 +1733,7 @@ const RolesPermisosTab = () => {
                               <span className="inv-catpro-action-label">Detalle</span>
                             </button>
 
-                            {canEditRolesPermisos ? (
+                            {canEditRole && !isSuperAdminRole(role?.nombre) ? (
                               <button
                                 type="button"
                                 className="inv-catpro-action edit inv-catpro-action-compact"
@@ -1497,7 +1749,7 @@ const RolesPermisosTab = () => {
                               </button>
                             ) : null}
 
-                            {canEditRolesPermisos ? (
+                            {canDeleteRole && !isSuperAdminRole(role?.nombre) ? (
                               <button
                                 type="button"
                                 className="inv-catpro-action danger inv-catpro-action-compact"
@@ -1548,38 +1800,68 @@ const RolesPermisosTab = () => {
                       ) : null}
                       <h5 className="mb-1">Permisos de: {selectedRoleName}</h5>
                       <small className="text-muted">
-                        {checkedPermisos.size} permisos seleccionados
+                        {checkedPermisos.size} permisos seleccionados de {filteredPermisos.length} disponibles
                       </small>
+                      <div className="roles-permisos-panel-meta">
+                        <span className="roles-permisos-panel-chip">
+                          <i className="bi bi-key" />
+                          {currentRole?.nombre || "Sin código"}
+                        </span>
+                        {isSuperAdminSelected ? (
+                          <span className="roles-permisos-panel-chip roles-permisos-panel-chip--protected">
+                            <i className="bi bi-shield-check" />
+                            Acceso raíz
+                          </span>
+                        ) : null}
+                        {hasPendingChanges ? (
+                          <span className="roles-permisos-panel-chip roles-permisos-panel-chip--pending">
+                            <i className="bi bi-pencil-square" />
+                            Sin guardar
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="roles-permisos-actions">
                       <button
                         type="button"
-                        className="btn btn-outline-secondary btn-sm"
+                        className="btn btn-outline-secondary btn-sm roles-permisos-toolbar-btn"
                         onClick={handleSelectAllVisible}
                         disabled={
                           permisos.length === 0 ||
                           allVisibleChecked ||
                           hydratingSelection ||
-                          !canEditRolesPermisos
+                          !canSelectAllPermisos
                         }
                       >
                         Copiar todo
                       </button>
                       <button
                         type="button"
-                        className="btn btn-outline-secondary btn-sm"
+                        className="btn btn-outline-secondary btn-sm roles-permisos-toolbar-btn"
                         onClick={handleClearAllVisible}
                         disabled={
                           permisos.length === 0 ||
                           hydratingSelection ||
-                          !canEditRolesPermisos
+                          !canClearAllPermisos
                         }
                       >
                         Descartar todos
                       </button>
                     </div>
                   </div>
+
+                  {isSuperAdminSelected ? (
+                    <div className="roles-permisos-inline-notice roles-permisos-inline-notice--warning">
+                      <i className="bi bi-shield-fill-check" />
+                      <div>
+                        <strong>SUPER_ADMIN tiene acceso total por diseño.</strong>
+                        <span>
+                          Quitar permisos visibles no limita su acceso real al sistema. Esta vista solo refleja la tabla de permisos.
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="roles-permisos-search-wrap">
                     <label className="roles-permisos-search" aria-label="Buscar permiso">
@@ -1589,7 +1871,51 @@ const RolesPermisosTab = () => {
                         placeholder="Buscar permiso..."
                         value={search}
                         onChange={handleSearchChange}
-                        disabled={hydratingSelection}
+                        disabled={hydratingSelection || !canSearchPermisos}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="roles-permisos-filters">
+                    <label className="roles-permisos-filter">
+                      <span>Modulo</span>
+                      <Select
+                        className="roles-permisos-filter-select"
+                        classNamePrefix="menu-salsas-receta-select"
+                        value={selectedModuleOption}
+                        onChange={(option) =>
+                          handleModuleFilterChange({ target: { value: option?.value || "all" } })
+                        }
+                        options={[{ value: "all", label: "Todos" }, ...moduleFilterOptions]}
+                        placeholder="Todos"
+                        isSearchable
+                        isClearable={false}
+                        disabled={loadingPermisos || hydratingSelection || !canSearchPermisos}
+                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                        menuPosition="fixed"
+                        maxMenuHeight={176}
+                        noOptionsMessage={() => "No hay modulos disponibles."}
+                      />
+                    </label>
+
+                    <label className="roles-permisos-filter">
+                      <span>Accion</span>
+                      <Select
+                        className="roles-permisos-filter-select"
+                        classNamePrefix="menu-salsas-receta-select"
+                        value={selectedActionOption}
+                        onChange={(option) =>
+                          handleActionFilterChange({ target: { value: option?.value || "all" } })
+                        }
+                        options={[{ value: "all", label: "Todas" }, ...actionFilterOptions]}
+                        placeholder="Todas"
+                        isSearchable
+                        isClearable={false}
+                        disabled={loadingPermisos || hydratingSelection || !canSearchPermisos}
+                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                        menuPosition="fixed"
+                        maxMenuHeight={176}
+                        noOptionsMessage={() => "No hay acciones disponibles."}
                       />
                     </label>
                   </div>
@@ -1600,8 +1926,8 @@ const RolesPermisosTab = () => {
                     ) : permisos.length === 0 ? (
                       <div className="roles-permisos-empty">
                         <p className="mb-0">
-                          {search.trim()
-                            ? "No hay permisos que coincidan con la busqueda."
+                          {search.trim() || moduleFilter !== "all" || actionFilter !== "all"
+                            ? "No hay permisos que coincidan con la busqueda o filtros aplicados."
                             : "No hay permisos disponibles para este rol."}
                         </p>
                       </div>
@@ -1613,7 +1939,7 @@ const RolesPermisosTab = () => {
 
                         return (
                           <section key={`${block.type}-block-${blockIndex}`} className="roles-permisos-inv-grouped">
-                            {block.groups.map((group) => (
+                            {(Array.isArray(block.groups) ? block.groups : []).map((group) => (
                               <div key={group.key} className="roles-permisos-inv-group">
                                 <div className="roles-permisos-inv-group__head">
                                   <strong>{group.label}</strong>
@@ -1644,24 +1970,28 @@ const RolesPermisosTab = () => {
                     <div className="roles-permisos-pagination-controls">
                       <label className="roles-permisos-limit">
                         <span>Por pagina</span>
-                        <select
-                          className="form-select form-select-sm"
-                          value={limit}
-                          onChange={handleLimitChange}
-                          disabled={loadingPermisos || hydratingSelection}
-                        >
-                          {LIMIT_OPTIONS.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
+                        <Select
+                          className="roles-permisos-limit-select"
+                          classNamePrefix="menu-salsas-receta-select"
+                          value={selectedLimitOption}
+                          onChange={(option) =>
+                            handleLimitChange({ target: { value: option?.value || DEFAULT_LIMIT } })
+                          }
+                          options={limitOptions}
+                          placeholder={String(DEFAULT_LIMIT)}
+                          isSearchable={false}
+                          isClearable={false}
+                          isDisabled={loadingPermisos || hydratingSelection}
+                          menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                          menuPosition="fixed"
+                          maxMenuHeight={176}
+                        />
                       </label>
 
                       <div className="roles-permisos-pagination-actions">
                         <button
                           type="button"
-                          className="btn btn-outline-secondary btn-sm"
+                          className="btn btn-outline-secondary btn-sm roles-permisos-pagination-btn"
                           onClick={() => goToPage(page - 1)}
                           disabled={page <= 1 || loadingPermisos || hydratingSelection}
                         >
@@ -1672,7 +2002,7 @@ const RolesPermisosTab = () => {
                         </span>
                         <button
                           type="button"
-                          className="btn btn-outline-secondary btn-sm"
+                          className="btn btn-outline-secondary btn-sm roles-permisos-pagination-btn"
                           onClick={() => goToPage(page + 1)}
                           disabled={
                             page >= pagination.totalPages ||
@@ -1703,7 +2033,7 @@ const RolesPermisosTab = () => {
                         loadingPermisos ||
                         hydratingSelection ||
                         !selectedRoleId ||
-                        !canEditRolesPermisos ||
+                        !canSavePermisos ||
                         !hasPendingChanges
                       }
                     >
@@ -1740,6 +2070,28 @@ const RolesPermisosTab = () => {
                   <span>Codigo: {previewRole?.nombre || "N/D"}</span>
                   <span>Total permisos: {previewPermisos.length}</span>
                 </div>
+                <div className="roles-preview-panel-meta">
+                  <span className="roles-preview-panel-chip">
+                    <i className="bi bi-key" />
+                    {previewRole?.nombre || "Sin codigo"}
+                  </span>
+                  {isPreviewSuperAdmin ? (
+                    <span className="roles-preview-panel-chip roles-preview-panel-chip--protected">
+                      <i className="bi bi-shield-lock" />
+                      Acceso raiz
+                    </span>
+                  ) : null}
+                </div>
+
+                {isPreviewSuperAdmin ? (
+                  <div className="roles-preview-inline-notice" role="note">
+                    <i className="bi bi-info-circle-fill" aria-hidden="true" />
+                    <span>
+                      <strong>SUPER_ADMIN</strong> mantiene acceso total por diseno. Esta vista es
+                      informativa y no reduce su alcance real en el sistema.
+                    </span>
+                  </div>
+                ) : null}
 
                 {!previewLoading && !previewError && previewGroups.length > 0 ? (
                   <div className="roles-preview-tabs" role="tablist" aria-label="Categorias del rol">

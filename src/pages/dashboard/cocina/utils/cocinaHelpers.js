@@ -218,7 +218,6 @@ export const normalizeKitchenOrder = (row) => {
     ...item,
     id_detalle: Number(item?.id_detalle ?? 0) || null,
     id_producto: Number(item?.id_producto ?? 0) || null,
-    id_combo: Number(item?.id_combo ?? 0) || null,
     id_receta: Number(item?.id_receta ?? 0) || null,
     cantidad: Number(item?.cantidad ?? 0) || 0,
     nombre_item: String(item?.nombre_item ?? 'Item de cocina'),

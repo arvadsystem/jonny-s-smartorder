@@ -118,7 +118,7 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product, canAd
     setSelectedExtraIds([]);
     setQuantity(1);
     setValidationError('');
-  }, [product?.id_combo, product?.id_producto, product?.id_receta, isOpen]);
+  }, [product?.id_producto, product?.id_receta, isOpen]);
 
   if (!shouldRender || !product) return null;
 

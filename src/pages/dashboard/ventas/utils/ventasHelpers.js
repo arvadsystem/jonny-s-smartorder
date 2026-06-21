@@ -203,26 +203,6 @@ export const normalizeProductoRecord = (row, categoriasMap = new Map()) => {
   };
 };
 
-export const normalizeComboRecord = (row) => ({
-  ...row,
-  id_combo: Number(row?.id_combo ?? 0) || null,
-  id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
-  descripcion: String(row?.descripcion ?? 'Combo'),
-  precio: roundMoney(row?.precio),
-  estado: parseBoolean(row?.estado),
-  requiere_complementos: Boolean(row?.requiere_complementos),
-  tipo_complemento: String(row?.tipo_complemento ?? ''),
-  minimo_complementos: Number(row?.minimo_complementos ?? 0) || 0,
-  maximo_complementos: Number(row?.maximo_complementos ?? 0) || 0,
-  complementos_disponibles: (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
-    .map((entry) => ({
-      id_complemento: Number(entry?.id_complemento ?? 0) || null,
-      nombre: String(entry?.nombre ?? 'Complemento').trim(),
-      disponible: entry?.disponible !== false
-    }))
-    .filter((entry) => entry.id_complemento)
-});
-
 export const normalizeRecetaRecord = (row) => ({
   ...row,
   id_receta: Number(row?.id_receta ?? 0) || null,
@@ -245,16 +225,57 @@ export const normalizeRecetaRecord = (row) => ({
     .filter((entry) => entry.id_complemento)
 });
 
+const CLIENTE_NOMBRE_PLACEHOLDERS = new Set([
+  'sin nombre',
+  'sin apellido',
+  'sin nombres',
+  'sin apellidos',
+  'delivery',
+  'no registrado',
+  'no registra',
+  'n/a',
+  'na',
+  'null',
+  'undefined'
+]);
+
+const normalizeClienteNamePart = (value) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (CLIENTE_NOMBRE_PLACEHOLDERS.has(text.toLowerCase())) return '';
+  if (!/\p{L}/u.test(text)) return '';
+  if (/^0+\d{2,}$/.test(text)) return '';
+  return text;
+};
+
+const buildClienteDisplayName = (row = {}) => {
+  const explicitLabel = normalizeClienteNamePart(row?.nombre_cliente || row?.label);
+  if (explicitLabel && !/^Cliente\s+#\d+$/i.test(explicitLabel)) return explicitLabel;
+
+  const empresa = normalizeClienteNamePart(row?.nombre_empresa);
+  if (empresa) return empresa;
+
+  const persona = [
+    normalizeClienteNamePart(row?.nombre),
+    normalizeClienteNamePart(row?.apellido)
+  ].filter(Boolean).join(' ').trim();
+  if (persona) return persona;
+
+  const idCliente = Number(row?.id_cliente ?? row?.value ?? 0) || null;
+  return idCliente ? `Cliente #${idCliente}` : (explicitLabel || 'Cliente sin nombre');
+};
+
 export const normalizeClienteOption = (row) => ({
   ...row,
   id_cliente: Number(row?.id_cliente ?? 0) || null,
   value: String(row?.id_cliente ?? ''),
-  label: String(row?.nombre_cliente ?? 'Consumidor final'),
-  nombre_cliente: String(row?.nombre_cliente ?? 'Consumidor final'),
+  label: buildClienteDisplayName(row),
+  nombre_cliente: buildClienteDisplayName(row),
   telefono: String(row?.telefono ?? '').trim(),
   id_telefono: Number(row?.id_telefono ?? 0) || null,
   dni: String(row?.dni ?? '').trim(),
   rtn: String(row?.rtn ?? '').trim(),
+  tipo_cliente: String(row?.tipo_cliente ?? '').trim(),
   es_consumidor_final: Boolean(row?.es_consumidor_final)
 });
 
@@ -415,26 +436,29 @@ export const normalizeVentaDetail = (row) => {
     return map;
   }, new Map());
   const items = Array.isArray(row?.items)
-    ? row.items.map((item) => ({
-      ...item,
-      id_detalle: Number(item?.id_detalle ?? 0) || null,
-      id_producto: Number(item?.id_producto ?? 0) || null,
-      id_combo: Number(item?.id_combo ?? 0) || null,
-      id_receta: Number(item?.id_receta ?? 0) || null,
-      tipo_item: String(item?.tipo_item ?? 'PRODUCTO'),
-      cantidad: Number(item?.cantidad ?? 0) || 0,
-      precio_unitario: roundMoney(item?.precio_unitario),
-      sub_total: roundMoney(item?.sub_total),
-      total_linea: roundMoney(item?.total_linea),
-      descuento: roundMoney(item?.descuento),
-      descuento_linea: roundMoney(item?.descuento_linea),
-      descuento_global: roundMoney(item?.descuento_global),
-      descuento_porcentaje_linea: getLineDiscountPercent(item),
-      nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
-      nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
-      cantidad_revertida: reversedQtyByDetail.get(Number(item?.id_detalle ?? 0)) || 0,
-      observacion: String(item?.observacion ?? '').trim()
-    }))
+    ? row.items.map((item) => {
+      const esLineaExtraIndependiente = Boolean(item?.es_linea_extra_independiente ?? item?.origen_snapshot?.es_linea_extra_independiente);
+      return {
+        ...item,
+        id_detalle: Number(item?.id_detalle ?? 0) || null,
+        id_producto: Number(item?.id_producto ?? 0) || null,
+        id_receta: Number(item?.id_receta ?? 0) || null,
+        tipo_item: esLineaExtraIndependiente ? 'EXTRA' : String(item?.tipo_item ?? 'PRODUCTO'),
+        cantidad: Number(item?.cantidad ?? 0) || 0,
+        precio_unitario: roundMoney(item?.precio_unitario),
+        sub_total: roundMoney(item?.sub_total),
+        total_linea: roundMoney(item?.total_linea),
+        descuento: roundMoney(item?.descuento),
+        descuento_linea: roundMoney(item?.descuento_linea),
+        descuento_global: roundMoney(item?.descuento_global),
+        descuento_porcentaje_linea: getLineDiscountPercent(item),
+        nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
+        nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
+        es_linea_extra_independiente: esLineaExtraIndependiente,
+        cantidad_revertida: reversedQtyByDetail.get(Number(item?.id_detalle ?? 0)) || 0,
+        observacion: String(item?.observacion ?? '').trim()
+      };
+    })
     : [];
   const resolvedReversedTotal = roundMoney(
     reversiones.reduce((acc, item) => acc + Number(item?.monto_reversado || 0), 0)
@@ -443,11 +467,13 @@ export const normalizeVentaDetail = (row) => {
     ...base,
     monto_reversado_total: resolvedReversedTotal
   });
+  const contacto = normalizeVentaContacto(row?.contacto);
 
   return {
     ...base,
+    cliente_nombre: contacto?.nombre_contacto || base.cliente_nombre,
     delivery: normalizeVentaDelivery(row?.delivery),
-    contacto: normalizeVentaContacto(row?.contacto),
+    contacto,
     contexto: normalizeVentaContexto(row?.contexto),
     reversiones,
     monto_reversado_total: resolvedReversedTotal,

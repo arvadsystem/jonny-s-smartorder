@@ -13,12 +13,9 @@ const formatMoney = (value) => {
 
 const TypeBadge = ({ tipoItem }) => {
   const type = String(tipoItem || '').toUpperCase();
-  const className =
-    type === 'RECETA'
-      ? 'menu-pub-admin__type-badge is-receta'
-      : type === 'COMBO'
-      ? 'menu-pub-admin__type-badge is-combo'
-      : 'menu-pub-admin__type-badge is-producto';
+  const className = type === 'RECETA'
+    ? 'menu-pub-admin__type-badge is-receta'
+    : 'menu-pub-admin__type-badge is-producto';
 
   return <span className={className}>{type || 'ITEM'}</span>;
 };

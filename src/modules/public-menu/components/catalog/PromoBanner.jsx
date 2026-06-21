@@ -34,9 +34,9 @@ const PromoBanner = ({ product, onQuickAdd }) => {
 
       <div className="pm-promo-banner__copy">
         <span className="pm-promo-banner__tag">Promo del dia</span>
-        <h3 className="pm-promo-banner__title">{product?.nombre || 'Combo explosivo'}</h3>
+        <h3 className="pm-promo-banner__title">{product?.nombre || 'Sabor explosivo'}</h3>
         <p className="pm-promo-banner__description">
-          {product?.descripcion || 'Un combo poderoso para romper el hambre.'}
+          {product?.descripcion || 'Una opcion poderosa para romper el hambre.'}
         </p>
       </div>
 

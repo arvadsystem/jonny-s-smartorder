@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { sucursalesFacturacionApi } from '../services/sucursalesFacturacionApi';
 import SucursalFacturacionConfigDrawer from './SucursalFacturacionConfigDrawer';
+import SucursalImpresorasConfigDrawer from './SucursalImpresorasConfigDrawer';
 import SucursalFacturacionPreviewModal from './SucursalFacturacionPreviewModal';
 
 const TICKET_FLAG_DEFAULTS = {
@@ -28,8 +29,14 @@ const TICKET_FLAG_DEFAULTS = {
   mostrar_detalle_reversion: true,
   mostrar_total_reversion: true
 };
+
 const FACTURACION_LOGO_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const FACTURACION_LOGO_MAX_BYTES = 10 * 1024 * 1024;
+const PRINTER_TYPE_ORDER = ['FACTURA', 'COCINA'];
+const PRINTER_TYPE_LABELS = {
+  FACTURA: 'Factura',
+  COCINA: 'Cocina'
+};
 
 const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -39,13 +46,13 @@ const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
 });
 
 const getLogoFileError = (file) => {
-  if (!file) return 'Selecciona una imagen válida.';
+  if (!file) return 'Selecciona una imagen valida.';
   const mimeType = String(file.type || '').trim().toLowerCase();
   if (!FACTURACION_LOGO_ALLOWED_TYPES.has(mimeType)) {
-    return 'Selecciona una imagen válida (JPG, PNG o WEBP).';
+    return 'Selecciona una imagen valida (JPG, PNG o WEBP).';
   }
   if (Number(file.size || 0) > FACTURACION_LOGO_MAX_BYTES) {
-    return 'La imagen supera el límite de 10 MB.';
+    return 'La imagen supera el limite de 10 MB.';
   }
   return '';
 };
@@ -83,6 +90,48 @@ const normalizeConfig = (config = {}) => ({
   actualizado_en: config?.actualizado_en || null
 });
 
+const normalizePrinterConfig = (payload = {}) => {
+  const incoming = Array.isArray(payload?.impresoras) ? payload.impresoras : [];
+  const printersByType = new Map(
+    incoming
+      .map((item) => ({
+        id_impresora: Number(item?.id_impresora ?? 0) || null,
+        id_sucursal: Number(item?.id_sucursal ?? payload?.id_sucursal ?? 0) || null,
+        tipo_impresora: String(item?.tipo_impresora || '').trim().toUpperCase(),
+        nombre_logico: String(item?.nombre_logico || '').trim() || null,
+        nombre_impresora_sistema: String(item?.nombre_impresora_sistema || '').trim(),
+        ip_impresora: String(item?.ip_impresora || '').trim(),
+        puerto_impresora: Number(item?.puerto_impresora ?? 9100) || 9100,
+        ancho_mm: Number(item?.ancho_mm ?? 80),
+        modo_impresion: String(item?.modo_impresion || 'BROWSER').trim().toUpperCase() || 'BROWSER',
+        activa: item?.activa !== false,
+        updated_at: item?.updated_at || null
+      }))
+      .filter((item) => PRINTER_TYPE_ORDER.includes(item.tipo_impresora))
+      .map((item) => [item.tipo_impresora, item])
+  );
+
+  return {
+    id_sucursal: Number(payload?.id_sucursal ?? 0) || null,
+    impresoras: PRINTER_TYPE_ORDER.map((tipo) => {
+      const existing = printersByType.get(tipo);
+      return existing || {
+        id_impresora: null,
+        id_sucursal: Number(payload?.id_sucursal ?? 0) || null,
+        tipo_impresora: tipo,
+        nombre_logico: tipo,
+        nombre_impresora_sistema: '',
+        ip_impresora: '',
+        puerto_impresora: 9100,
+        ancho_mm: 80,
+        modo_impresion: 'BROWSER',
+        activa: true,
+        updated_at: null
+      };
+    })
+  };
+};
+
 const formatDateTime = (value) => {
   if (!value) return 'No disponible';
   const date = new Date(value);
@@ -98,12 +147,12 @@ const formatDateTime = (value) => {
 
 const resolveFacturacionErrorMessage = (error) => {
   const status = Number(error?.status ?? 0);
-  if (status === 403) return 'No tienes permisos para ver la configuración de facturación.';
-  if (status === 404) return 'La ruta de configuración no está disponible.';
+  if (status === 403) return 'No tienes permisos para ver la configuracion de facturacion.';
+  if (status === 404) return 'La ruta de configuracion no esta disponible.';
   if (status === 0 || /failed to fetch|fetch error|networkerror/i.test(String(error?.message || ''))) {
     return 'No se pudo conectar con el servidor.';
   }
-  return 'No fue posible cargar la configuración de facturación.';
+  return 'No fue posible cargar la configuracion de facturacion.';
 };
 
 const presentModoFiscal = (modoFiscalRaw) => {
@@ -144,8 +193,15 @@ export default function SucursalFacturacionTab({
   const [previewData, setPreviewData] = useState(null);
   const [previewSucursalNombre, setPreviewSucursalNombre] = useState('');
 
+  const [printerBySucursal, setPrinterBySucursal] = useState({});
+  const [printerLoadingBySucursal, setPrinterLoadingBySucursal] = useState({});
+  const [printerDrawerOpen, setPrinterDrawerOpen] = useState(false);
+  const [printerSaving, setPrinterSaving] = useState(false);
+  const [printerForm, setPrinterForm] = useState(null);
+
   const sucursalesSorted = useMemo(
-    () => [...(Array.isArray(sucursales) ? sucursales : [])].sort((a, b) => Number(a?.id_sucursal ?? 0) - Number(b?.id_sucursal ?? 0)),
+    () => [...(Array.isArray(sucursales) ? sucursales : [])]
+      .sort((a, b) => Number(a?.id_sucursal ?? 0) - Number(b?.id_sucursal ?? 0)),
     [sucursales]
   );
 
@@ -189,14 +245,31 @@ export default function SucursalFacturacionTab({
     }
   }, []);
 
+  const fetchPrintersBySucursal = useCallback(async (idSucursal) => {
+    const id = Number(idSucursal ?? 0);
+    if (!id) return null;
+    setPrinterLoadingBySucursal((prev) => ({ ...prev, [id]: true }));
+    try {
+      const data = await sucursalesFacturacionApi.obtenerImpresorasSucursal(id);
+      const normalized = normalizePrinterConfig(data || {});
+      setPrinterBySucursal((prev) => ({ ...prev, [id]: normalized }));
+      return normalized;
+    } finally {
+      setPrinterLoadingBySucursal((prev) => ({ ...prev, [id]: false }));
+    }
+  }, []);
+
   useEffect(() => {
     let ignore = false;
+
     const loadAll = async () => {
       setLoading(true);
       setError('');
       try {
         const ids = sucursalesSorted.map((item) => Number(item?.id_sucursal ?? 0)).filter(Boolean);
-        const results = await Promise.allSettled(ids.map((id) => fetchConfigBySucursal(id)));
+        const results = await Promise.allSettled(
+          ids.flatMap((id) => [fetchConfigBySucursal(id), fetchPrintersBySucursal(id)])
+        );
         const failed = results.find((item) => item.status === 'rejected');
         if (!ignore && failed?.reason) {
           const msg = resolveFacturacionErrorMessage(failed.reason);
@@ -213,12 +286,24 @@ export default function SucursalFacturacionTab({
         if (!ignore) setLoading(false);
       }
     };
+
     loadAll();
     return () => { ignore = true; };
-  }, [fetchConfigBySucursal, notify, sucursalesSorted]);
+  }, [fetchConfigBySucursal, fetchPrintersBySucursal, notify, sucursalesSorted]);
 
   const onChangeConfigForm = (field, value) => {
     setConfigForm((prev) => ({ ...(prev || {}), [field]: value }));
+  };
+
+  const onChangePrinterForm = (tipo, field, value) => {
+    setPrinterForm((prev) => ({
+      ...(prev || {}),
+      impresoras: (Array.isArray(prev?.impresoras) ? prev.impresoras : []).map((item) => (
+        item.tipo_impresora === tipo
+          ? { ...item, [field]: value }
+          : item
+      ))
+    }));
   };
 
   const onOpenConfig = (sucursal) => {
@@ -234,6 +319,18 @@ export default function SucursalFacturacionTab({
     setConfigDrawerOpen(true);
   };
 
+  const onOpenPrinters = async (sucursal) => {
+    if (!canConfigurar) return;
+    const id = Number(sucursal?.id_sucursal ?? 0);
+    if (!id) return;
+    const current = printerBySucursal[id]
+      || await fetchPrintersBySucursal(id)
+      || normalizePrinterConfig({ id_sucursal: id });
+    setSelectedSucursal(sucursal);
+    setPrinterForm(current);
+    setPrinterDrawerOpen(true);
+  };
+
   const onCloseConfig = () => {
     if (configSaving || logoUploading) return;
     const pendingId = pendingLogoArchivoId;
@@ -242,6 +339,11 @@ export default function SucursalFacturacionTab({
     setLogoError('');
     setConfigDrawerOpen(false);
     if (pendingId) void cleanupLogoArchivo(pendingId);
+  };
+
+  const onClosePrinters = () => {
+    if (printerSaving) return;
+    setPrinterDrawerOpen(false);
   };
 
   const onLogoFileChange = async (event) => {
@@ -303,12 +405,29 @@ export default function SucursalFacturacionTab({
       setConfigBySucursal((prev) => ({ ...prev, [id]: normalizeConfig(updated || {}) }));
       setPendingLogoArchivoId(null);
       setConfigDrawerOpen(false);
-      notify('FACTURACIÓN', 'Configuración de facturación actualizada correctamente.', 'success');
+      notify('FACTURACION', 'Configuracion de facturacion actualizada correctamente.', 'success');
     } catch (err) {
       const msg = resolveFacturacionErrorMessage(err);
       notify('ERROR', msg, 'danger');
     } finally {
       setConfigSaving(false);
+    }
+  };
+
+  const onSavePrinters = async (payload) => {
+    const id = Number(selectedSucursal?.id_sucursal ?? 0);
+    if (!id) return;
+    setPrinterSaving(true);
+    try {
+      const updated = await sucursalesFacturacionApi.guardarImpresorasSucursal(id, payload);
+      setPrinterBySucursal((prev) => ({ ...prev, [id]: normalizePrinterConfig(updated || {}) }));
+      setPrinterDrawerOpen(false);
+      notify('IMPRESORAS', 'Configuracion de impresoras actualizada correctamente.', 'success');
+    } catch (err) {
+      const msg = resolveFacturacionErrorMessage(err);
+      notify('ERROR', msg, 'danger');
+    } finally {
+      setPrinterSaving(false);
     }
   };
 
@@ -336,9 +455,9 @@ export default function SucursalFacturacionTab({
     <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
       <div className="inv-catpro-head inv-cat-v2__head">
         <div>
-          <h5 className="mb-1">Configuración de facturación por sucursal</h5>
+          <h5 className="mb-1">Configuracion de facturacion por sucursal</h5>
           <p className="text-muted mb-0">
-            Desde esta sección se configura cómo se visualizan los tickets y facturas en cada sucursal.
+            Desde esta seccion se configura como se visualizan los tickets y facturas en cada sucursal.
           </p>
         </div>
       </div>
@@ -347,7 +466,7 @@ export default function SucursalFacturacionTab({
         {loading ? (
           <div className="inv-catpro-loading" role="status" aria-live="polite">
             <span className="spinner-border spinner-border-sm me-2" />
-            Cargando configuración de facturación...
+            Cargando configuracion de facturacion...
           </div>
         ) : null}
 
@@ -364,7 +483,9 @@ export default function SucursalFacturacionTab({
             {sucursalesSorted.map((sucursal) => {
               const id = Number(sucursal?.id_sucursal ?? 0);
               const config = configBySucursal[id] || null;
+              const printers = printerBySucursal[id] || normalizePrinterConfig({ id_sucursal: id });
               const loadingItem = Boolean(loadingBySucursal[id]);
+              const loadingPrinters = Boolean(printerLoadingBySucursal[id]);
               const isConfigured = Boolean(config?.id_config) && Boolean(config?.activo);
               const dotClass = loadingItem ? 'is-low' : isConfigured ? 'is-ok' : 'is-empty';
               const imageUrl = resolveSucursalImage(sucursal);
@@ -431,6 +552,25 @@ export default function SucursalFacturacionTab({
                         <span>Actualizacion: {formatDateTime(config?.actualizado_en)}</span>
                       </div>
 
+                      <div className="suc-printer-summary">
+                        {printers.impresoras.map((printer) => (
+                          <div className="suc-printer-summary__item" key={printer.tipo_impresora}>
+                            <div className="suc-printer-summary__label">
+                              <i className={`bi ${printer.tipo_impresora === 'FACTURA' ? 'bi-receipt' : 'bi-egg-fried'}`} />
+                              <span>{PRINTER_TYPE_LABELS[printer.tipo_impresora] || printer.tipo_impresora}</span>
+                            </div>
+                            <div className="suc-printer-summary__value">
+                              {loadingPrinters ? 'Cargando...' : printer.nombre_impresora_sistema || 'Sin asignar'}
+                            </div>
+                            <div className="suc-printer-summary__meta">
+                              {loadingPrinters
+                                ? '...'
+                                : `${printer.ancho_mm || 80}mm · ${printer.activa === false ? 'Inactiva' : 'Activa'}`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
                       <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions suc-card__actions">
                         <button
                           type="button"
@@ -438,7 +578,7 @@ export default function SucursalFacturacionTab({
                           onClick={() => onOpenConfig(sucursal)}
                           title="Configurar"
                           disabled={!canConfigurar || loadingItem}
-                          aria-label={`Configurar facturación de ${cardTitle}`}
+                          aria-label={`Configurar facturacion de ${cardTitle}`}
                         >
                           <i className="bi bi-sliders2" />
                           <span className="inv-prod-card-action-label">Configurar</span>
@@ -449,10 +589,21 @@ export default function SucursalFacturacionTab({
                           onClick={() => onOpenPreview(sucursal)}
                           title="Vista previa"
                           disabled={!canVerPreview || loadingItem}
-                          aria-label={`Ver vista previa de facturación de ${cardTitle}`}
+                          aria-label={`Ver vista previa de facturacion de ${cardTitle}`}
                         >
                           <i className="bi bi-eye" />
                           <span className="inv-prod-card-action-label">Vista previa</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn inv-prod-card-action inv-prod-card-action-compact"
+                          onClick={() => onOpenPrinters(sucursal)}
+                          title="Impresoras"
+                          disabled={!canConfigurar || loadingPrinters}
+                          aria-label={`Configurar impresoras de ${cardTitle}`}
+                        >
+                          <i className="bi bi-printer" />
+                          <span className="inv-prod-card-action-label">Impresoras</span>
                         </button>
                       </div>
                     </div>
@@ -485,6 +636,16 @@ export default function SucursalFacturacionTab({
         data={previewData}
         sucursalNombre={previewSucursalNombre}
         onClose={() => setPreviewOpen(false)}
+      />
+
+      <SucursalImpresorasConfigDrawer
+        open={printerDrawerOpen}
+        sucursalNombre={selectedSucursal?.nombre_sucursal || ''}
+        form={printerForm || normalizePrinterConfig()}
+        saving={printerSaving}
+        onClose={onClosePrinters}
+        onChange={onChangePrinterForm}
+        onSubmit={onSavePrinters}
       />
     </div>
   );

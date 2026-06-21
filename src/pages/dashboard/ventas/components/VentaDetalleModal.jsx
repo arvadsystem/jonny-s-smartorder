@@ -8,9 +8,9 @@ import {
   getLineDiscountPercent,
   resolveVentaReversionBlockReason
 } from '../utils/ventasHelpers';
-import ventasService from '../../../../services/ventasService';
 import VentaTicketPrint from './VentaTicketPrint';
 import './VentaTicketPrint.css';
+import { printVentaTicketPdf } from '../utils/ventaPrintUtils';
 
 const DEFAULT_TICKET_WIDTH_MM = 80;
 
@@ -25,7 +25,10 @@ const getExtraSubtotal = (extra) => {
   return toMoneyNumber(extra?.precio_unitario ?? extra?.precio) * toMoneyNumber(extra?.cantidad);
 };
 
+const isStandaloneExtraItem = (item) => Boolean(item?.es_linea_extra_independiente || item?.origen_snapshot?.es_linea_extra_independiente);
+
 const getItemExtrasSubtotal = (item) => {
+  if (isStandaloneExtraItem(item)) return 0;
   const extras = Array.isArray(item?.extras) ? item.extras : [];
   return extras.reduce((sum, extra) => sum + getExtraSubtotal(extra), 0);
 };
@@ -60,12 +63,14 @@ export default function VentaDetalleModal({
   venta,
   loading,
   onClose,
+  onPrintTicket,
   onOpenReversion,
   canReversion = false,
   canExport = true,
   canPrint = true
 }) {
   const [ticketWidthMm, setTicketWidthMm] = useState(DEFAULT_TICKET_WIDTH_MM);
+  const [printLoading, setPrintLoading] = useState(false);
   const printInProgressRef = useRef(false);
 
   useEffect(() => {
@@ -133,26 +138,21 @@ export default function VentaDetalleModal({
       console.error('[Ventas] No se puede generar el PDF del ticket sin id_factura.');
       return;
     }
+
     printInProgressRef.current = true;
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.opener = null;
-    }
+    setPrintLoading(true);
 
     try {
-      const blob = await ventasService.getTicketPdf(venta.id_factura);
-      const url = URL.createObjectURL(blob);
-      if (printWindow) {
-        printWindow.location.href = url;
+      if (typeof onPrintTicket === 'function') {
+        await onPrintTicket(venta, { ticketWidthMm });
       } else {
-        window.open(url, '_blank', 'noopener,noreferrer');
+        await printVentaTicketPdf(venta.id_factura);
       }
-      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (error) {
-      if (printWindow) printWindow.close();
       console.error('[Ventas] No se pudo generar el PDF del ticket', error);
     } finally {
       printInProgressRef.current = false;
+      setPrintLoading(false);
     }
   };
 
@@ -227,7 +227,6 @@ export default function VentaDetalleModal({
                               key={
                                 item.id_detalle ||
                                 item.id_producto ||
-                                item.id_combo ||
                                 item.id_receta ||
                                 `${item.tipo_item}-${index}`
                               }
@@ -244,7 +243,7 @@ export default function VentaDetalleModal({
                                   {item.observacion ? (
                                     <small className="ventas-detail-modal__item-note">{item.observacion}</small>
                                   ) : null}
-                                  {Array.isArray(item.extras) && item.extras.length > 0 ? (
+                                  {!isStandaloneExtraItem(item) && Array.isArray(item.extras) && item.extras.length > 0 ? (
                                     <small className="ventas-detail-modal__item-note">
                                       Extras: {item.extras.map(formatExtraLabel).join(', ')}
                                     </small>
@@ -274,7 +273,7 @@ export default function VentaDetalleModal({
                       {detailItems.map((item, index) => (
                         <article
                           className="ventas-detail-modal__item-card"
-                          key={`mobile-${item.id_detalle || item.id_producto || item.id_combo || item.id_receta || index}`}
+                          key={`mobile-${item.id_detalle || item.id_producto || item.id_receta || index}`}
                         >
                           <div>
                             <strong>{item.nombre_item || item.nombre_producto}</strong>
@@ -289,7 +288,7 @@ export default function VentaDetalleModal({
                             {getLineDiscountPercent(item) !== null ? (
                               <div><dt>Desc. %</dt><dd>{formatDiscountPercent(getLineDiscountPercent(item))}</dd></div>
                             ) : null}
-                            {Array.isArray(item.extras) && item.extras.length > 0 ? (
+                            {!isStandaloneExtraItem(item) && Array.isArray(item.extras) && item.extras.length > 0 ? (
                               <div><dt>Extras</dt><dd>{item.extras.map(formatExtraLabel).join(', ')}</dd></div>
                             ) : null}
                             <div><dt>Subtotal</dt><dd>{formatCurrency(item.total_linea || item.sub_total)}</dd></div>
@@ -464,8 +463,13 @@ export default function VentaDetalleModal({
                         <option value={80}>80mm</option>
                         <option value={58}>58mm</option>
                       </select>
-                      <button type="button" className="btn btn-primary" onClick={handlePrintTicket}>
-                        <i className="bi bi-printer" /> Imprimir ticket
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={handlePrintTicket}
+                        disabled={printLoading}
+                      >
+                        <i className="bi bi-printer" /> {printLoading ? 'Imprimiendo...' : 'Imprimir ticket'}
                       </button>
                     </>
                   ) : null}

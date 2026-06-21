@@ -39,6 +39,16 @@ export const sucursalesFacturacionApi = {
     return unwrapSuccessPayload(response);
   },
 
+  async obtenerImpresorasSucursal(idSucursal) {
+    const response = await apiFetch(`/sucursales/${idSucursal}/impresoras-config`, 'GET');
+    return unwrapSuccessPayload(response);
+  },
+
+  async guardarImpresorasSucursal(idSucursal, payload) {
+    const response = await apiFetch(`/sucursales/${idSucursal}/impresoras-config`, 'PUT', payload);
+    return unwrapSuccessPayload(response);
+  },
+
   async obtenerRangosCaiSucursal(idSucursal) {
     const response = await apiFetch(`/sucursales/${idSucursal}/facturacion-rangos-cai`, 'GET');
     return unwrapSuccessPayload(response);

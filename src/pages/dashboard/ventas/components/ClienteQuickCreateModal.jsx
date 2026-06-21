@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AppSelect from '../../../../components/common/AppSelect';
 import { personaService } from '../../../../services/personasService';
 import {
@@ -52,6 +52,17 @@ const extractPositiveId = (value, keys = []) => {
 
 const normalizeText = (value) => String(value || '').trim();
 
+const findCreatedClienteData = (response) => {
+  const candidates = [
+    response?.data?.cliente,
+    response?.cliente,
+    response?.data,
+    response?.result?.cliente,
+    response?.resultado?.cliente
+  ];
+  return candidates.find((candidate) => candidate && typeof candidate === 'object') || {};
+};
+
 export default function ClienteQuickCreateModal({
   open,
   initialSearch = '',
@@ -78,6 +89,9 @@ export default function ClienteQuickCreateModal({
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const submittingRef = useRef(false);
+  const idempotencyKeyRef = useRef('');
+  const idempotencySearchRef = useRef('');
 
   useEffect(() => {
     if (!open) return;
@@ -86,17 +100,24 @@ export default function ClienteQuickCreateModal({
     setEmpresaForm(initialEmpresa);
     setErrors({});
     setSubmitError('');
-  }, [initialEmpresa, initialPersona, open]);
+    const normalizedInitialSearch = normalizeText(initialSearch);
+    if (!idempotencyKeyRef.current || idempotencySearchRef.current !== normalizedInitialSearch) {
+      idempotencyKeyRef.current = personaService.createClienteIdempotencyKey();
+      idempotencySearchRef.current = normalizedInitialSearch;
+    }
+  }, [initialEmpresa, initialPersona, initialSearch, open]);
 
   if (!open) return null;
 
   const updatePersona = (field, value) => {
+    idempotencyKeyRef.current = personaService.createClienteIdempotencyKey();
     setPersonaForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
     setSubmitError('');
   };
 
   const updateEmpresa = (field, value) => {
+    idempotencyKeyRef.current = personaService.createClienteIdempotencyKey();
     setEmpresaForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
     setSubmitError('');
@@ -104,11 +125,11 @@ export default function ClienteQuickCreateModal({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (saving) return;
+    if (saving || submittingRef.current) return;
 
     const validationErrors = tipo === 'empresa'
-      ? validateEmpresaForm(empresaForm)
-      : validatePersonaForm(personaForm);
+      ? validateEmpresaForm(empresaForm, { requireRtn: false })
+      : validatePersonaForm(personaForm, { requireLastName: false, requireGender: false });
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) return;
 
@@ -118,6 +139,7 @@ export default function ClienteQuickCreateModal({
       return;
     }
 
+    submittingRef.current = true;
     setSaving(true);
     setSubmitError('');
     try {
@@ -130,6 +152,7 @@ export default function ClienteQuickCreateModal({
       };
       const payload = {
         origen: tipo,
+        quick_create: true,
         strict_base_create: true,
         id_sucursal: parsedSucursalId,
         cliente: clientePayload,
@@ -138,15 +161,48 @@ export default function ClienteQuickCreateModal({
           : { persona: buildPersonaPayloadFromForm(personaForm) })
       };
 
-      const response = await personaService.createClienteFull(payload);
+      const response = await personaService.createClienteFull(payload, {
+        idempotencyKey: idempotencyKeyRef.current
+      });
       const idCliente = extractPositiveId(response, ['id_cliente', 'cliente_id', 'id']);
+      const responseCliente = findCreatedClienteData(response);
       const label = tipo === 'empresa'
         ? normalizeText(empresaForm.nombre_empresa)
         : normalizeText(`${personaForm.nombre} ${personaForm.apellido}`);
-      await onCreated?.({ id_cliente: idCliente, label, response });
+      const cliente = {
+        ...responseCliente,
+        id_cliente: idCliente,
+        nombre_cliente: label || responseCliente.nombre_cliente,
+        nombre: tipo === 'persona' ? normalizeText(responseCliente.nombre || personaForm.nombre) : null,
+        apellido: tipo === 'persona' ? normalizeText(responseCliente.apellido || personaForm.apellido) : null,
+        nombre_empresa: tipo === 'empresa'
+          ? normalizeText(responseCliente.nombre_empresa || empresaForm.nombre_empresa)
+          : null,
+        telefono: normalizeText(
+          responseCliente.telefono
+          || responseCliente.persona_telefono
+          || responseCliente.empresa_telefono
+          || (tipo === 'empresa' ? empresaForm.id_telefono : personaForm.id_telefono)
+        ) || null,
+        dni: tipo === 'persona' ? normalizeText(responseCliente.persona_dni || responseCliente.dni || personaForm.dni) || null : null,
+        rtn: tipo === 'empresa'
+          ? normalizeText(responseCliente.empresa_rtn || responseCliente.rtn || empresaForm.rtn) || null
+          : normalizeText(responseCliente.persona_rtn || responseCliente.rtn || personaForm.rtn) || null,
+        tipo_cliente: responseCliente.tipo_cliente || (tipo === 'empresa' ? 'Cliente empresa' : 'Cliente persona')
+      };
+      idempotencyKeyRef.current = '';
+      try {
+        const visualSync = onCreated?.({ id_cliente: idCliente, label, cliente, response });
+        if (visualSync && typeof visualSync.then === 'function') {
+          void visualSync.catch(() => null);
+        }
+      } catch {
+        // La creacion ya fue confirmada; la sincronizacion visual no revierte el alta.
+      }
     } catch (error) {
       setSubmitError(error?.message || 'No se pudo crear el cliente.');
     } finally {
+      submittingRef.current = false;
       setSaving(false);
     }
   };
@@ -178,7 +234,10 @@ export default function ClienteQuickCreateModal({
               { value: 'persona', label: 'Individual' },
               { value: 'empresa', label: 'Empresa' }
             ]}
-            onChange={setTipo}
+            onChange={(value) => {
+              idempotencyKeyRef.current = personaService.createClienteIdempotencyKey();
+              setTipo(value);
+            }}
             className="app-select--compact app-select--warm"
           />
 

@@ -37,8 +37,10 @@ const SecurityConfirmAction = ({
   const handleConfirm = async () => {
     setSubmitting(true);
     try {
-      await onConfirm?.();
-      setOpen(false);
+      const result = await onConfirm?.();
+      if (result !== false) {
+        setOpen(false);
+      }
     } finally {
       setSubmitting(false);
     }

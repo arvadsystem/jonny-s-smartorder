@@ -30,7 +30,10 @@ const getExtraSubtotal = (extra) => {
   return toNumber(extra?.precio_unitario ?? extra?.precio) * toNumber(extra?.cantidad);
 };
 
+const isStandaloneExtraItem = (item) => Boolean(item?.es_linea_extra_independiente || item?.origen_snapshot?.es_linea_extra_independiente);
+
 const getItemExtrasSubtotal = (item) => {
+  if (isStandaloneExtraItem(item)) return 0;
   const extras = Array.isArray(item?.extras) ? item.extras : [];
   return extras.reduce((sum, extra) => sum + getExtraSubtotal(extra), 0);
 };
@@ -38,6 +41,33 @@ const getItemExtrasSubtotal = (item) => {
 const formatExtraTicketLabel = (extra) => {
   const name = cleanText(extra?.nombre || extra?.nombre_extra) || 'Extra';
   return `${name} x${toNumber(extra?.cantidad)} ${formatCurrency(getExtraSubtotal(extra))}`;
+};
+
+const getSnapshotSalsas = (item) => {
+  const componentes = item?.origen_snapshot?.componentes;
+  if (Array.isArray(componentes)) return componentes;
+  if (Array.isArray(componentes?.seleccion)) return componentes.seleccion;
+
+  const complementos = item?.origen_snapshot?.complementos;
+  if (Array.isArray(complementos)) return complementos;
+  if (Array.isArray(complementos?.seleccion)) return complementos.seleccion;
+
+  return [];
+};
+
+const resolveItemSalsas = (item) => {
+  const directComplementos = Array.isArray(item?.complementos) ? item.complementos : [];
+  if (directComplementos.length > 0) {
+    return directComplementos
+      .map((entry) => cleanText(entry?.nombre) || 'Salsa')
+      .filter(Boolean);
+  }
+
+  const snapshotComponentes = getSnapshotSalsas(item);
+
+  return snapshotComponentes
+    .map((entry) => cleanText(entry?.nombre) || 'Salsa')
+    .filter(Boolean);
 };
 
 const resolveFacturaDateTime = (venta) =>
@@ -176,6 +206,7 @@ export default function VentaTicketPrint({
   const cambio = toNumber(venta?.cambio);
 
   const clienteRtn = cleanText(venta?.cliente_rtn || venta?.rtn);
+  const clienteTelefono = cleanText(venta?.contacto?.telefono_contacto || venta?.telefono_contacto);
   const banco = cleanText(venta?.banco);
   const codigoTransaccion = cleanText(venta?.codigo_transaccion || venta?.referencia);
   const cajaLabel = cleanText(venta?.nombre_caja || venta?.codigo_caja || venta?.id_caja);
@@ -233,6 +264,7 @@ export default function VentaTicketPrint({
           <div><dt>Sesion:</dt><dd>{sesionCajaLabel || '--'}</dd></div>
           <div><dt>Cajero:</dt><dd>{venta?.nombre_usuario || '--'}</dd></div>
           <div><dt>Cliente:</dt><dd>{venta?.cliente_nombre || CONSUMIDOR_FINAL}</dd></div>
+          {clienteTelefono ? <div><dt>Telefono cliente:</dt><dd>{clienteTelefono}</dd></div> : null}
           <div><dt>RTN cliente:</dt><dd>{clienteRtn || '--'}</dd></div>
           <div><dt>Pago:</dt><dd>{venta?.metodo_pago || '--'}</dd></div>
           {banco ? <div><dt>Banco:</dt><dd>{banco}</dd></div> : null}
@@ -252,7 +284,8 @@ export default function VentaTicketPrint({
             items.map((item, index) => {
               const subtotalLinea = toNumber(item?.sub_total);
               const descuentoLinea = toNumber(item?.descuento || item?.descuento_linea);
-              const extras = Array.isArray(item?.extras) ? item.extras : [];
+              const extras = isStandaloneExtraItem(item) ? [] : (Array.isArray(item?.extras) ? item.extras : []);
+              const salsas = isStandaloneExtraItem(item) ? [] : resolveItemSalsas(item);
               const extrasSubtotal = getItemExtrasSubtotal(item);
               const netoLinea = roundMoney(Math.max(subtotalLinea - descuentoLinea, 0) + extrasSubtotal);
               const descuentoPorcentaje = getLineDiscountPercent(item);
@@ -272,6 +305,11 @@ export default function VentaTicketPrint({
                   {extras.length > 0 ? (
                     <div className="venta-ticket-print__item-row-note">
                       <span>Extras: {extras.map(formatExtraTicketLabel).join(', ')}</span>
+                    </div>
+                  ) : null}
+                  {salsas.length > 0 ? (
+                    <div className="venta-ticket-print__item-row-note">
+                      <span>{salsas.length === 1 ? 'Salsa' : 'Salsas'}: {salsas.join(', ')}</span>
                     </div>
                   ) : null}
                 </div>

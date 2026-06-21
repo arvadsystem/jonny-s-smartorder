@@ -39,12 +39,19 @@ const isExplicitlyOutOfStock = (row, isProducto) => {
 
 const buildResultsLabel = (catalogKey, count) => {
   if (catalogKey === 'DESCUENTOS') return `${count} ${count === 1 ? 'item' : 'items'} con descuento`;
-  if (catalogKey === 'COMBOS') return `${count} ${count === 1 ? 'combo' : 'combos'}`;
   if (catalogKey === 'RECETAS') return `${count} ${count === 1 ? 'receta' : 'recetas'}`;
+  if (catalogKey === 'EXTRAS') return `${count} ${count === 1 ? 'extra' : 'extras'}`;
   return `${count} ${count === 1 ? 'producto' : 'productos'}`;
 };
 
-export default function VentaComposerCatalog({ composer, catalogLoading, catalogErrors = {} }) {
+export default function VentaComposerCatalog({
+  composer,
+  catalogLoading,
+  catalogStatus = 'idle',
+  catalogStatuses = {},
+  catalogErrors = {},
+  onRetry
+}) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [showOutOfStock, setShowOutOfStock] = useState(false);
   const searchWrapRef = useRef(null);
@@ -62,12 +69,13 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
   const hasFilters = isDiscountCatalog
     ? composer.search.trim() !== ''
     : (composer.search.trim() !== '' || composer.activeCategory !== 'all');
+  const isExtrasCatalog = composer.activeCatalog === 'EXTRAS';
   const searchPlaceholder = composer.activeCatalog === 'PRODUCTOS'
     ? 'Buscar productos...'
-    : composer.activeCatalog === 'COMBOS'
-      ? 'Buscar combos...'
-      : composer.activeCatalog === 'RECETAS'
+    : composer.activeCatalog === 'RECETAS'
         ? 'Buscar recetas...'
+        : isExtrasCatalog
+          ? 'Buscar extras...'
         : 'Buscar items con descuento...';
 
   useEffect(() => {
@@ -97,13 +105,20 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
     return rawUrl ? resolveInventarioImageUrl(rawUrl) : null;
   };
 
-  const activeCatalogError = (() => {
+  const activeCatalogError = catalogStatus === 'error' ? (() => {
     if (isDiscountCatalog) return catalogErrors.descuentos || null;
+    if (isExtrasCatalog && composer.currentCatalogError) {
+      return {
+        endpoint: '/ventas/catalogos/extras-permitidos',
+        status: null,
+        message: composer.currentCatalogError
+      };
+    }
     if (composer.activeCatalog === 'PRODUCTOS') return catalogErrors.productos || null;
-    if (composer.activeCatalog === 'COMBOS') return catalogErrors.combos || null;
     return catalogErrors.recetas || null;
-  })();
-  const hasNonDiscountCatalogErrors = Object.keys(catalogErrors || {}).some((key) => key !== 'descuentos');
+  })() : null;
+  const hasNonDiscountCatalogErrors = ['productos', 'recetas']
+    .some((key) => catalogStatuses[key] === 'error');
   const visibleCatalogRows = composer.currentCatalogRows.filter((row) => {
     if (isDiscountCatalog) return false;
     const isProducto = composer.activeCatalog === 'PRODUCTOS';
@@ -143,7 +158,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             />
           </label>
 
-          {!isDiscountCatalog ? (
+          {!isDiscountCatalog && !isExtrasCatalog ? (
             <button
               type="button"
               className={`ventas-catalog__search-btn ${filterOpen ? 'is-active' : ''}`}
@@ -167,7 +182,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             </button>
           ) : null}
 
-          {!isDiscountCatalog && filterOpen ? (
+          {!isDiscountCatalog && !isExtrasCatalog && filterOpen ? (
             <div className="ventas-catalog__search-popup">
               <div className="ventas-catalog__categories-list">
                 <div className="ventas-catalog__categories-label">
@@ -228,7 +243,9 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
 
       <div className="ventas-create-modal__results-meta ventas-catalog-results">
         <span>
-          {catalogLoading
+          {catalogStatus === 'idle'
+            ? 'Catalogo pendiente'
+            : (composer.currentCatalogLoading || catalogLoading)
             ? 'Cargando catalogo...'
             : buildResultsLabel(composer.activeCatalog, isDiscountCatalog ? visibleDiscountRows.length : visibleCatalogRows.length)}
         </span>
@@ -248,18 +265,21 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
       </div>
       {activeCatalogError ? (
         <div className="ventas-create-modal__error">
-          {`Error en ${activeCatalogError.endpoint}${activeCatalogError.status ? ` (HTTP ${activeCatalogError.status})` : ''}: ${activeCatalogError.message}`}
+          <span>{`Error en ${activeCatalogError.endpoint}${activeCatalogError.status ? ` (HTTP ${activeCatalogError.status})` : ''}: ${activeCatalogError.message}`}</span>
+          <button type="button" className="btn btn-sm btn-outline-danger ms-2" onClick={onRetry}>
+            Reintentar
+          </button>
         </div>
       ) : null}
       {!isDiscountCatalog && !activeCatalogError && hasNonDiscountCatalogErrors ? (
         <div className="ventas-create-modal__error">
-          Algunos catalogos auxiliares no cargaron. Productos, combos y recetas disponibles siguen habilitados.
+          Algunos catalogos auxiliares no cargaron. Productos y recetas disponibles siguen habilitados.
         </div>
       ) : null}
 
       {isDiscountCatalog ? (
         <div className="ventas-discounts-panel">
-          {catalogLoading ? (
+          {catalogStatus === 'idle' ? null : catalogLoading ? (
             <div className="ventas-create-modal__empty ventas-discounts-panel__empty">
               <span className="spinner-border spinner-border-sm" aria-hidden="true" />
               <span>Cargando descuentos...</span>
@@ -267,7 +287,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
           ) : visibleDiscountRows.length === 0 ? (
             <div className="ventas-create-modal__empty ventas-discounts-panel__empty">
               <i className="bi bi-tags" />
-              <span>No hay productos, combos o recetas con descuentos aplicables para esta sucursal.</span>
+              <span>No hay productos o recetas con descuentos aplicables para esta sucursal.</span>
             </div>
           ) : (
             <>
@@ -278,9 +298,8 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
               <div className="ventas-create-modal__products ventas-catalog-grid">
                 {visibleDiscountRows.map(({ kind, row, discount }) => {
                   const isProducto = kind === 'PRODUCTO';
-                  const isCombo = kind === 'COMBO';
-                  const itemId = isProducto ? row.id_producto : isCombo ? row.id_combo : row.id_receta;
-                  const itemName = isProducto ? row.nombre_producto : isCombo ? row.descripcion : row.nombre_receta;
+                  const itemId = isProducto ? row.id_producto : row.id_receta;
+                  const itemName = isProducto ? row.nombre_producto : row.nombre_receta;
                   const imageSrc = resolveImageUrl(row);
                   const precio = Number(row.precio || 0);
                   const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
@@ -291,6 +310,11 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                       key={`DESCUENTO-${kind}-${itemId}`}
                       className="vcp-card ventas-catalog-card-compact ventas-catalog-card-compact--discount"
                       onClick={() => composer.addCatalogItem(kind, row, [], discountAddOptions)}
+                      data-testid="ventas-catalog-card"
+                      data-catalog-kind={kind}
+                      data-catalog-id={itemId}
+                      data-catalog-name={itemName}
+                      data-catalog-stock={stockDisponible ?? ''}
                     >
                       <div className="vcp-card__media">
                         {badgeLabel ? (
@@ -323,7 +347,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                         <h6 className="vcp-card__name" title={itemName}>{itemName}</h6>
 
                         <div className="vcp-card__stock">
-                          {isProducto ? `Disponible: ${stockDisponible}` : isCombo ? 'Combo con descuento' : 'Receta con descuento'}
+                          {isProducto ? `Disponible: ${stockDisponible}` : 'Receta con descuento'}
                         </div>
 
                         <div className="vcp-card__footer">
@@ -332,6 +356,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                           <button
                             type="button"
                             className="vcp-card__add-btn"
+                            data-testid="ventas-catalog-add"
                             onClick={(event) => {
                               event.stopPropagation();
                               composer.addCatalogItem(kind, row, [], discountAddOptions);
@@ -351,7 +376,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
         </div>
       ) : (
       <div className="ventas-create-modal__products ventas-catalog-grid">
-        {catalogLoading ? (
+        {catalogStatus === 'idle' ? null : (composer.currentCatalogLoading || catalogLoading) ? (
           <div className="ventas-create-modal__empty">
             <span className="spinner-border spinner-border-sm" aria-hidden="true" />
             <span>Cargando catalogo...</span>
@@ -366,16 +391,18 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                   ? 'No hay items agotados para ese filtro.'
                 : outOfStockCount > 0
                   ? 'Solo hay items agotados para ese filtro.'
-                  : 'No hay resultados para ese filtro.'}
+                  : composer.activeCatalog === 'PRODUCTOS'
+                    ? 'No hay productos.'
+                    : 'No hay resultados para ese filtro.'}
             </span>
           </div>
         ) : (
           visibleCatalogRows.map((row) => {
             const isProducto = composer.activeCatalog === 'PRODUCTOS';
-            const isCombo = composer.activeCatalog === 'COMBOS';
-            const kind = isProducto ? 'PRODUCTO' : isCombo ? 'COMBO' : 'RECETA';
-            const itemId = isProducto ? row.id_producto : isCombo ? row.id_combo : row.id_receta;
-            const itemName = isProducto ? row.nombre_producto : isCombo ? row.descripcion : row.nombre_receta;
+            const isExtra = composer.activeCatalog === 'EXTRAS';
+            const kind = isProducto ? 'PRODUCTO' : isExtra ? 'ITEM' : 'RECETA';
+            const itemId = isProducto ? row.id_producto : isExtra ? row.id_extra : row.id_receta;
+            const itemName = isProducto ? row.nombre_producto : isExtra ? row.nombre : row.nombre_receta;
             const imageSrc = resolveImageUrl(row);
             const precio = Number(row.precio || 0);
             const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
@@ -391,6 +418,11 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                   if (isOutOfStock) return;
                   composer.addCatalogItem(kind, row);
                 }}
+                data-testid="ventas-catalog-card"
+                data-catalog-kind={kind}
+                data-catalog-id={itemId}
+                data-catalog-name={itemName}
+                data-catalog-stock={stockDisponible ?? ''}
               >
                 <div className="vcp-card__media">
                   {badgeLabel ? (
@@ -416,9 +448,9 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                 </div>
 
                 <div className="vcp-card__body">
-                  <div className="vcp-card__meta-row">
-                    <span className="vcp-card__kind">{kind}</span>
-                  </div>
+                        <div className="vcp-card__meta-row">
+                          <span className="vcp-card__kind">{isExtra ? 'EXTRA' : kind}</span>
+                        </div>
                   <h6 className="vcp-card__name" title={itemName}>{itemName}</h6>
 
                   {isProducto ? (
@@ -427,7 +459,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                     </div>
                   ) : (
                     <div className={`vcp-card__stock ${isOutOfStock ? 'is-empty' : ''}`}>
-                      {isOutOfStock ? 'Agotado' : isCombo ? 'Combo con complementos' : 'Preparacion de cocina'}
+                      {isOutOfStock ? 'Agotado' : isExtra ? 'Extra independiente' : 'Preparacion de cocina'}
                     </div>
                   )}
 
@@ -437,6 +469,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                     <button
                       type="button"
                       className="vcp-card__add-btn"
+                      data-testid="ventas-catalog-add"
                       onClick={(event) => {
                         event.stopPropagation();
                         if (isOutOfStock) return;

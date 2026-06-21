@@ -1,14 +1,14 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 import {
   buildCartKey,
-  clampExtrasToQuantity,
+  createCartLineId,
   filterBySearch,
   findLineIndex,
-  getComboDepartmentIds,
   getExtrasCount,
   getExtrasSubtotal,
   getResultsLabel,
+  isCustomizableVentaLineKind,
   normalizeComplementIds,
   normalizeValidComplementIds,
   normalizeExtras,
@@ -31,12 +31,77 @@ import ventasService from '../../../../services/ventasService';
 import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
 
 export { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
-export { getComboDepartmentIds } from '../../../../modules/ventas/utils/ventasCartUtils';
+
+const DEFAULT_CATALOG_KEY = 'RECETAS';
+const DEFAULT_DEPARTMENT_NAME = 'ALITAS';
+const DEFAULT_DEPARTMENT_ID = '5';
+const CAJA_SUCURSAL_STORAGE_KEY = 'jonny:ventas:caja:sucursal';
+
+const readPersistedCajaSucursal = () => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return String(window.sessionStorage.getItem(CAJA_SUCURSAL_STORAGE_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+};
+
+const persistCajaSucursal = (value) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const normalized = String(value || '').trim();
+    if (normalized) window.sessionStorage.setItem(CAJA_SUCURSAL_STORAGE_KEY, normalized);
+    else window.sessionStorage.removeItem(CAJA_SUCURSAL_STORAGE_KEY);
+  } catch {
+    // Session storage puede estar deshabilitado.
+  }
+};
+
+const isQuantityManagedVentaLineKind = (kind) => ['PRODUCTO', 'ITEM'].includes(String(kind || '').toUpperCase());
+
+const resolveStandaloneExtraAvailableUnits = (entry) => {
+  const stock = Number(entry?.stock_disponible);
+  const consumoBase = Number(entry?.cantidad_consumo_base);
+  if (!Number.isFinite(stock) || stock <= 0) return null;
+  if (!Number.isFinite(consumoBase) || consumoBase <= 0) return null;
+  return Math.max(0, Math.floor(stock / consumoBase));
+};
+
+const normalizeGlobalExtraOption = (entry) => ({
+  id_extra: Number(entry.id_extra),
+  codigo: String(entry.codigo || '').trim(),
+  nombre: String(entry.nombre || 'Extra').trim(),
+  precio: roundMoney(entry.precio ?? entry.precio_adicional),
+  descripcion: String(entry.nombre || 'Extra').trim(),
+  id_insumo: Number(entry.id_insumo || 0) || null,
+  id_insumo_maestro: Number(entry.id_insumo_maestro || 0) || null,
+  stock_disponible: entry.stock_disponible ?? null,
+  cantidad_consumo_base: entry.cantidad_consumo_base ?? entry.cantidad_consumo ?? null,
+  id_unidad_base: Number(entry.id_unidad_base || entry.id_unidad_medida || 0) || null,
+  disponible: entry.disponible !== false,
+  inventario_configurado: entry.inventario_configurado !== false,
+  motivo_no_disponible: String(entry.motivo_no_disponible || '').trim() || null,
+  codigo_no_disponible: String(entry.codigo_no_disponible || '').trim() || null
+});
+
+const normalizeFilterText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+
+const resolveDefaultDepartmentId = (tiposDepartamento = []) => {
+  const defaultDepartment = (Array.isArray(tiposDepartamento) ? tiposDepartamento : []).find(
+    (tipo) => normalizeFilterText(tipo?.nombre_tipo_departamento) === DEFAULT_DEPARTMENT_NAME
+  );
+  return defaultDepartment?.id_tipo_departamento ? String(defaultDepartment.id_tipo_departamento) : 'all';
+};
 
 const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = {}) => ({
-  activeCatalog: 'PRODUCTOS',
+  activeCatalog: DEFAULT_CATALOG_KEY,
   search: '',
-  activeCategory: 'all',
+  activeCategory: DEFAULT_DEPARTMENT_ID,
   selectedSucursal: isSuperAdmin ? '' : String(defaultSucursalId || ''),
   selectedClient: 'cf',
   clientPickerOpen: false,
@@ -156,6 +221,10 @@ const getLineComplementSelectionIssue = (line) => {
 };
 
 const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) => {
+  const normalizedKind = String(kind || '').toUpperCase();
+  const lineId = isCustomizableVentaLineKind(normalizedKind)
+    ? String(options?.lineId || createCartLineId())
+    : null;
   const complementosDisponibles = (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
     .map((entry) => ({
       id_complemento: Number(entry?.id_complemento ?? 0) || null,
@@ -179,10 +248,10 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
   if (kind === 'PRODUCTO') {
     return {
       cartKey: buildCartKey(kind, row.id_producto),
+      lineId,
       kind,
       entityId: row.id_producto,
       id_producto: row.id_producto,
-      id_combo: null,
       id_receta: null,
       nombre_item: row.nombre_producto,
       categoria_label: row.categoria_label || 'Productos',
@@ -203,39 +272,47 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
     };
   }
 
-  if (kind === 'COMBO') {
+  if (kind === 'ITEM') {
     return {
-      cartKey: buildCartKey(kind, row.id_combo, complementosSeleccionados, []),
+      cartKey: buildCartKey(kind, row.id_extra),
+      lineId,
       kind,
-      entityId: row.id_combo,
+      entityId: row.id_extra,
       id_producto: null,
-      id_combo: row.id_combo,
       id_receta: null,
-      nombre_item: row.descripcion,
-      categoria_label: 'Combos',
-      descripcion_item: row.descripcion || 'Combo',
+      id_extra: row.id_extra,
+      nombre_item: row.nombre,
+      categoria_label: 'Extras',
+      descripcion_item: row.descripcion || row.nombre || 'Extra',
       precio_unitario: row.precio,
       cantidad: 1,
-      stock_disponible: null,
+      stock_disponible: row.stock_disponible ?? null,
+      available_units: resolveStandaloneExtraAvailableUnits(row),
       observacion: '',
-      imagen_principal_url: resolveCatalogImageUrl(row),
-      complementos: complementosSeleccionados,
+      imagen_principal_url: null,
+      complementos: [],
       extras: [],
-      complementos_disponibles: complementosDisponibles,
-      complementos_requiere: requiereComplementos,
-      minimo_complementos: complementosMinimo,
-      maximo_complementos: complementosMaximo,
-      complementos_incompletos_autorizados: complementosIncompletosAutorizados,
-      tipo_complemento: row?.tipo_complemento || 'SALSAS'
+      complementos_disponibles: [],
+      complementos_requiere: false,
+      minimo_complementos: 0,
+      maximo_complementos: 0,
+      complementos_incompletos_autorizados: false,
+      tipo_complemento: null,
+      inventario_configurado: row.inventario_configurado !== false,
+      disponible: row.disponible !== false,
+      motivo_no_disponible: row.motivo_no_disponible || null,
+      codigo_no_disponible: row.codigo_no_disponible || null,
+      cantidad_consumo_base: row.cantidad_consumo_base ?? null,
+      id_unidad_base: row.id_unidad_base ?? null
     };
   }
 
   return {
-    cartKey: buildCartKey(kind, row.id_receta, complementosSeleccionados, []),
+    cartKey: buildCartKey(kind, row.id_receta, complementosSeleccionados, [], lineId),
+    lineId,
     kind,
     entityId: row.id_receta,
     id_producto: null,
-    id_combo: null,
     id_receta: row.id_receta,
     nombre_item: row.nombre_receta,
     categoria_label: 'Recetas',
@@ -263,8 +340,10 @@ export const useVentaComposer = ({
   sucursales,
   isSuperAdmin = false,
   defaultSucursalId = null,
+  allowSucursalAutoSelection = true,
+  onDepartmentDemand,
+  catalogsEnabled = true,
   clientes,
-  combos,
   recetas,
   descuentosCatalogo,
   onSubmit,
@@ -293,6 +372,16 @@ export const useVentaComposer = ({
     loading: false,
     error: ''
   });
+  const [globalExtrasCatalog, setGlobalExtrasCatalog] = useState({
+    options: [],
+    loading: false,
+    error: '',
+    sucursalId: null,
+    status: 'idle'
+  });
+  const globalExtrasCacheRef = useRef(new Map());
+  const globalExtrasAbortRef = useRef(null);
+  const [globalExtrasRetryToken, setGlobalExtrasRetryToken] = useState(0);
   const deferredSearch = useDeferredValue(state.search);
 
   useEffect(() => {
@@ -356,6 +445,102 @@ export const useVentaComposer = ({
   const hasSelectedSucursal = Boolean(selectedSucursalId);
 
   useEffect(() => {
+    const shouldLoadExtras = catalogsEnabled && (state.activeCatalog === 'EXTRAS' || extrasModal.open);
+    if (!selectedSucursalId) {
+      globalExtrasAbortRef.current?.abort();
+      setGlobalExtrasCatalog({
+        options: [],
+        loading: false,
+        error: '',
+        sucursalId: null,
+        status: 'idle'
+      });
+      return;
+    }
+    if (!shouldLoadExtras) {
+      globalExtrasAbortRef.current?.abort();
+      const cached = globalExtrasCacheRef.current.get(selectedSucursalId);
+      setGlobalExtrasCatalog({
+        options: cached?.options || [],
+        loading: false,
+        error: cached?.error || '',
+        sucursalId: selectedSucursalId,
+        status: cached?.status || 'idle'
+      });
+      return;
+    }
+
+    const cached = globalExtrasCacheRef.current.get(selectedSucursalId);
+    if (cached?.status === 'success') {
+      setGlobalExtrasCatalog({ ...cached, loading: false, sucursalId: selectedSucursalId });
+      return;
+    }
+
+    globalExtrasAbortRef.current?.abort();
+    const controller = new AbortController();
+    globalExtrasAbortRef.current = controller;
+    setGlobalExtrasCatalog((current) => ({
+      options: current.sucursalId === selectedSucursalId ? current.options : [],
+      loading: true,
+      error: '',
+      sucursalId: selectedSucursalId,
+      status: 'loading'
+    }));
+
+    void ventasService.getExtrasPermitidos(
+      { id_sucursal: selectedSucursalId },
+      { signal: controller.signal }
+    )
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        const options = (Array.isArray(response) ? response : [])
+          .filter((entry) => entry?.estado !== false)
+          .map(normalizeGlobalExtraOption)
+          .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0);
+        const entry = {
+          options,
+          loading: false,
+          error: '',
+          sucursalId: selectedSucursalId,
+          status: 'success'
+        };
+        globalExtrasCacheRef.current.set(selectedSucursalId, entry);
+        setGlobalExtrasCatalog(entry);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) {
+          setGlobalExtrasCatalog({ options: [], loading: false, error: '', sucursalId: selectedSucursalId, status: 'idle' });
+          return;
+        }
+        const entry = {
+          options: [],
+          loading: false,
+          error: error?.message || 'No se pudieron cargar los extras globales.',
+          sucursalId: selectedSucursalId,
+          status: 'error'
+        };
+        globalExtrasCacheRef.current.set(selectedSucursalId, entry);
+        setGlobalExtrasCatalog(entry);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [catalogsEnabled, extrasModal.open, globalExtrasRetryToken, selectedSucursalId, state.activeCatalog]);
+
+  useEffect(() => {
+    setExtrasModal((current) => {
+      if (!current.open) return current;
+      return {
+        ...current,
+        options: globalExtrasCatalog.options,
+        loading: globalExtrasCatalog.loading,
+        error: globalExtrasCatalog.error
+      };
+    });
+  }, [globalExtrasCatalog]);
+
+  useEffect(() => {
     setState((current) => {
       let changed = false;
       const nextCart = current.cart.map((line) => {
@@ -370,9 +555,8 @@ export const useVentaComposer = ({
           };
         }
 
-        const catalogRow = line.kind === 'COMBO'
-          ? (Array.isArray(combos) ? combos : []).find((row) => Number(row?.id_combo) === Number(line.id_combo))
-          : (Array.isArray(recetas) ? recetas : []).find((row) => Number(row?.id_receta) === Number(line.id_receta));
+        const catalogRow = (Array.isArray(recetas) ? recetas : [])
+          .find((row) => Number(row?.id_receta) === Number(line.id_receta));
         if (!catalogRow) return line;
 
         const disponibles = (Array.isArray(catalogRow.complementos_disponibles) ? catalogRow.complementos_disponibles : [])
@@ -389,18 +573,21 @@ export const useVentaComposer = ({
         const minimo = Number(catalogRow.minimo_complementos ?? 0) || 0;
         const maximo = Number(catalogRow.maximo_complementos ?? 0) || 0;
         const requiere = Boolean(catalogRow.requiere_complementos) || minimo > 0;
-        const nextCartKey = buildCartKey(line.kind, line.entityId, complementos, line.extras);
+        const lineId = line.lineId || createCartLineId();
+        const nextCartKey = buildCartKey(line.kind, line.entityId, complementos, line.extras, lineId);
         const lineChanged =
-          complementos.length !== normalizeComplementIds(line.complementos).length
+          !line.lineId
+          || nextCartKey !== line.cartKey
+          || complementos.length !== normalizeComplementIds(line.complementos).length
           || JSON.stringify(disponibles) !== JSON.stringify(line.complementos_disponibles || [])
           || minimo !== Number(line.minimo_complementos || 0)
           || maximo !== Number(line.maximo_complementos || 0)
-          || requiere !== Boolean(line.complementos_requiere)
-          || nextCartKey !== line.cartKey;
+          || requiere !== Boolean(line.complementos_requiere);
         if (!lineChanged) return line;
         changed = true;
         return {
           ...line,
+          lineId,
           complementos,
           complementos_disponibles: disponibles,
           complementos_requiere: requiere,
@@ -415,7 +602,7 @@ export const useVentaComposer = ({
       });
       return changed ? { ...current, cart: nextCart } : current;
     });
-  }, [combos, recetas]);
+  }, [recetas]);
 
   const descuentoGlobalOptions = useMemo(
     () =>
@@ -447,15 +634,32 @@ export const useVentaComposer = ({
 
   useEffect(() => {
     if (!isSuperAdmin) return;
+    if (!allowSucursalAutoSelection) return;
     if (!normalizedSucursales.length) return;
     setState((current) => {
-      if (String(current.selectedSucursal || '').trim()) return current;
+      const validIds = new Set(normalizedSucursales.map((row) => String(row.id_sucursal)));
+      const sessionSelection = String(defaultSucursalId || '').trim();
+      const currentSelection = String(current.selectedSucursal || '').trim();
+      const persistedSelection = readPersistedCajaSucursal();
+      const nextSelection = validIds.has(sessionSelection)
+        ? sessionSelection
+        : validIds.has(currentSelection)
+          ? currentSelection
+          : validIds.has(persistedSelection)
+            ? persistedSelection
+            : normalizedSucursales.length === 1
+              ? String(normalizedSucursales[0].id_sucursal)
+              : '';
+      if (currentSelection === nextSelection) return current;
       return {
         ...current,
-        selectedSucursal: String(normalizedSucursales[0].id_sucursal)
+        selectedSucursal: nextSelection,
+        activeCatalog: DEFAULT_CATALOG_KEY,
+        activeCategory: resolveDefaultDepartmentId(tiposDepartamento),
+        search: ''
       };
     });
-  }, [isSuperAdmin, normalizedSucursales]);
+  }, [allowSucursalAutoSelection, defaultSucursalId, isSuperAdmin, normalizedSucursales, tiposDepartamento]);
 
   useEffect(() => {
     if (isSuperAdmin) return;
@@ -489,18 +693,6 @@ export const useVentaComposer = ({
     ]);
   }, [deferredSearch, productos, state.activeCategory]);
 
-  const filteredCombos = useMemo(() => {
-    const categoryValue = state.activeCategory;
-    const categoryId = toNormalizedId(categoryValue);
-    const categoryFiltered = (Array.isArray(combos) ? combos : []).filter((combo) =>
-      categoryValue === 'all'
-        ? true
-        : getComboDepartmentIds(combo).some((id) => Number(id) === Number(categoryId))
-    );
-
-    return filterBySearch(categoryFiltered, deferredSearch, ['descripcion']);
-  }, [combos, deferredSearch, state.activeCategory]);
-
   const filteredRecetas = useMemo(() => {
     const categoryValue = state.activeCategory;
     const categoryFiltered = (Array.isArray(recetas) ? recetas : []).filter((receta) =>
@@ -515,19 +707,32 @@ export const useVentaComposer = ({
     ]);
   }, [deferredSearch, recetas, state.activeCategory]);
 
+  const filteredGlobalExtras = useMemo(
+    () => filterBySearch(globalExtrasCatalog.options, deferredSearch, ['nombre', 'codigo', 'descripcion']),
+    [deferredSearch, globalExtrasCatalog.options]
+  );
+
   const currentCatalogRows = useMemo(() => {
-    if (state.activeCatalog === 'COMBOS') return filteredCombos;
+    if (state.activeCatalog === 'EXTRAS') return filteredGlobalExtras;
     if (state.activeCatalog === 'RECETAS') return filteredRecetas;
     return filteredProducts;
-  }, [filteredCombos, filteredProducts, filteredRecetas, state.activeCatalog]);
+  }, [filteredGlobalExtras, filteredProducts, filteredRecetas, state.activeCatalog]);
 
   const discountCatalogRows = useMemo(() => {
     if (!canApplyDiscount) return [];
 
+    const discountProducts = filterBySearch(Array.isArray(productos) ? productos : [], deferredSearch, [
+      'nombre_producto',
+      'descripcion_producto',
+      'categoria_label'
+    ]);
+    const discountRecetas = filterBySearch(Array.isArray(recetas) ? recetas : [], deferredSearch, [
+      'nombre_receta',
+      'nombre_producto_base'
+    ]);
     const candidates = [
-      ...filteredProducts.map((row) => ({ kind: 'PRODUCTO', row })),
-      ...filteredCombos.map((row) => ({ kind: 'COMBO', row })),
-      ...filteredRecetas.map((row) => ({ kind: 'RECETA', row }))
+      ...discountProducts.map((row) => ({ kind: 'PRODUCTO', row })),
+      ...discountRecetas.map((row) => ({ kind: 'RECETA', row }))
     ];
 
     return candidates
@@ -539,7 +744,6 @@ export const useVentaComposer = ({
             kind: entry.kind,
             id_producto: entry.row?.id_producto ?? null,
             id_receta: entry.row?.id_receta ?? null,
-            id_combo: entry.row?.id_combo ?? null,
             precio_unitario: Number(entry.row?.precio ?? 0) || 0,
             cantidad: 1
           }
@@ -549,10 +753,10 @@ export const useVentaComposer = ({
       .filter(Boolean);
   }, [
     canApplyDiscount,
-    filteredCombos,
-    filteredProducts,
-    filteredRecetas,
+    deferredSearch,
     normalizedDescuentosCatalogo,
+    productos,
+    recetas,
     selectedSucursalId
   ]);
 
@@ -631,7 +835,9 @@ export const useVentaComposer = ({
     return Number.isFinite(numeric) && numeric >= 0 ? roundMoney(numeric) : 0;
   }, [state.cashReceived]);
 
-  const change = roundMoney(Math.max(cashValue - total, 0));
+  const change = state.paymentMethod === 'efectivo'
+    ? roundMoney(Math.max(cashValue - total, 0))
+    : 0;
   const canContinue = hasSelectedSucursal && state.cart.length > 0;
   const canSubmit = hasSelectedSucursal
     && state.cart.length > 0
@@ -641,15 +847,15 @@ export const useVentaComposer = ({
     );
   const resultsLabel = getResultsLabel(state.activeCatalog, currentCatalogRows.length);
 
-  const getCurrentProductoQuantityInCart = (idProducto, cart) =>
+  const getCurrentQuantityInCartByKind = (kind, entityId, cart) =>
     (Array.isArray(cart) ? cart : []).reduce((acc, line) => {
-      if (line.kind !== 'PRODUCTO') return acc;
-      if (Number(line.id_producto) !== Number(idProducto)) return acc;
+      if (String(line.kind || '').toUpperCase() !== String(kind || '').toUpperCase()) return acc;
+      if (Number(line.entityId ?? line.id_producto ?? line.id_extra ?? 0) !== Number(entityId)) return acc;
       return acc + Number(line.cantidad ?? 0);
     }, 0);
 
   const requiresComplementSelection = (kind, row) => {
-    if (kind === 'PRODUCTO') return false;
+    if (kind === 'PRODUCTO' || kind === 'ITEM') return false;
     const min = Number(row?.minimo_complementos ?? 0) || 0;
     return Boolean(row?.requiere_complementos) || min > 0;
   };
@@ -697,7 +903,7 @@ export const useVentaComposer = ({
           };
         }
 
-        const alreadyInCart = getCurrentProductoQuantityInCart(row.id_producto, nextCart);
+        const alreadyInCart = getCurrentQuantityInCartByKind('PRODUCTO', row.id_producto, nextCart);
         if (alreadyInCart >= stockDisponible) {
           return {
             ...current,
@@ -706,16 +912,47 @@ export const useVentaComposer = ({
         }
       }
 
-      const index = findLineIndex(nextCart, catalogLine.cartKey);
+      if (kind === 'ITEM') {
+        if (row.disponible === false) {
+          return {
+            ...current,
+            submitError: row.motivo_no_disponible || `${row.nombre || 'Extra'} no esta disponible.`
+          };
+        }
+
+        const availableUnits = resolveStandaloneExtraAvailableUnits(row);
+        if (availableUnits !== null && availableUnits <= 0) {
+          return {
+            ...current,
+            submitError: row.motivo_no_disponible || `No hay existencias suficientes para ${row.nombre || 'este extra'}.`
+          };
+        }
+
+        const alreadyInCart = getCurrentQuantityInCartByKind('ITEM', row.id_extra, nextCart);
+        if (availableUnits !== null && alreadyInCart >= availableUnits) {
+          return {
+            ...current,
+            submitError: `Stock maximo alcanzado para ${row.nombre || 'este extra'}.`
+          };
+        }
+      }
+
+      const index = isQuantityManagedVentaLineKind(kind) ? findLineIndex(nextCart, catalogLine.cartKey) : -1;
       if (index >= 0) {
         const currentLine = nextCart[index];
-        if (kind === 'PRODUCTO') {
-          const stockDisponible = Number(currentLine.stock_disponible ?? 0);
-          const nextQty = Number(currentLine.cantidad ?? 0) + 1;
-          if (nextQty > stockDisponible) {
+        const nextQty = Number(currentLine.cantidad ?? 0) + 1;
+        if (kind === 'PRODUCTO' && nextQty > Number(currentLine.stock_disponible ?? 0)) {
+          return {
+            ...current,
+            submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
+          };
+        }
+        if (kind === 'ITEM') {
+          const maxAvailable = Number(currentLine.available_units ?? 0);
+          if (maxAvailable > 0 && nextQty > maxAvailable) {
             return {
               ...current,
-              submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
+              submitError: `Stock maximo alcanzado para ${row.nombre || 'este extra'}.`
             };
           }
         }
@@ -767,7 +1004,7 @@ export const useVentaComposer = ({
   const openComplementModalForLine = (cartKey) => {
     const line = state.cart.find((row) => row.cartKey === cartKey);
     if (!line) return;
-    if (line.kind === 'PRODUCTO') return;
+    if (line.kind === 'PRODUCTO' || line.kind === 'ITEM') return;
 
     const requirement = getLineComplementRequirement(line);
     setComplementModal({
@@ -816,45 +1053,23 @@ export const useVentaComposer = ({
         maximo_complementos: editedLine.maximo_complementos_original ?? editedLine.maximo_complementos,
         complementos_disponibles: editedLine.complementos_disponibles
       };
-      const rebuilt = buildCatalogLine(editedLine.kind, baseRow, ids, complementOptions);
+      const lineId = editedLine.lineId || createCartLineId();
+      const rebuilt = buildCatalogLine(editedLine.kind, baseRow, ids, {
+        ...complementOptions,
+        lineId
+      });
       rebuilt.extras = normalizeExtras(editedLine.extras);
-      rebuilt.cartKey = buildCartKey(editedLine.kind, editedLine.entityId, rebuilt.complementos, rebuilt.extras);
       setState((current) => {
-        const duplicateIndex = current.cart.findIndex(
-          (line) =>
-            line.cartKey === rebuilt.cartKey &&
-            line.cartKey !== complementModal.cartKey
-        );
-
-        if (duplicateIndex >= 0) {
-          return {
-            ...current,
-            cart: current.cart
-              .filter((line) => line.cartKey !== complementModal.cartKey)
-              .map((line) =>
-                line.cartKey === rebuilt.cartKey
-                  ? {
-                    ...line,
-                    cantidad: Number(line.cantidad ?? 0) + Number(editedLine.cantidad ?? 0),
-                    observacion: line.observacion || editedLine.observacion || '',
-                    complementos_incompletos_autorizados: Boolean(
-                      line.complementos_incompletos_autorizados || rebuilt.complementos_incompletos_autorizados
-                    )
-                  }
-                  : line
-              ),
-            incompleteComplementCartKey: '',
-            submitError: ''
-          };
-        }
-
+        const cartKey = editedLine.lineId ? (editedLine.cartKey || rebuilt.cartKey) : rebuilt.cartKey;
         return {
           ...current,
           cart: current.cart.map((line) =>
             line.cartKey === complementModal.cartKey
               ? {
                 ...line,
-                cartKey: rebuilt.cartKey,
+                lineId,
+                cartKey,
+                cantidad: 1,
                 complementos: rebuilt.complementos,
                 complementos_incompletos_autorizados: rebuilt.complementos_incompletos_autorizados
               }
@@ -903,11 +1118,28 @@ export const useVentaComposer = ({
             }
           }
 
-          const adjustedExtras = clampExtrasToQuantity(candidate.extras, candidate.cantidad);
+          if (candidate.kind === 'ITEM') {
+            const requested = Number(candidate.cantidad ?? 0);
+            const maxAvailable = Number(candidate.available_units ?? 0);
+            if (maxAvailable > 0 && requested > maxAvailable) {
+              return {
+                ...candidate,
+                cantidad: maxAvailable
+              };
+            }
+          }
+
+          const adjustedExtras = normalizeExtras(candidate.extras);
+          const isCustomLine = isCustomizableVentaLineKind(candidate.kind);
+          const lineId = isCustomLine ? String(candidate.lineId || createCartLineId()) : null;
           return {
             ...candidate,
+            lineId,
+            cantidad: isCustomLine ? 1 : candidate.cantidad,
             extras: adjustedExtras,
-            cartKey: buildCartKey(candidate.kind, candidate.entityId, candidate.complementos, adjustedExtras)
+            cartKey: isCustomLine
+              ? (candidate.lineId ? candidate.cartKey : buildCartKey(candidate.kind, candidate.entityId, candidate.complementos, adjustedExtras, lineId))
+              : buildCartKey(candidate.kind, candidate.entityId, candidate.complementos, adjustedExtras)
           };
         })
         .filter((line) => Number(line.cantidad ?? 0) > 0);
@@ -932,55 +1164,17 @@ export const useVentaComposer = ({
 
   const openExtrasModalForLine = async (cartKey) => {
     const line = state.cart.find((row) => row.cartKey === cartKey);
-    if (!line || line.kind === 'PRODUCTO') return;
+    if (!line || line.kind === 'PRODUCTO' || line.kind === 'ITEM') return;
 
     setExtrasModal({
       open: true,
       cartKey,
       row: line,
-      options: [],
+      options: globalExtrasCatalog.options,
       selected: normalizeExtras(line.extras),
-      loading: true,
-      error: ''
+      loading: globalExtrasCatalog.loading,
+      error: globalExtrasCatalog.error
     });
-
-    try {
-      const response = await ventasService.getExtrasPermitidos({
-        tipo: line.kind,
-        id_item: line.entityId,
-        id_sucursal: selectedSucursalId
-      });
-      const options = (Array.isArray(response) ? response : [])
-        .filter((entry) => entry?.estado !== false)
-        .map((entry) => ({
-          id_extra: Number(entry.id_extra),
-          codigo: String(entry.codigo || '').trim(),
-          nombre: String(entry.nombre || 'Extra').trim(),
-          precio: roundMoney(entry.precio),
-          id_insumo: Number(entry.id_insumo || 0) || null,
-          id_insumo_maestro: Number(entry.id_insumo_maestro || 0) || null,
-          stock_disponible: entry.stock_disponible ?? null,
-          cantidad_consumo_base: entry.cantidad_consumo_base ?? null,
-          id_unidad_base: Number(entry.id_unidad_base || 0) || null,
-          disponible: entry.disponible !== false,
-          inventario_configurado: entry.inventario_configurado !== false,
-          motivo_no_disponible: String(entry.motivo_no_disponible || '').trim() || null,
-          codigo_no_disponible: String(entry.codigo_no_disponible || '').trim() || null
-        }))
-        .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0);
-      setExtrasModal((current) => ({
-        ...current,
-        options,
-        loading: false,
-        error: ''
-      }));
-    } catch (error) {
-      setExtrasModal((current) => ({
-        ...current,
-        loading: false,
-        error: error?.message || 'No se pudieron cargar los extras.'
-      }));
-    }
   };
 
   const closeExtrasModal = () => {
@@ -1004,38 +1198,22 @@ export const useVentaComposer = ({
       return;
     }
 
-    const nextExtras = clampExtrasToQuantity(selectedExtras, extrasModal.row?.cantidad);
+    const nextExtras = normalizeExtras(selectedExtras);
     setState((current) => {
       const currentLine = current.cart.find((line) => line.cartKey === extrasModal.cartKey);
       if (!currentLine) return current;
-      const nextCartKey = buildCartKey(currentLine.kind, currentLine.entityId, currentLine.complementos, nextExtras);
-      const duplicate = current.cart.find((line) => line.cartKey === nextCartKey && line.cartKey !== extrasModal.cartKey);
-      if (duplicate) {
-        const mergedQty = Number(duplicate.cantidad || 0) + Number(currentLine.cantidad || 0);
-        return {
-          ...current,
-          cart: current.cart
-            .filter((line) => line.cartKey !== extrasModal.cartKey)
-            .map((line) =>
-              line.cartKey === nextCartKey
-                ? {
-                  ...line,
-                  cantidad: mergedQty,
-                  extras: clampExtrasToQuantity(nextExtras, mergedQty),
-                  observacion: line.observacion || currentLine.observacion || ''
-                }
-                : line
-            ),
-          incompleteComplementCartKey: '',
-          submitError: ''
-        };
-      }
+      const lineId = currentLine.lineId || createCartLineId();
+      const nextCartKey = currentLine.lineId
+        ? currentLine.cartKey
+        : buildCartKey(currentLine.kind, currentLine.entityId, currentLine.complementos, nextExtras, lineId);
       return {
         ...current,
         cart: current.cart.map((line) =>
           line.cartKey === extrasModal.cartKey
             ? {
               ...line,
+              lineId,
+              cantidad: 1,
               extras: nextExtras,
               cartKey: nextCartKey
             }
@@ -1062,8 +1240,8 @@ export const useVentaComposer = ({
 
     event.preventDefault();
 
-    if (state.activeCatalog === 'COMBOS') {
-      addCatalogItem('COMBO', currentCatalogRows[0]);
+    if (state.activeCatalog === 'EXTRAS') {
+      addCatalogItem('ITEM', currentCatalogRows[0]);
       return;
     }
 
@@ -1137,12 +1315,14 @@ export const useVentaComposer = ({
     return true;
   };
 
-  const buildPaidSalePayload = ({ cuentaDividida } = {}) =>
+  const buildPaidSalePayload = ({ contacto, contexto, cuentaDividida } = {}) =>
     buildPaidSaleRequestPayload({
       state,
       selectedSucursalId,
       cashValue,
       canApplyDiscount,
+      contacto,
+      contexto,
       cuentaDividida
     });
 
@@ -1158,13 +1338,13 @@ export const useVentaComposer = ({
       cuentaDividida
     });
 
-  const submitPaidSale = async (cuentaDividida) => {
+  const submitPaidSale = async ({ contacto, contexto, cuentaDividida } = {}) => {
     if (!validatePaidSale()) return null;
     if (!validateComplementosForPending()) return null;
 
     try {
       const response = await onSubmit(
-        buildPaidSalePayload({ cuentaDividida }),
+        buildPaidSalePayload({ contacto, contexto, cuentaDividida }),
         { suppressErrorToast: suppressSubmitErrorToast }
       );
 
@@ -1200,6 +1380,16 @@ export const useVentaComposer = ({
     return submitPaidSale();
   };
 
+  const resetPaymentDraft = () => {
+    setState((current) => ({
+      ...current,
+      paymentMethod: 'efectivo',
+      cashReceived: '',
+      referenciaPago: '',
+      submitError: ''
+    }));
+  };
+
   return {
     activeCatalog: state.activeCatalog,
     activeCategory: state.activeCategory,
@@ -1224,6 +1414,14 @@ export const useVentaComposer = ({
     submitError: state.submitError,
     incompleteComplementCartKey: state.incompleteComplementCartKey,
     currentCatalogRows,
+    currentCatalogLoading: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.loading : false,
+    currentCatalogError: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.error : '',
+    currentCatalogStatus: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.status : null,
+    retryGlobalExtras: () => {
+      if (!selectedSucursalId) return;
+      globalExtrasCacheRef.current.delete(selectedSucursalId);
+      setGlobalExtrasRetryToken((current) => current + 1);
+    },
     discountCatalogRows,
     resultsLabel,
     cartCount,
@@ -1250,12 +1448,30 @@ export const useVentaComposer = ({
     setPartialState,
     resetComposer,
     setActiveCatalog: (key) =>
-      setPartialState({
-        activeCatalog: key,
-        search: ''
+      setState((current) => {
+        const nextKey = String(key || '').trim().toUpperCase();
+        return {
+          ...current,
+          activeCatalog: nextKey,
+          search: '',
+          activeCategory: ['PRODUCTOS', 'EXTRAS'].includes(nextKey)
+            ? 'all'
+            : (['PRODUCTOS', 'EXTRAS'].includes(current.activeCatalog)
+                ? resolveDefaultDepartmentId(tiposDepartamento)
+                : current.activeCategory)
+        };
       }),
     setSearch: (value) => setPartialState({ search: value }),
-    setActiveCategory: (value) => setPartialState({ activeCategory: value }),
+    setActiveCategory: (value) => {
+      const nextDepartment = String(value || 'all');
+      setPartialState({ activeCategory: nextDepartment });
+      if (state.activeCatalog === 'RECETAS' && selectedSucursalId) {
+        void onDepartmentDemand?.({
+          idSucursal: selectedSucursalId,
+          idTipoDepartamento: nextDepartment === 'all' ? null : Number(nextDepartment)
+        });
+      }
+    },
     paymentPickerOpen: state.paymentPickerOpen,
     setPaymentPickerOpen: (value) => setPartialState({ paymentPickerOpen: value }),
     setDescuentoPickerOpen: (value) => setPartialState({ descuentoPickerOpen: value }),
@@ -1264,11 +1480,15 @@ export const useVentaComposer = ({
     setSucursalPickerOpen: (value) => setPartialState({ sucursalPickerOpen: value }),
     setSelectedSucursal: (value) => {
       const nextSucursal = String(value || '');
+      persistCajaSucursal(nextSucursal);
       setState((current) => {
         const changed = String(current.selectedSucursal || '') !== nextSucursal;
         return {
           ...current,
           selectedSucursal: nextSucursal,
+          activeCatalog: changed ? DEFAULT_CATALOG_KEY : current.activeCatalog,
+          activeCategory: changed ? resolveDefaultDepartmentId(tiposDepartamento) : current.activeCategory,
+          search: changed ? '' : current.search,
           temporarySessionId: '',
           selectedDiscountId: '',
           cashReceived: '',
@@ -1305,10 +1525,13 @@ export const useVentaComposer = ({
         clientPickerOpen: false
       }),
     setPaymentMethod: (value) =>
-      setPartialState({
+      setState((current) => ({
+        ...current,
         paymentMethod: value,
+        cashReceived: value === 'efectivo' ? current.cashReceived : '',
+        referenciaPago: value === 'efectivo' ? '' : current.referenciaPago,
         submitError: ''
-      }),
+      })),
     setSelectedDiscountId: (value) => {
       if (!canApplyDiscount) {
         setPartialState({
@@ -1333,7 +1556,6 @@ export const useVentaComposer = ({
           kind,
           id_producto: row?.id_producto ?? null,
           id_receta: row?.id_receta ?? null,
-          id_combo: row?.id_combo ?? null,
           precio_unitario: Number(row?.precio ?? 0) || 0,
           cantidad: 1
         }
@@ -1364,6 +1586,7 @@ export const useVentaComposer = ({
     },
     setCashReceived: (value) => setPartialState({ cashReceived: value }),
     setReferenciaPago: (value) => setPartialState({ referenciaPago: value }),
+    resetPaymentDraft,
     addCatalogItem,
     openComplementModalForLine,
     closeComplementModal,

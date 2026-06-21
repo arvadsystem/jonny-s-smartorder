@@ -46,7 +46,6 @@ const EMPTY_HERO_CONTACT_PHONES = Object.freeze({
   whatsapp: ''
 });
 const FALLBACK_TOP_NAV_CATEGORIES = Object.freeze([
-  'Combos',
   'Tacos de Birria',
   'Hamburguesas',
   'Cervezas',

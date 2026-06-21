@@ -515,7 +515,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     }
 
     const confirmed = window.confirm(
-      `Se eliminara el menu #${idMenu} ${targetMenu?.nombre_menu || ''} si no tiene vigencias, publicaciones, recetas ni combos activos.`
+      `Se eliminara el menu #${idMenu} ${targetMenu?.nombre_menu || ''} si no tiene vigencias, publicaciones ni recetas activas.`
     );
     if (!confirmed) return;
 

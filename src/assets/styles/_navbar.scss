@@ -176,6 +176,212 @@
   transform: scale(1);
 }
 
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-tabs-fixed,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-fixed,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-tabs-fixed,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tabs-fixed,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tabs-fixed,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-tabs-fixed,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-tabs-fixed,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tabs-fixed,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-tabs-fixed,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tabs-fixed {
+  gap: 8px;
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-active-slider,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-active-slider,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-active-slider,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-active-slider,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-active-slider,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-active-slider,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-active-slider,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-active-slider,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-active-slider,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-active-slider {
+  border-radius: 16px;
+  background: linear-gradient(135deg, #8f3c18 0%, #b86a2f 52%, #d8a04b 100%);
+  border: 1px solid rgba(255, 241, 214, 0.52);
+  box-shadow:
+    0 12px 26px rgba(143, 60, 24, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tab-btn {
+  min-height: 42px;
+  padding: 8px 14px;
+  border-color: rgba(133, 86, 45, 0.2) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 252, 247, 0.78) !important;
+  box-shadow:
+    0 7px 16px rgba(83, 52, 30, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  font-weight: 750;
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn i,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn i,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn i,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn i,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn i,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn i,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn i,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn i,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn i,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tab-btn i {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(171, 91, 35, 0.12);
+  color: #874018 !important;
+  font-size: 1.02rem;
+  box-shadow: inset 0 0 0 1px rgba(143, 60, 24, 0.08);
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn:hover,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn:hover,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn:hover,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn:hover,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn:hover,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn:hover,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn:hover,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn:hover,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn:hover,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tab-btn:hover {
+  border-color: rgba(143, 60, 24, 0.42) !important;
+  background: #fff8ed !important;
+  box-shadow:
+    0 12px 24px rgba(83, 52, 30, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn:hover i,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn:hover i,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn:hover i,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn:hover i,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn:hover i,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn:hover i,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn:hover i,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn:hover i,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn:hover i,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tab-btn:hover i {
+  background: rgba(143, 60, 24, 0.18);
+  color: #6f2d10 !important;
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn:focus-visible,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn:focus-visible,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn:focus-visible,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn:focus-visible,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn:focus-visible,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn:focus-visible,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn:focus-visible,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn:focus-visible,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn:focus-visible,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tab-btn:focus-visible {
+  box-shadow:
+    0 0 0 3px rgba(216, 160, 75, 0.35),
+    0 0 0 6px rgba(143, 60, 24, 0.2);
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn.inventory-tab-active,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn.inventory-tab-active,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn.inventory-tab-active,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn.inventory-tab-active,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn.inventory-tab-active,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn.inventory-tab-active,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn.inventory-tab-active,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn.inventory-tab-active,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tab-btn.inventory-tab-active {
+  border-color: rgba(255, 241, 214, 0.56) !important;
+  background: transparent !important;
+  box-shadow:
+    0 13px 28px rgba(143, 60, 24, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn.inventory-tab-active i,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active i,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn.inventory-tab-active i,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn.inventory-tab-active i,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn.inventory-tab-active i,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn.inventory-tab-active i,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn.inventory-tab-active i,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn.inventory-tab-active i,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn.inventory-tab-active i,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tab-btn.inventory-tab-active i {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff8f2 !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn.inventory-tab-active .active-dot,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active .active-dot,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn.inventory-tab-active .active-dot,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn.inventory-tab-active .active-dot,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn.inventory-tab-active .active-dot,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn.inventory-tab-active .active-dot,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn.inventory-tab-active .active-dot,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn.inventory-tab-active .active-dot,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn.inventory-tab-active .active-dot,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tab-btn.inventory-tab-active .active-dot {
+  background: #ffe5a8;
+  box-shadow:
+    0 0 0 4px rgba(255, 229, 168, 0.18),
+    0 0 15px rgba(255, 229, 168, 0.52);
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-more-menu,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-more-menu,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-more-menu,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-more-menu,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-more-menu,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-more-menu,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-more-menu,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-more-menu,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-more-menu,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-more-menu {
+  border-color: rgba(133, 86, 45, 0.2);
+  box-shadow: 0 20px 40px rgba(58, 35, 20, 0.2);
+}
+
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--inventario .inventory-more-item.active,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--menu .inventory-more-item.active,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--ventas .inventory-more-item.active,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-more-item.active,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--sucursales .inventory-more-item.active,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--personas .inventory-more-item.active,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--planillas .inventory-more-item.active,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-more-item.active,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--reportes .inventory-more-item.active,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-more-item:hover,
+.dashboard-shell .top-navbar.top-navbar--seguridad .inventory-more-item.active {
+  background: rgba(143, 60, 24, 0.12);
+  color: #6f2d10;
+}
+
 .dashboard-shell .inventory-more-wrap {
   position: relative;
 }

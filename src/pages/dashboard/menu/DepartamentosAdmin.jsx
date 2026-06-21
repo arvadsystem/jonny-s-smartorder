@@ -237,7 +237,7 @@ const DepartamentosAdmin = () => {
         question={estadoConfirmActivo ? 'Deseas inactivar este departamento?' : 'Deseas activar este departamento?'}
         description={
           estadoConfirmActivo
-            ? 'Las recetas o combos ya relacionados conservaran su referencia, pero el departamento no debera aparecer como opcion activa en nuevos registros.'
+            ? 'Las recetas ya relacionadas conservaran su referencia, pero el departamento no debera aparecer como opcion activa en nuevos registros.'
             : 'El departamento volvera a estar disponible para nuevas asignaciones.'
         }
         itemLabel={estadoConfirmNombre}

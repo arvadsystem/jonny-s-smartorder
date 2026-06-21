@@ -13,6 +13,7 @@ import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import ventasService from '../../../../services/ventasService';
 import { useAuth } from '../../../../hooks/useAuth';
 import AppSelect from '../../../../components/common/AppSelect';
+import { parseCajaUtcTimestamp } from '../utils/cajasHelpers';
 
 const resolvePendientesErrorMessage = (error) => {
   const status = Number(error?.status || 0);
@@ -49,7 +50,7 @@ const isTimedCacheFresh = (entry, key, ttlMs) =>
 
 const formatDateTime = (value) => {
   if (!value) return 'Sin fecha';
-  const date = new Date(value);
+  const date = new Date(parseCajaUtcTimestamp(value));
   if (!Number.isFinite(date.getTime())) return String(value);
   return new Intl.DateTimeFormat('es-HN', {
     timeZone: 'America/Tegucigalpa',
@@ -64,15 +65,6 @@ const buildCajaDismissKey = (assignment, userKey) => {
   return idCaja
     ? `${CAJA_APERTURA_DISMISS_PREFIX}:${scopedUserKey}:${idCaja}`
     : `${CAJA_APERTURA_DISMISS_PREFIX}:${scopedUserKey}`;
-};
-
-const isCajaDecisionDismissed = (assignment, userKey) => {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.sessionStorage.getItem(buildCajaDismissKey(assignment, userKey)) === '1';
-  } catch {
-    return false;
-  }
 };
 
 const markCajaDecisionDismissed = (assignment, userKey) => {
@@ -201,18 +193,25 @@ export default function CajaView({
   categorias,
   tiposDepartamento,
   clientes,
-  combos,
+  clientesMeta,
   recetas,
   descuentosCatalogo,
   canApplyDiscount,
   catalogLoading,
+  catalogLoadingStates = {},
+  catalogStatuses = {},
+  cajaBootstrapData = null,
+  recipeCatalogState = { byScope: {}, activeKey: null },
   catalogErrors,
   saving,
   onSubmit,
   onCreatePedidoPendiente,
   onRegistrarPagoPedido,
   onCatalogSucursalChange,
+  onCatalogDemand,
+  onRecipesDepartmentDemand,
   onClientesRefresh,
+  onClienteCatalogUpsert,
   onNotify
 }) {
   const { user } = useAuth();
@@ -282,6 +281,8 @@ export default function CajaView({
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
   const catalogSucursalRequestRef = useRef('');
+  const bootstrapSesionCaja = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
+  const hasCajaSession = Boolean(cajaSesionActiva?.id_sesion_caja || bootstrapSesionCaja?.id_sesion_caja);
 
   const openAutoAuxiliarForSucursal = async ({ idSucursal, force = false }) => {
     if (!isSuperAdmin) return;
@@ -341,18 +342,66 @@ export default function CajaView({
     categorias,
     tiposDepartamento,
     clientes,
-    combos,
     recetas,
     descuentosCatalogo,
     canApplyDiscount,
     sucursales,
     isSuperAdmin,
     defaultSucursalId,
+    allowSucursalAutoSelection: !catalogLoadingStates.bootstrapLoading,
+    catalogsEnabled: hasCajaSession,
+    onDepartmentDemand: ({ idSucursal, idTipoDepartamento }) => onRecipesDepartmentDemand?.({
+      id_sucursal: idSucursal,
+      id_tipo_departamento: idTipoDepartamento
+    }),
     onSubmit,
     suppressSubmitErrorToast: true,
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
   });
   composerRef.current = composer;
+  const resolvedCajaSucursalId = toPositiveId(
+    composer.selectedSucursalId || composer.selectedSucursal || cajaBootstrapData?.id_sucursal
+  );
+  const activeCatalogLoading = composer.activeCatalog === 'PRODUCTOS'
+    ? Boolean(catalogLoadingStates.productsLoading)
+    : composer.activeCatalog === 'EXTRAS'
+        ? Boolean(composer.currentCatalogLoading)
+      : Boolean(catalogLoadingStates.bootstrapLoading || catalogLoadingStates.recipesLoading || catalogLoading);
+  const activeCatalogStatus = composer.activeCatalog === 'PRODUCTOS'
+    ? catalogStatuses.productos || 'idle'
+    : composer.activeCatalog === 'EXTRAS'
+        ? !hasCajaSession
+          ? 'idle'
+          : composer.currentCatalogStatus || 'idle'
+      : composer.activeCatalog === 'DESCUENTOS'
+        ? catalogStatuses.descuentos || 'idle'
+        : catalogStatuses.recetas || 'idle';
+
+  const retryActiveCatalog = useCallback(() => {
+    const idSucursal = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!idSucursal) return;
+    if (composer.activeCatalog === 'EXTRAS') {
+      composer.retryGlobalExtras();
+      return;
+    }
+    if (composer.activeCatalog === 'RECETAS') {
+      void onRecipesDepartmentDemand?.({
+        id_sucursal: idSucursal,
+        id_tipo_departamento: composer.activeCategory === 'all' ? null : toPositiveId(composer.activeCategory),
+        force: true
+      });
+      return;
+    }
+    void onCatalogDemand?.(composer.activeCatalog, { id_sucursal: idSucursal, force: true });
+  }, [
+    composer.activeCatalog,
+    composer.activeCategory,
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    composer.retryGlobalExtras,
+    onCatalogDemand,
+    onRecipesDepartmentDemand
+  ]);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -371,10 +420,66 @@ export default function CajaView({
     onCatalogSucursalChange
   ]);
 
+  useEffect(() => {
+    const selectedSucursalId = resolvedCajaSucursalId;
+    if (!selectedSucursalId || !hasCajaSession) return;
+    if (composer.activeCatalog === 'RECETAS') {
+      const bootstrapDepartmentId = toPositiveId(cajaBootstrapData?.departamento_activo?.id_tipo_departamento);
+      if (composer.activeCategory === 'all' && bootstrapDepartmentId) return;
+      void onRecipesDepartmentDemand?.({
+        id_sucursal: selectedSucursalId,
+        id_tipo_departamento: composer.activeCategory === 'all' ? null : toPositiveId(composer.activeCategory)
+      });
+      return;
+    }
+    void onCatalogDemand?.(composer.activeCatalog, { id_sucursal: selectedSucursalId });
+  }, [
+    hasCajaSession,
+    resolvedCajaSucursalId,
+    cajaBootstrapData?.departamento_activo?.id_tipo_departamento,
+    composer.activeCatalog,
+    composer.activeCategory,
+    onCatalogDemand,
+    onRecipesDepartmentDemand
+  ]);
+
+  useEffect(() => {
+    if (!canApplyDiscount || !composer.descuentoPickerOpen) return;
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!selectedSucursalId) return;
+    void onCatalogDemand?.('DESCUENTOS', { id_sucursal: selectedSucursalId });
+  }, [canApplyDiscount, composer.descuentoPickerOpen, composer.selectedSucursal, composer.selectedSucursalId, onCatalogDemand]);
+
   const syncComposerSession = useCallback((session) => {
     const idSesionCaja = toPositiveId(session?.id_sesion_caja);
     composerRef.current?.setTemporarySessionId(idSesionCaja ? String(idSesionCaja) : '');
   }, []);
+
+  useEffect(() => {
+    const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!bootstrapSucursalId) return;
+    if (selectedSucursalId && bootstrapSucursalId !== selectedSucursalId) return;
+
+    const session = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
+    const assignment = session
+      ? buildCajaAssignmentFromSession(session)
+      : normalizeCajaAssignment(cajaBootstrapData?.caja_activa);
+    setCajaAsignacion(assignment);
+    setCajaSesionActiva(session);
+    syncComposerSession(session);
+    setCajaStatus({
+      loading: false,
+      error: '',
+      assignmentMissing: !assignment
+    });
+    setDecisionOpen(Boolean(assignment && !session && assignment.puede_abrir));
+  }, [
+    cajaBootstrapData,
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    syncComposerSession
+  ]);
 
   const loadCajaAsignada = useCallback(async () => {
     const cacheKey = `asignacion:${cajaUserKey}`;
@@ -632,7 +737,10 @@ export default function CajaView({
       return undefined;
     }
 
-    if (isSuperAdmin) return undefined;
+    if (isSuperAdmin || catalogLoadingStates.bootstrapLoading) return undefined;
+
+    const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
+    if (bootstrapSucursalId && bootstrapSucursalId === toPositiveId(defaultSucursalId)) return undefined;
 
     setCajaAsignacion(null);
     setCajaSesionActiva(null);
@@ -644,12 +752,15 @@ export default function CajaView({
     return () => {
       cajaAsignacionRequestRef.current += 1;
     };
-  }, [cajaUserKey, hasCajaUser, isSuperAdmin, loadCajaAsignada, syncComposerSession]);
+  }, [cajaBootstrapData?.id_sucursal, cajaUserKey, catalogLoadingStates.bootstrapLoading, defaultSucursalId, hasCajaUser, isSuperAdmin, loadCajaAsignada, syncComposerSession]);
 
   useEffect(() => {
-    if (!hasCajaUser || !isSuperAdmin) return undefined;
+    if (!hasCajaUser || !isSuperAdmin || catalogLoadingStates.bootstrapLoading) return undefined;
 
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (cajaBootstrapData) return undefined;
+    const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
+    if (selectedSucursalId && bootstrapSucursalId === selectedSucursalId) return undefined;
     cajaAsignacionRequestRef.current += 1;
     setCajaAsignacion(null);
     setCajaSesionActiva(null);
@@ -665,6 +776,8 @@ export default function CajaView({
     };
   }, [
     cajaUserKey,
+    cajaBootstrapData?.id_sucursal,
+    catalogLoadingStates.bootstrapLoading,
     composer.selectedSucursal,
     composer.selectedSucursalId,
     hasCajaUser,
@@ -885,6 +998,7 @@ export default function CajaView({
       setDecisionOpen(false);
       setAbrirSesionOpen(false);
       setCajaStatus({ loading: false, error: '', assignmentMissing: false });
+      await onCatalogSucursalChange?.({ id_sucursal: session?.id_sucursal, force: true });
       onNotify?.('SESIÓN ABIERTA', 'Sesión de caja abierta correctamente.', 'success');
     } catch (error) {
       if (Number(error?.status || 0) >= 500) {
@@ -990,6 +1104,7 @@ export default function CajaView({
       setCajaStatus({ loading: false, error: '', assignmentMissing: false });
       clearCajaDecisionDismissed(assignment, cajaUserKey);
       setAutoModalOpen(false);
+      await onCatalogSucursalChange?.({ id_sucursal: idSucursal, force: true });
       onNotify?.('CAJA ACTIVA', 'Te registraste como auxiliar de caja para esta sesión.', 'success');
     } catch (error) {
       setAutoModalError(toSafeMessage(error, 'No se pudo registrar la autoasignación temporal.'));
@@ -1106,8 +1221,12 @@ export default function CajaView({
         <form className="ventas-create-modal__body ventas-caja__body ventas-caja-layout" onSubmit={composer.handleSubmit}>
           <VentaComposerCatalog
             composer={composer}
-            catalogLoading={catalogLoading}
+            catalogLoading={activeCatalogLoading}
+            catalogStatus={activeCatalogStatus}
+            catalogStatuses={catalogStatuses}
+            recipeCatalogState={recipeCatalogState}
             catalogErrors={catalogErrors}
+            onRetry={retryActiveCatalog}
           />
           <VentaComposerSummary
             composer={composer}
@@ -1192,7 +1311,7 @@ export default function CajaView({
         onClose={closeAutoModal}
       />
       <VentaComplementosModal
-        key={`${composer.complementModal.mode}:${composer.complementModal.cartKey || composer.complementModal.row?.entityId || composer.complementModal.row?.id_combo || composer.complementModal.row?.id_receta || ''}:${composer.complementModal.open ? '1' : '0'}`}
+        key={`${composer.complementModal.mode}:${composer.complementModal.cartKey || composer.complementModal.row?.entityId || composer.complementModal.row?.id_receta || ''}:${composer.complementModal.open ? '1' : '0'}`}
         open={composer.complementModal.open}
         mode={composer.complementModal.mode}
         row={composer.complementModal.row}
@@ -1224,6 +1343,12 @@ export default function CajaView({
           onCreatePedidoPendiente={handleCreatePedidoPendiente}
           onDeliveryCostChange={setDeliveryCostPreview}
           onClientesRefresh={onClientesRefresh}
+          onClienteCatalogUpsert={onClienteCatalogUpsert}
+          clientesMeta={clientesMeta}
+          clientsLoading={Boolean(catalogLoadingStates.clientsLoading)}
+          clientsStatus={catalogStatuses.clientes || 'idle'}
+          clientsError={catalogErrors.clientes || ''}
+          onNotify={onNotify}
         />
       ) : null}
       {registrarPagoOpen ? (

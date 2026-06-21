@@ -3,6 +3,15 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+export const parseCajaUtcTimestamp = (value) => {
+  if (!value || value instanceof Date) return value;
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(text)) {
+    return `${text.replace(' ', 'T')}Z`;
+  }
+  return value;
+};
+
 export const truthy = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
 
@@ -29,10 +38,11 @@ export const formatCajaCurrency = (value) =>
 
 export const formatCajaDateTime = (value) => {
   if (!value) return '-';
-  const date = new Date(value);
+  const date = new Date(parseCajaUtcTimestamp(value));
   if (Number.isNaN(date.getTime())) return '-';
 
-  return date.toLocaleDateString('es-HN', {
+  return date.toLocaleString('es-HN', {
+    timeZone: 'America/Tegucigalpa',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -43,7 +53,7 @@ export const formatCajaDateTime = (value) => {
 
 export const formatCajaDateTimeHN = (value) => {
   if (!value) return '-';
-  const date = new Date(value);
+  const date = new Date(parseCajaUtcTimestamp(value));
   if (Number.isNaN(date.getTime())) return '-';
 
   return date.toLocaleString('es-HN', {

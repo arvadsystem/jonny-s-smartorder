@@ -133,6 +133,46 @@
   white-space: nowrap;
 }
 
+.suc-page .suc-printer-summary {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+
+.suc-page .suc-printer-summary__item {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(205, 163, 108, 0.22);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(249, 243, 231, 0.96));
+}
+
+.suc-page .suc-printer-summary__label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.22rem;
+  color: #6d4a34;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.suc-page .suc-printer-summary__value {
+  color: #201012;
+  font-size: 0.94rem;
+  font-weight: 750;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.suc-page .suc-printer-summary__meta {
+  margin-top: 0.16rem;
+  color: rgba(76, 53, 41, 0.78);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
 .suc-page .suc-fact-card .inv-prod-card-action:disabled {
   opacity: 0.52;
   cursor: not-allowed;
@@ -758,6 +798,10 @@
 .suc-facturacion-drawer .alert {
   border-radius: 10px;
   font-size: 0.8rem;
+}
+
+.suc-printer-drawer.inv-prod-drawer {
+  width: min(380px, 92vw);
 }
 
 .suc-facturacion-drawer__actions {
