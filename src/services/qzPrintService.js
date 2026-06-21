@@ -76,33 +76,51 @@ const setupQzSecurity = async (qz) => {
   if (qzSecuritySetupPromise) return qzSecuritySetupPromise;
 
   qzSecuritySetupPromise = (async () => {
-    try {
-      const certificateResponse = await apiFetch('/ventas/qz/certificate', 'GET');
-      const certificate = String(certificateResponse?.certificate || '').trim();
-      if (!certificate) return false;
+    const configuredAlgorithm = String(import.meta.env.VITE_QZ_SIGNATURE_ALGORITHM || 'SHA512').trim() || 'SHA512';
+    let certificateResponse;
 
-      qz.security.setCertificatePromise((resolve) => resolve(certificate));
-      qz.security.setSignatureAlgorithm('SHA512');
-      qz.security.setSignaturePromise((toSign) => async (resolve, reject) => {
-        try {
-          const response = await apiFetch('/ventas/qz/sign', 'POST', { request: toSign });
-          const signature = String(response?.signature || '').trim();
-          if (!signature) {
-            reject(new Error('Firma vacia para QZ Tray.'));
-            return;
-          }
-          resolve(signature);
-        } catch (error) {
-          reject(error);
-        }
-      });
-      return true;
+    try {
+      certificateResponse = await apiFetch('/ventas/qz/certificate', 'GET');
     } catch (error) {
-      if (Number(error?.status || 0) !== 503 && Number(error?.status || 0) !== 404) {
-        console.warn('[QZ] No se pudo configurar la firma segura.', error);
-      }
-      return false;
+      throw createQzError(
+        'QZ_CERTIFICATE_ERROR',
+        'No se pudo obtener el certificado de QZ Tray desde el backend.',
+        error
+      );
     }
+
+    const certificate = String(
+      certificateResponse?.certificate || certificateResponse?.data || certificateResponse || ''
+    ).trim();
+
+    if (!certificate) {
+      throw createQzError(
+        'QZ_CERTIFICATE_ERROR',
+        'El backend no devolvio un certificado valido para QZ Tray.'
+      );
+    }
+
+    qz.security.setCertificatePromise((resolve) => resolve(certificate));
+    qz.security.setSignatureAlgorithm(configuredAlgorithm);
+    qz.security.setSignaturePromise((toSign) => async (resolve, reject) => {
+      try {
+        const response = await apiFetch('/ventas/qz/sign', 'POST', { request: toSign });
+        const signature = String(response?.signature || '').trim();
+        if (!signature) {
+          reject(createQzError('QZ_SIGNATURE_ERROR', 'El backend devolvio una firma vacia para QZ Tray.'));
+          return;
+        }
+        resolve(signature);
+      } catch (error) {
+        reject(createQzError(
+          'QZ_SIGNATURE_ERROR',
+          'No se pudo firmar la solicitud de QZ Tray en el backend.',
+          error
+        ));
+      }
+    });
+
+    return true;
   })();
 
   return qzSecuritySetupPromise;
