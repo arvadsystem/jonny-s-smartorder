@@ -207,6 +207,8 @@ export default function CajaView({
   onSubmit,
   onCreatePedidoPendiente,
   onRegistrarPagoPedido,
+  onPedidoPendienteCreated,
+  onSuccessfulPendingOrderPaymentPrint,
   onCatalogSucursalChange,
   onCatalogDemand,
   onRecipesDepartmentDemand,
@@ -280,6 +282,61 @@ export default function CajaView({
   const sesionesAbiertasInFlightRef = useRef(null);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
+
+  const buildPendingOrderComanda = (response, payload) => {
+    const idPedido = toPositiveId(response?.id_pedido);
+    const numeroPedido = String(
+      response?.codigo_pedido ||
+      response?.codigo_venta ||
+      response?.codigo_venta_operativo ||
+      (idPedido ? `PED-${String(idPedido).padStart(5, '0')}` : '')
+    ).trim();
+    const items = (Array.isArray(composer.cart) ? composer.cart : []).map((line, index) => ({
+      id_detalle: line?.id_detalle || line?.lineId || index + 1,
+      cantidad: Number(line?.cantidad ?? 0) || 0,
+      nombre_item: String(
+        line?.nombre_item ||
+        line?.nombre_producto ||
+        line?.nombre_receta ||
+        line?.nombre_extra ||
+        line?.nombre ||
+        line?.descripcion ||
+        'Item'
+      ).trim(),
+      observacion: String(line?.observacion || '').trim(),
+      extras: (Array.isArray(line?.extras) ? line.extras : []).map((extra) => ({
+        id_extra: toPositiveId(extra?.id_extra),
+        nombre: String(extra?.nombre || extra?.nombre_extra || 'Extra').trim(),
+        cantidad: Number(extra?.cantidad ?? 0) || 0
+      })),
+      complementos: (Array.isArray(line?.complementos) ? line.complementos : []).map((complemento) => ({
+        id_complemento: toPositiveId(complemento?.id_complemento || complemento?.id),
+        nombre: String(complemento?.nombre || complemento?.label || 'Salsa').trim()
+      }))
+    }));
+
+    return {
+      id_pedido: idPedido,
+      numero_pedido: numeroPedido,
+      numero_venta: numeroPedido,
+      codigo_venta: numeroPedido,
+      fecha_hora_pedido: new Date().toISOString(),
+      id_sucursal: toPositiveId(payload?.id_sucursal) || toPositiveId(composer.selectedSucursal?.id_sucursal),
+      nombre_sucursal: composer.selectedSucursalLabel || cajaBootstrapData?.nombre_sucursal || '',
+      id_caja: toPositiveId(cajaSesionActiva?.id_caja),
+      nombre_caja: cajaSesionActiva?.nombre_caja || cajaSesionActiva?.codigo_caja || '',
+      id_usuario: toPositiveId(user?.id_usuario),
+      nombre_usuario: String(user?.nombre_completo || user?.nombre_usuario || user?.email || '').trim(),
+      cliente_nombre: String(payload?.contacto?.nombre_contacto || 'Consumidor final').trim(),
+      contacto: payload?.contacto || null,
+      modalidad: response?.modalidad || payload?.contexto?.modalidad || null,
+      canal: response?.canal || payload?.contexto?.canal || null,
+      contexto: payload?.contexto || null,
+      delivery: payload?.delivery || null,
+      total_productos: items.reduce((sum, item) => sum + (Number(item.cantidad || 0) || 0), 0),
+      items
+    };
+  };
   const catalogSucursalRequestRef = useRef('');
   const bootstrapSesionCaja = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
   const hasCajaSession = Boolean(cajaSesionActiva?.id_sesion_caja || bootstrapSesionCaja?.id_sesion_caja);
@@ -918,6 +975,7 @@ export default function CajaView({
     try {
       const response = await onCreatePedidoPendiente(payload);
       await loadPendientesSummary();
+      onPedidoPendienteCreated?.(buildPendingOrderComanda(response, payload));
       setFinalizarOpen(false);
       setDeliveryCostPreview(0);
       return response;
@@ -947,6 +1005,18 @@ export default function CajaView({
       const paymentState = String(response?.estado_pago || response?.estado_pago_control || '').trim().toUpperCase();
       const stillPending = pendingAmount > 0.009 || paymentState === 'PENDIENTE_PAGO' || paymentState === 'PENDIENTE_DE_PAGO';
       if (!stillPending) {
+        try {
+          await onSuccessfulPendingOrderPaymentPrint?.(response, {
+            payload,
+            origin: 'CAJA_PENDING_ORDER_PAYMENT'
+          });
+        } catch {
+          onNotify?.(
+            'IMPRESION FACTURA',
+            'El pago se registró correctamente, pero la factura no pudo imprimirse',
+            'warning'
+          );
+        }
         setRegistrarPagoOpen(false);
       }
       void loadPendientesSummary().catch(() => undefined);

@@ -13,14 +13,17 @@ export default function EnviarComandaCocinaModal({
     ? venta.items.reduce((sum, item) => sum + (Number(item?.cantidad ?? 0) || 0), 0)
     : Number(venta?.total_productos || 0) || 0;
   const isReprint = mode === 'reprint';
+  const isPendingOrder = mode === 'pending-order';
   const title = isReprint ? 'Reimprimir comanda de cocina' : 'Enviar comanda a cocina';
-  const message = isReprint
-    ? 'La factura ya se abrio para impresion. ¿Deseas imprimir tambien la comanda de cocina?'
-    : '¿Deseas enviar la comanda de este pedido a cocina?';
+  const message = isPendingOrder
+    ? '¿Deseas imprimir la comanda de este pedido en cocina?'
+    : isReprint
+      ? 'La factura ya se abrio para impresion. ¿Deseas imprimir tambien la comanda de cocina?'
+      : '¿Deseas enviar la comanda de este pedido a cocina?';
   const acceptLabel = loading
-    ? (isReprint ? 'Imprimiendo...' : 'Enviando...')
-    : (isReprint ? 'Imprimir comanda' : 'Aceptar');
-  const cancelLabel = isReprint ? 'Solo factura' : 'Cancelar';
+    ? (isReprint || isPendingOrder ? 'Imprimiendo...' : 'Enviando...')
+    : (isReprint || isPendingOrder ? 'Imprimir comanda' : 'Aceptar');
+  const cancelLabel = isPendingOrder ? 'Ahora no' : isReprint ? 'Solo factura' : 'Cancelar';
 
   return (
     <div className="ventas-finalizar-error-backdrop" role="presentation">
@@ -46,7 +49,7 @@ export default function EnviarComandaCocinaModal({
           <h5 id="ventas-enviar-comanda-title">{title}</h5>
           <p>{message}</p>
           <p className="ventas-finalizar-error-modal__detail">
-            Pedido: <strong>{venta?.numero_venta || venta?.codigo_venta || 'Sin numero'}</strong>
+            Pedido: <strong>{venta?.numero_pedido || venta?.numero_venta || venta?.codigo_venta || 'Sin numero'}</strong>
           </p>
           <p className="ventas-finalizar-error-modal__detail">
             Productos: <strong>{totalProductos}</strong>
