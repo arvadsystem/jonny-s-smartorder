@@ -15,7 +15,6 @@ import {
   extractApiMessage,
   normalizeCategoriaRecord,
   normalizeClienteOption,
-  normalizeComboRecord,
   normalizeProductoRecord,
   normalizeRecetaRecord,
   normalizeVentaDetail,
@@ -40,7 +39,6 @@ const normalizeDiscountScope = (value) => {
     .toUpperCase();
   if (normalized === 'PRODUCTOS') return 'PRODUCTO';
   if (normalized === 'RECETAS') return 'RECETA';
-  if (normalized === 'COMBOS') return 'COMBO';
   return normalized || 'FACTURA_COMPLETA';
 };
 
@@ -76,7 +74,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const [sucursales, setSucursales] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
-  const [combos, setCombos] = useState([]);
   const [recetas, setRecetas] = useState([]);
   const [descuentosCatalogo, setDescuentosCatalogo] = useState([]);
   const [tiposDescuento, setTiposDescuento] = useState([]);
@@ -87,14 +84,12 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const [bootstrapLoading, setBootstrapLoading] = useState(() => String(activeTab).toLowerCase() === 'caja');
   const [recipesLoading, setRecipesLoading] = useState(() => String(activeTab).toLowerCase() === 'caja');
   const [productsLoading, setProductsLoading] = useState(false);
-  const [combosLoading, setCombosLoading] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientesMeta, setClientesMeta] = useState({ limit: 100, has_more: false });
   const [discountsLoading, setDiscountsLoading] = useState(false);
   const [catalogStatuses, setCatalogStatuses] = useState({
     recetas: String(activeTab).toLowerCase() === 'caja' ? 'loading' : 'idle',
     productos: 'idle',
-    combos: 'idle',
     clientes: 'idle',
     descuentos: 'idle'
   });
@@ -343,7 +338,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       for (const controller of recipeCatalogAbortRef.current.values()) controller.abort();
       recipeCatalogAbortRef.current.clear();
       setProductos([]);
-      setCombos([]);
       setRecetas([]);
       setDescuentosCatalogo([]);
       setClientes([createConsumidorFinalCliente()]);
@@ -353,7 +347,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       setCatalogStatuses({
         recetas: 'idle',
         productos: 'idle',
-        combos: 'idle',
         clientes: 'idle',
         descuentos: 'idle'
       });
@@ -539,21 +532,18 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     const idSucursal = parsePositiveId(idSucursalRaw);
     if (!idSucursal) return null;
     if (catalogKey === 'RECETAS') return null;
-    if (!['PRODUCTOS', 'COMBOS', 'DESCUENTOS'].includes(catalogKey)) return null;
+    if (!['PRODUCTOS', 'DESCUENTOS'].includes(catalogKey)) return null;
     const cacheKey = `${catalogKey}:${idSucursal}`;
     const cachedData = cajaCatalogDataCacheRef.current.get(cacheKey);
     if (!force && cachedData?.status === 'success') {
       if (catalogKey === 'PRODUCTOS') {
         setCategorias(cachedData.categorias || []);
         setProductos(cachedData.rows || []);
-      } else if (catalogKey === 'COMBOS') {
-        setCombos(cachedData.rows || []);
       } else {
         setDescuentosCatalogo(cachedData.rows || []);
         setTiposDescuento(cachedData.tipos || []);
         if (Array.isArray(cachedData.categorias)) setCategorias(cachedData.categorias);
         if (Array.isArray(cachedData.productos)) setProductos(cachedData.productos);
-        if (Array.isArray(cachedData.combos)) setCombos(cachedData.combos);
         if (Array.isArray(cachedData.recetas)) setRecetas(cachedData.recetas);
       }
       setCatalogStatuses((current) => ({ ...current, [catalogKey.toLowerCase()]: 'success' }));
@@ -572,11 +562,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       activeCajaSucursalRef.current === idSucursal
       && cajaCatalogAbortRef.current.get(cacheKey) === controller
     );
-    const setLoadingState = catalogKey === 'PRODUCTOS'
-      ? setProductsLoading
-      : catalogKey === 'COMBOS'
-        ? setCombosLoading
-        : setDiscountsLoading;
+    const setLoadingState = catalogKey === 'PRODUCTOS' ? setProductsLoading : setDiscountsLoading;
     setLoadingState(true);
     const statusKey = catalogKey.toLowerCase();
     setCatalogStatuses((current) => ({ ...current, [statusKey]: 'loading' }));
@@ -603,15 +589,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
           categorias: normalizedCategorias,
           rows: normalizedProductos
         });
-      } else if (catalogKey === 'COMBOS') {
-        const response = await ventasService.getCombosCatalog({ id_sucursal: idSucursal }, { signal: controller.signal });
-        if (controller.signal.aborted || !isCurrentRequest()) return null;
-        const normalizedCombos = (Array.isArray(response) ? response : [])
-          .map(normalizeComboRecord)
-          .filter((row) => row.estado)
-          .sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es', { sensitivity: 'base' }));
-        setCombos(normalizedCombos);
-        cajaCatalogDataCacheRef.current.set(cacheKey, { status: 'success', rows: normalizedCombos });
       } else {
         const [descuentosResponse, tiposResponse] = await Promise.all([
           ventasService.getDescuentosCatalog({ id_sucursal: idSucursal }, { signal: controller.signal }),
@@ -637,7 +614,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         const scopes = new Set(normalizedDescuentos.map((row) => normalizeDiscountScope(row.alcance)));
         let discountCategorias = null;
         let discountProductos = null;
-        let discountCombos = null;
         let discountRecetas = null;
         if (scopes.has('PRODUCTO')) {
           const productCacheKey = `PRODUCTOS:${idSucursal}`;
@@ -668,22 +644,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
           setCategorias(discountCategorias || []);
           setProductos(discountProductos || []);
         }
-        if (scopes.has('COMBO')) {
-          const comboCacheKey = `COMBOS:${idSucursal}`;
-          const comboCache = cajaCatalogDataCacheRef.current.get(comboCacheKey);
-          if (comboCache?.status === 'success') {
-            discountCombos = comboCache.rows || [];
-          } else {
-            const combosResponse = await ventasService.getCombosCatalog({ id_sucursal: idSucursal }, { signal: controller.signal });
-            if (controller.signal.aborted || !isCurrentRequest()) return null;
-            discountCombos = (Array.isArray(combosResponse) ? combosResponse : [])
-              .map(normalizeComboRecord)
-              .filter((row) => row.estado)
-              .sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es', { sensitivity: 'base' }));
-            cajaCatalogDataCacheRef.current.set(comboCacheKey, { status: 'success', rows: discountCombos });
-          }
-          setCombos(discountCombos || []);
-        }
         if (scopes.has('RECETA')) {
           const recipeScopeKey = `${idSucursal}:ALL`;
           const recipeCache = recipeCatalogCacheRef.current.get(recipeScopeKey);
@@ -712,7 +672,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
           rows: normalizedDescuentos,
           ...(discountCategorias ? { categorias: discountCategorias } : {}),
           ...(discountProductos ? { productos: discountProductos } : {}),
-          ...(discountCombos ? { combos: discountCombos } : {}),
           ...(discountRecetas ? { recetas: discountRecetas } : {})
         });
       }
@@ -765,7 +724,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     ];
     if (catalogSucursalId) {
       endpointRequests.push(
-        { key: 'combos', label: '/ventas/catalogos/combos', request: () => ventasService.getCombosCatalog(scopedCatalogParams) },
         { key: 'recetas', label: '/ventas/catalogos/recetas', request: () => ventasService.getRecetasCatalog(scopedCatalogParams) }
       );
     }
@@ -825,7 +783,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       const categoriasResponse = responsesByKey.categorias;
       const productosResponse = responsesByKey.productos;
       const clientesResponse = responsesByKey.clientes;
-      const combosResponse = responsesByKey.combos;
       const recetasResponse = responsesByKey.recetas;
       const descuentosResponse = responsesByKey.descuentos;
       const tiposDescuentoResponse = responsesByKey.tiposDescuento;
@@ -859,15 +816,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
           .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
       ];
 
-      const normalizedCombos = (Array.isArray(combosResponse) ? combosResponse : [])
-        .map(normalizeComboRecord)
-        .filter((combo) => combo.estado)
-        .sort((a, b) =>
-          a.descripcion.localeCompare(b.descripcion, 'es', {
-            sensitivity: 'base'
-          })
-        );
-
       const normalizedRecetas = (Array.isArray(recetasResponse) ? recetasResponse : [])
         .map(normalizeRecetaRecord)
         .filter((receta) => receta.estado)
@@ -894,11 +842,9 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
           alcance: normalizeDiscountScope(row.alcance),
           id_producto: Number(row.id_producto ?? 0) || null,
           id_receta: Number(row.id_receta ?? 0) || null,
-          id_combo: Number(row.id_combo ?? 0) || null,
           objetivos: {
             productos: Array.isArray(row.objetivos?.productos) ? row.objetivos.productos : [],
-            recetas: Array.isArray(row.objetivos?.recetas) ? row.objetivos.recetas : [],
-            combos: Array.isArray(row.objetivos?.combos) ? row.objetivos.combos : []
+            recetas: Array.isArray(row.objetivos?.recetas) ? row.objetivos.recetas : []
           },
           objetivos_count: row.objetivos_count || null,
           id_sucursal: Number(row.id_sucursal ?? 0) || null,
@@ -933,7 +879,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
 
       setCategorias(normalizedCategorias);
       setProductos(normalizedProductos);
-      setCombos(normalizedCombos);
       setRecetas(normalizedRecetas);
       setDescuentosCatalogo(normalizedDescuentosCatalogo);
       setTiposDescuento(normalizedTiposDescuento);
@@ -1233,7 +1178,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     categorias,
     tiposDepartamento,
     productos,
-    combos,
     recetas,
     descuentosCatalogo,
     tiposDescuento,
@@ -1244,7 +1188,6 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     bootstrapLoading,
     recipesLoading,
     productsLoading,
-    combosLoading,
     clientsLoading,
     discountsLoading,
     catalogStatuses,

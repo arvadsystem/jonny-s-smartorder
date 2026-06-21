@@ -67,28 +67,6 @@ const BASE_PRODUCTS = [
     soldOutInBranches: []
   },
   {
-    id: 401,
-    name: 'Combo Familiar',
-    description: '4 hamburguesas, papas grandes y 2 bebidas.',
-    category: 'Combos',
-    price: 649,
-    imageUrl: '',
-    prepMinutes: 22,
-    isFeatured: true,
-    soldOutInBranches: [2]
-  },
-  {
-    id: 402,
-    name: 'Combo Express',
-    description: '1 hamburguesa, 1 bebida y papas medianas.',
-    category: 'Combos',
-    price: 219,
-    imageUrl: '',
-    prepMinutes: 12,
-    isFeatured: false,
-    soldOutInBranches: []
-  },
-  {
     id: 501,
     name: 'Helado Sarita Vainilla',
     description: 'Copa individual, ideal para cerrar con postre.',

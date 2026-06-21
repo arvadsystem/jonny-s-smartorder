@@ -1,8 +1,6 @@
 const HAMBURGUESA_KEYWORDS = ['hamburguesa', 'burger', 'smash'];
 const WINGS_SAUCE_KEYWORDS = ['alita', 'alitas', 'tender', 'tenders'];
 const KITCHEN_NOTE_KEYWORDS = [
-  'combo',
-  'combos',
   'taco birria',
   'tacos birria',
   'taco de birria',

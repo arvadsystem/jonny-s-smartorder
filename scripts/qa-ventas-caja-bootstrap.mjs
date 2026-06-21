@@ -21,7 +21,6 @@ assert.match(useVentasSource, /new AbortController\(\)/, 'cambio de sucursal deb
 assert.match(useVentasSource, /cajaCatalogLoadedRef/, 'los catalogos deben deduplicarse por sucursal');
 assert.match(useVentasSource, /setBootstrapLoading/, 'bootstrap debe tener loader independiente');
 assert.match(useVentasSource, /setProductsLoading/, 'productos debe tener loader independiente');
-assert.match(useVentasSource, /setCombosLoading/, 'combos debe tener loader independiente');
 assert.match(useVentasSource, /setClientsLoading/, 'clientes debe tener loader independiente');
 assert.match(useVentasSource, /setDiscountsLoading/, 'descuentos debe tener loader independiente');
 assert.match(cajaSource, /onCatalogDemand\?\.\(composer\.activeCatalog/, 'el catalogo activo debe cargarse bajo demanda');
@@ -46,7 +45,7 @@ assert.match(catalogSource, /Reintentar/, 'un error de catalogo debe permitir re
 assert.match(catalogSource, /No hay productos\./, 'productos exitosos sin filas deben mostrar un estado vacio especifico');
 assert.match(useVentasSource, /recipeCatalogCacheRef[\s\S]*`\$\{idSucursal\}:\$\{idTipoDepartamento \|\| 'ALL'\}`/, 'recetas deben usar cache por sucursal y departamento');
 assert.match(useVentasSource, /getRecetasCatalog\([\s\S]*id_tipo_departamento/, 'otro departamento debe solicitarse al backend');
-assert.match(useVentasSource, /cajaCatalogDataCacheRef/, 'productos y combos deben conservar cache independiente por sucursal');
+assert.match(useVentasSource, /cajaCatalogDataCacheRef/, 'productos deben conservar cache independiente por sucursal');
 assert.match(useVentasSource, /force = false[\s\S]*!force && cachedData/, 'los catalogos con error deben soportar reintento forzado');
 assert.match(cajaSource, /activeCatalog[\s\S]*selectedSucursalId[\s\S]*catalogStatuses/, 'la demanda debe reintentarse cuando se resuelve la sucursal');
 assert.match(useVentasSource, /sesiones_disponibles[\s\S]*setSucursales/, 'las sucursales seleccionables deben provenir de sesiones activas');
@@ -77,7 +76,7 @@ const initialCajaBranch = useVentasSource.slice(
   useVentasSource.indexOf("if (String(activeTab || '').toLowerCase() === 'caja')"),
   useVentasSource.indexOf('const ventasResult = await loadVentas()', useVentasSource.indexOf("if (String(activeTab || '').toLowerCase() === 'caja')"))
 );
-assert.doesNotMatch(initialCajaBranch, /getClientesCatalog|getProductosCatalog|getCombosCatalog|getDescuentosCatalog|loadVentas\(/);
+assert.doesNotMatch(initialCajaBranch, /getClientesCatalog|getProductosCatalog|getDescuentosCatalog|loadVentas\(/);
 assert.match(ventasHelpersSource, /CLIENTE_NOMBRE_PLACEHOLDERS/, 'clientes debe sanear placeholders legacy en frontend');
 assert.match(ventasHelpersSource, /\^0\+\\d\{2,\}\$/, 'clientes no debe mostrar codigos con ceros como nombre');
 assert.match(ventasHelpersSource, /Cliente #\$\{idCliente\}/, 'clientes sin nombre valido deben mostrarse como Cliente #id');

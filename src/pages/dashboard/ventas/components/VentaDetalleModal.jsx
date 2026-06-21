@@ -227,7 +227,6 @@ export default function VentaDetalleModal({
                               key={
                                 item.id_detalle ||
                                 item.id_producto ||
-                                item.id_combo ||
                                 item.id_receta ||
                                 `${item.tipo_item}-${index}`
                               }
@@ -274,7 +273,7 @@ export default function VentaDetalleModal({
                       {detailItems.map((item, index) => (
                         <article
                           className="ventas-detail-modal__item-card"
-                          key={`mobile-${item.id_detalle || item.id_producto || item.id_combo || item.id_receta || index}`}
+                          key={`mobile-${item.id_detalle || item.id_producto || item.id_receta || index}`}
                         >
                           <div>
                             <strong>{item.nombre_item || item.nombre_producto}</strong>

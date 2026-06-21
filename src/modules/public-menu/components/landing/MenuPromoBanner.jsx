@@ -18,7 +18,7 @@ const MenuPromoBanner = ({ product, onPrimaryAction }) => (
 
     <div className="pm-landing-promo__copy">
       <small>Promo del dia</small>
-      <h3>{product?.nombre || 'Combo explosivo'}</h3>
+      <h3>{product?.nombre || 'Sabor explosivo'}</h3>
       <p>{product?.descripcion || 'Hamburguesa + alitas + bebida por tiempo limitado.'}</p>
     </div>
 

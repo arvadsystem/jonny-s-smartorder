@@ -39,7 +39,6 @@ const isExplicitlyOutOfStock = (row, isProducto) => {
 
 const buildResultsLabel = (catalogKey, count) => {
   if (catalogKey === 'DESCUENTOS') return `${count} ${count === 1 ? 'item' : 'items'} con descuento`;
-  if (catalogKey === 'COMBOS') return `${count} ${count === 1 ? 'combo' : 'combos'}`;
   if (catalogKey === 'RECETAS') return `${count} ${count === 1 ? 'receta' : 'recetas'}`;
   if (catalogKey === 'EXTRAS') return `${count} ${count === 1 ? 'extra' : 'extras'}`;
   return `${count} ${count === 1 ? 'producto' : 'productos'}`;
@@ -73,9 +72,7 @@ export default function VentaComposerCatalog({
   const isExtrasCatalog = composer.activeCatalog === 'EXTRAS';
   const searchPlaceholder = composer.activeCatalog === 'PRODUCTOS'
     ? 'Buscar productos...'
-    : composer.activeCatalog === 'COMBOS'
-      ? 'Buscar combos...'
-      : composer.activeCatalog === 'RECETAS'
+    : composer.activeCatalog === 'RECETAS'
         ? 'Buscar recetas...'
         : isExtrasCatalog
           ? 'Buscar extras...'
@@ -118,10 +115,9 @@ export default function VentaComposerCatalog({
       };
     }
     if (composer.activeCatalog === 'PRODUCTOS') return catalogErrors.productos || null;
-    if (composer.activeCatalog === 'COMBOS') return catalogErrors.combos || null;
     return catalogErrors.recetas || null;
   })() : null;
-  const hasNonDiscountCatalogErrors = ['productos', 'combos', 'recetas']
+  const hasNonDiscountCatalogErrors = ['productos', 'recetas']
     .some((key) => catalogStatuses[key] === 'error');
   const visibleCatalogRows = composer.currentCatalogRows.filter((row) => {
     if (isDiscountCatalog) return false;
@@ -277,7 +273,7 @@ export default function VentaComposerCatalog({
       ) : null}
       {!isDiscountCatalog && !activeCatalogError && hasNonDiscountCatalogErrors ? (
         <div className="ventas-create-modal__error">
-          Algunos catalogos auxiliares no cargaron. Productos, combos y recetas disponibles siguen habilitados.
+          Algunos catalogos auxiliares no cargaron. Productos y recetas disponibles siguen habilitados.
         </div>
       ) : null}
 
@@ -291,7 +287,7 @@ export default function VentaComposerCatalog({
           ) : visibleDiscountRows.length === 0 ? (
             <div className="ventas-create-modal__empty ventas-discounts-panel__empty">
               <i className="bi bi-tags" />
-              <span>No hay productos, combos o recetas con descuentos aplicables para esta sucursal.</span>
+              <span>No hay productos o recetas con descuentos aplicables para esta sucursal.</span>
             </div>
           ) : (
             <>
@@ -302,9 +298,8 @@ export default function VentaComposerCatalog({
               <div className="ventas-create-modal__products ventas-catalog-grid">
                 {visibleDiscountRows.map(({ kind, row, discount }) => {
                   const isProducto = kind === 'PRODUCTO';
-                  const isCombo = kind === 'COMBO';
-                  const itemId = isProducto ? row.id_producto : isCombo ? row.id_combo : row.id_receta;
-                  const itemName = isProducto ? row.nombre_producto : isCombo ? (row.nombre_combo || row.descripcion || 'Combo') : row.nombre_receta;
+                  const itemId = isProducto ? row.id_producto : row.id_receta;
+                  const itemName = isProducto ? row.nombre_producto : row.nombre_receta;
                   const imageSrc = resolveImageUrl(row);
                   const precio = Number(row.precio || 0);
                   const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
@@ -352,7 +347,7 @@ export default function VentaComposerCatalog({
                         <h6 className="vcp-card__name" title={itemName}>{itemName}</h6>
 
                         <div className="vcp-card__stock">
-                          {isProducto ? `Disponible: ${stockDisponible}` : isCombo ? 'Combo con descuento' : 'Receta con descuento'}
+                          {isProducto ? `Disponible: ${stockDisponible}` : 'Receta con descuento'}
                         </div>
 
                         <div className="vcp-card__footer">
@@ -404,11 +399,10 @@ export default function VentaComposerCatalog({
         ) : (
           visibleCatalogRows.map((row) => {
             const isProducto = composer.activeCatalog === 'PRODUCTOS';
-            const isCombo = composer.activeCatalog === 'COMBOS';
             const isExtra = composer.activeCatalog === 'EXTRAS';
-            const kind = isProducto ? 'PRODUCTO' : isCombo ? 'COMBO' : isExtra ? 'ITEM' : 'RECETA';
-            const itemId = isProducto ? row.id_producto : isCombo ? row.id_combo : isExtra ? row.id_extra : row.id_receta;
-            const itemName = isProducto ? row.nombre_producto : isCombo ? (row.nombre_combo || row.descripcion || 'Combo') : isExtra ? row.nombre : row.nombre_receta;
+            const kind = isProducto ? 'PRODUCTO' : isExtra ? 'ITEM' : 'RECETA';
+            const itemId = isProducto ? row.id_producto : isExtra ? row.id_extra : row.id_receta;
+            const itemName = isProducto ? row.nombre_producto : isExtra ? row.nombre : row.nombre_receta;
             const imageSrc = resolveImageUrl(row);
             const precio = Number(row.precio || 0);
             const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
@@ -465,7 +459,7 @@ export default function VentaComposerCatalog({
                     </div>
                   ) : (
                     <div className={`vcp-card__stock ${isOutOfStock ? 'is-empty' : ''}`}>
-                      {isOutOfStock ? 'Agotado' : isCombo ? 'Combo con complementos' : isExtra ? 'Extra independiente' : 'Preparacion de cocina'}
+                      {isOutOfStock ? 'Agotado' : isExtra ? 'Extra independiente' : 'Preparacion de cocina'}
                     </div>
                   )}
 

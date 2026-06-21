@@ -10,20 +10,11 @@ export const ventaPayloadExample = {
   items: [
     {
       id_producto: 127,
-      id_combo: null,
       id_receta: null,
       cantidad: 2
     },
     {
       id_producto: null,
-      id_combo: 3,
-      id_receta: null,
-      cantidad: 1,
-      observacion: 'sin cebolla, extra salsa'
-    },
-    {
-      id_producto: null,
-      id_combo: null,
       id_receta: 15,
       cantidad: 1,
       observacion: 'bien cocido'

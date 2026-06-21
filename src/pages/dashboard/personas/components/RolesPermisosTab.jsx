@@ -197,7 +197,6 @@ const MENU_SUBGROUPS = [
   { key: "publicacion", label: "Publicacion por sucursal", order: 4 },
   { key: "temporada", label: "Menu de temporada", order: 5 },
   { key: "extras", label: "Extras", order: 6 },
-  { key: "combos", label: "Combos", order: 7 },
   { key: "pos", label: "POS / Menu publico", order: 8 },
   { key: "departamentos", label: "Departamentos", order: 9 },
   { key: "pedido_cliente", label: "Pedido cliente", order: 10 },
@@ -299,9 +298,6 @@ const resolveMenuSubgroup = (nombrePermiso) => {
   }
   if (technicalName.startsWith("MENU_EXTRAS_")) {
     return MENU_SUBGROUPS_BY_KEY.get("extras");
-  }
-  if (technicalName.startsWith("MENU_COMBOS_")) {
-    return MENU_SUBGROUPS_BY_KEY.get("combos");
   }
   if (technicalName.startsWith("MENU_POS_")) {
     return MENU_SUBGROUPS_BY_KEY.get("pos");

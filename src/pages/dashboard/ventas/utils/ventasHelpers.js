@@ -203,26 +203,6 @@ export const normalizeProductoRecord = (row, categoriasMap = new Map()) => {
   };
 };
 
-export const normalizeComboRecord = (row) => ({
-  ...row,
-  id_combo: Number(row?.id_combo ?? 0) || null,
-  id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
-  descripcion: String(row?.descripcion ?? 'Combo'),
-  precio: roundMoney(row?.precio),
-  estado: parseBoolean(row?.estado),
-  requiere_complementos: Boolean(row?.requiere_complementos),
-  tipo_complemento: String(row?.tipo_complemento ?? ''),
-  minimo_complementos: Number(row?.minimo_complementos ?? 0) || 0,
-  maximo_complementos: Number(row?.maximo_complementos ?? 0) || 0,
-  complementos_disponibles: (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
-    .map((entry) => ({
-      id_complemento: Number(entry?.id_complemento ?? 0) || null,
-      nombre: String(entry?.nombre ?? 'Complemento').trim(),
-      disponible: entry?.disponible !== false
-    }))
-    .filter((entry) => entry.id_complemento)
-});
-
 export const normalizeRecetaRecord = (row) => ({
   ...row,
   id_receta: Number(row?.id_receta ?? 0) || null,
@@ -462,7 +442,6 @@ export const normalizeVentaDetail = (row) => {
         ...item,
         id_detalle: Number(item?.id_detalle ?? 0) || null,
         id_producto: Number(item?.id_producto ?? 0) || null,
-        id_combo: Number(item?.id_combo ?? 0) || null,
         id_receta: Number(item?.id_receta ?? 0) || null,
         tipo_item: esLineaExtraIndependiente ? 'EXTRA' : String(item?.tipo_item ?? 'PRODUCTO'),
         cantidad: Number(item?.cantidad ?? 0) || 0,

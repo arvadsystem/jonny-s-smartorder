@@ -231,7 +231,6 @@ const normalizeCatalogItem = (raw) => ({
   id_item_base: Number(raw?.id_item_base ?? 0) || null,
   id_producto: raw?.id_producto ? Number(raw.id_producto) : null,
   id_receta: raw?.id_receta ? Number(raw.id_receta) : null,
-  id_combo: raw?.id_combo ? Number(raw.id_combo) : null,
   nombre: raw?.nombre || 'Item sin nombre',
   descripcion: raw?.descripcion || '',
   categoria: {

@@ -73,7 +73,7 @@ const REPORT_META = Object.freeze({
     key: 'ventas-items',
     category: 'ventas',
     label: 'Ventas por ítem',
-    subtitle: 'Resumen por producto, receta y combo.',
+    subtitle: 'Resumen por producto y receta.',
     icon: 'bi bi-list-check'
   },
   'caja-cierres': {
@@ -189,7 +189,6 @@ const TIPO_ITEM_OPTIONS = Object.freeze([
   { value: '', label: 'Todos' },
   { value: 'producto', label: 'Producto' },
   { value: 'insumo', label: 'Insumo' },
-  { value: 'combo', label: 'Combo' },
   { value: 'receta', label: 'Receta' },
   { value: 'todos', label: 'Todos' }
 ]);
@@ -1119,7 +1118,7 @@ const Reportes = () => {
     if (selectedTipoItem === 'insumo') {
       return [{ value: '', label: 'Todos los items' }, ...insumosCatalog.map((row) => ({ value: row.id, label: row.nombre }))];
     }
-    if (selectedTipoItem === 'combo' || selectedTipoItem === 'receta') {
+    if (selectedTipoItem === 'receta') {
       const byTipoRows = sourceRows.filter(
         (row) => String(row?.tipo_item || '').trim().toLowerCase() === selectedTipoItem
       );

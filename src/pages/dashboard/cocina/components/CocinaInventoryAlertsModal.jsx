@@ -16,7 +16,6 @@ const resolveResourceLabel = (alerta) => {
     alerta?.id_producto ||
     alerta?.id_insumo ||
     alerta?.id_receta ||
-    alerta?.id_combo ||
     alerta?.id_extra ||
     alerta?.id_recurso;
   if (!type && !id) return 'Recurso no especificado';

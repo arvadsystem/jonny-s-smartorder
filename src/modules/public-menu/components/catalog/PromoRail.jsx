@@ -1,6 +1,6 @@
 import PromoProductCard from './PromoProductCard';
 
-// Rail horizontal para secciones de venta (best sellers, combos, antojos).
+// Rail horizontal para secciones de venta (mas vendidos y antojos).
 const PromoRail = ({ title, products = [], badgeLabel = '', onQuickAdd, recentlyAddedId = null }) => {
   if (!Array.isArray(products) || !products.length) return null;
 

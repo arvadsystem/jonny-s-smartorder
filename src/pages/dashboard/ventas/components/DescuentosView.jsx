@@ -13,11 +13,9 @@ const initialForm = {
   alcance: 'FACTURA_COMPLETA',
   id_producto: '',
   id_receta: '',
-  id_combo: '',
   objetivos: {
     productos: [],
-    recetas: [],
-    combos: []
+    recetas: []
   },
   id_sucursal: '',
   fecha_inicio: '',
@@ -27,8 +25,7 @@ const initialForm = {
 const DESCUENTO_SCOPE_OPTIONS = [
   { value: 'FACTURA_COMPLETA', label: 'Factura completa' },
   { value: 'PRODUCTO', label: 'Producto' },
-  { value: 'RECETA', label: 'Receta' },
-  { value: 'COMBO', label: 'Combo' }
+  { value: 'RECETA', label: 'Receta' }
 ];
 
 const normalizeScope = (value) => String(value || 'FACTURA_COMPLETA').trim().toUpperCase();
@@ -103,16 +100,6 @@ const getObjectiveConfig = (scope) => {
       searchPlaceholder: 'Buscar recetas...'
     };
   }
-  if (scope === 'COMBO') {
-    return {
-      key: 'combos',
-      idKey: 'id_combo',
-      labelKey: 'descripcion',
-      fallbackLabelKey: 'nombre_combo',
-      emptyText: 'No hay combos disponibles para seleccionar.',
-      searchPlaceholder: 'Buscar combos...'
-    };
-  }
   return null;
 };
 
@@ -121,7 +108,6 @@ function ObjetivosChecklist({
   form,
   productos,
   recetas,
-  combos,
   onObjetivosChange,
   errors
 }) {
@@ -141,7 +127,7 @@ function ObjetivosChecklist({
     );
   }
 
-  const sourceRows = scope === 'PRODUCTO' ? productos : scope === 'RECETA' ? recetas : combos;
+  const sourceRows = scope === 'PRODUCTO' ? productos : scope === 'RECETA' ? recetas : [];
   const selectedIds = coerceIdList(form.objetivos?.[config.key]);
   const selectedSet = new Set(selectedIds);
   const sucursalFilter = parseId(form.id_sucursal);
@@ -235,7 +221,6 @@ function DescuentoFormDrawer({
   tiposDescuento,
   productos,
   recetas,
-  combos,
   sucursales,
   canSelectSucursal,
   onFieldChange,
@@ -336,7 +321,6 @@ function DescuentoFormDrawer({
           form={form}
           productos={productos}
           recetas={recetas}
-          combos={combos}
           onObjetivosChange={onObjetivosChange}
           errors={errors}
         />
@@ -439,20 +423,17 @@ const normalizeDiscountRow = (row) => ({
   alcance: normalizeScope(row?.alcance),
   id_producto: Number(row?.id_producto ?? 0) || null,
   id_receta: Number(row?.id_receta ?? 0) || null,
-  id_combo: Number(row?.id_combo ?? 0) || null,
   objetivos: {
     productos: Array.isArray(row?.objetivos?.productos) ? row.objetivos.productos : [],
-    recetas: Array.isArray(row?.objetivos?.recetas) ? row.objetivos.recetas : [],
-    combos: Array.isArray(row?.objetivos?.combos) ? row.objetivos.combos : []
+    recetas: Array.isArray(row?.objetivos?.recetas) ? row.objetivos.recetas : []
   },
-  objetivos_count: row?.objetivos_count || { productos: 0, recetas: 0, combos: 0, total: 0 },
+  objetivos_count: row?.objetivos_count || { productos: 0, recetas: 0, total: 0 },
   objetivo: String(row?.objetivo ?? ''),
   id_sucursal: Number(row?.id_sucursal ?? 0) || null,
   fecha_inicio: row?.fecha_inicio ?? null,
   fecha_fin: row?.fecha_fin ?? null,
   nombre_producto: String(row?.nombre_producto ?? ''),
   nombre_receta: String(row?.nombre_receta ?? ''),
-  nombre_combo: String(row?.nombre_combo ?? ''),
   nombre_sucursal: String(row?.nombre_sucursal ?? '')
 });
 
@@ -463,7 +444,6 @@ export default function DescuentosView({
   canToggle,
   productos = [],
   recetas = [],
-  combos = [],
   sucursales = [],
   isSuperAdmin = false,
   defaultSucursalId = null
@@ -522,10 +502,8 @@ export default function DescuentosView({
         row.objetivo,
         row.nombre_producto,
         row.nombre_receta,
-        row.nombre_combo,
         ...(row.objetivos?.productos || []).map((item) => item.nombre_producto),
         ...(row.objetivos?.recetas || []).map((item) => item.nombre_receta),
-        ...(row.objetivos?.combos || []).map((item) => item.nombre_combo),
         row.nombre_sucursal
       ]
         .filter(Boolean)
@@ -538,7 +516,7 @@ export default function DescuentosView({
   const resetForm = () => {
     setForm({
       ...initialForm,
-      objetivos: { productos: [], recetas: [], combos: [] },
+      objetivos: { productos: [], recetas: [] },
       id_sucursal: !isSuperAdmin && defaultSucursalId ? String(defaultSucursalId) : ''
     });
     setFormErrors({});
@@ -566,7 +544,6 @@ export default function DescuentosView({
       alcance: normalizeScope(row.alcance),
       id_producto: row.id_producto ? String(row.id_producto) : '',
       id_receta: row.id_receta ? String(row.id_receta) : '',
-      id_combo: row.id_combo ? String(row.id_combo) : '',
       objetivos: {
         productos: coerceIdList([
           ...(row.objetivos?.productos || []).map((item) => item.id_producto),
@@ -575,10 +552,6 @@ export default function DescuentosView({
         recetas: coerceIdList([
           ...(row.objetivos?.recetas || []).map((item) => item.id_receta),
           row.id_receta
-        ]),
-        combos: coerceIdList([
-          ...(row.objetivos?.combos || []).map((item) => item.id_combo),
-          row.id_combo
         ])
       },
       id_sucursal: row.id_sucursal ? String(row.id_sucursal) : '',
@@ -622,9 +595,6 @@ export default function DescuentosView({
     if (scope === 'RECETA' && coerceIdList(objetivos.recetas).length === 0) {
       errors.objetivos = 'Selecciona al menos una receta.';
     }
-    if (scope === 'COMBO' && coerceIdList(objetivos.combos).length === 0) {
-      errors.objetivos = 'Selecciona al menos un combo.';
-    }
 
     const start = form.fecha_inicio ? new Date(form.fecha_inicio) : null;
     const end = form.fecha_fin ? new Date(form.fecha_fin) : null;
@@ -662,8 +632,7 @@ export default function DescuentosView({
         fecha_fin: toDbDateTimeValue(form.fecha_fin),
         objetivos: {
           productos: scope === 'PRODUCTO' ? coerceIdList(form.objetivos?.productos) : [],
-          recetas: scope === 'RECETA' ? coerceIdList(form.objetivos?.recetas) : [],
-          combos: scope === 'COMBO' ? coerceIdList(form.objetivos?.combos) : []
+          recetas: scope === 'RECETA' ? coerceIdList(form.objetivos?.recetas) : []
         }
       };
 
@@ -693,8 +662,7 @@ export default function DescuentosView({
       if (name === 'alcance') {
         next.id_producto = '';
         next.id_receta = '';
-        next.id_combo = '';
-        next.objetivos = { productos: [], recetas: [], combos: [] };
+        next.objetivos = { productos: [], recetas: [] };
       }
 
       return next;
@@ -707,8 +675,7 @@ export default function DescuentosView({
       ...prev,
       objetivos: {
         productos: key === 'productos' ? coerceIdList(ids) : coerceIdList(prev.objetivos?.productos),
-        recetas: key === 'recetas' ? coerceIdList(ids) : coerceIdList(prev.objetivos?.recetas),
-        combos: key === 'combos' ? coerceIdList(ids) : coerceIdList(prev.objetivos?.combos)
+        recetas: key === 'recetas' ? coerceIdList(ids) : coerceIdList(prev.objetivos?.recetas)
       }
     }));
     setFormErrors((prev) => ({ ...prev, objetivos: '' }));
@@ -884,7 +851,6 @@ export default function DescuentosView({
         tiposDescuento={tiposDescuento}
         productos={Array.isArray(productos) ? productos : []}
         recetas={Array.isArray(recetas) ? recetas : []}
-        combos={Array.isArray(combos) ? combos : []}
         sucursales={Array.isArray(sucursales) ? sucursales : []}
         canSelectSucursal={isSuperAdmin}
         onFieldChange={onFieldChange}

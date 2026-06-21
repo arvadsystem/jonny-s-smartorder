@@ -11,7 +11,6 @@ const extrasAdminService = {
   listarAlmacenesExtras: async () => apiFetch(`${BASE_ENDPOINT}/catalogos/almacenes`, 'GET', null, { noCache: true }),
   listarInsumos: async () => apiFetch(`${BASE_ENDPOINT}/catalogos/insumos`, 'GET', null, { noCache: true }),
   listarRecetas: async () => apiFetch(`${BASE_ENDPOINT}/catalogos/recetas`, 'GET', null, { noCache: true }),
-  listarCombos: async () => apiFetch(`${BASE_ENDPOINT}/catalogos/combos`, 'GET', null, { noCache: true }),
   obtenerAsignacionesExtra: async (idExtra) => apiFetch(`${BASE_ENDPOINT}/${idExtra}/asignaciones`, 'GET', null, { noCache: true }),
   reemplazarAsignacionesExtra: async (idExtra, idAlmacenes) => apiFetch(`${BASE_ENDPOINT}/${idExtra}/asignaciones`, 'PUT', {
     id_almacenes: Array.isArray(idAlmacenes) ? idAlmacenes : []

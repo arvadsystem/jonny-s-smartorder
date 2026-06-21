@@ -59,7 +59,7 @@ export const getExtrasCount = (value) =>
 
 let cartLineCounter = 0;
 
-export const isCustomizableVentaLineKind = (kind) => ['COMBO', 'RECETA'].includes(String(kind || '').toUpperCase());
+export const isCustomizableVentaLineKind = (kind) => String(kind || '').toUpperCase() === 'RECETA';
 
 export const createCartLineId = () => {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
@@ -91,35 +91,6 @@ export const toNormalizedId = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const addComboDepartmentId = (ids, value) => {
-  const id = toNormalizedId(value);
-  if (id) ids.add(id);
-};
-
-const addComboDepartmentArrayIds = (ids, value) => {
-  if (!Array.isArray(value)) return;
-  value.forEach((entry) => {
-    if (entry && typeof entry === 'object') {
-      addComboDepartmentId(
-        ids,
-        entry.id_tipo_departamento ?? entry.id_departamento ?? entry.id ?? entry.value
-      );
-      return;
-    }
-    addComboDepartmentId(ids, entry);
-  });
-};
-
-export const getComboDepartmentIds = (combo) => {
-  const ids = new Set();
-  addComboDepartmentId(ids, combo?.id_tipo_departamento);
-  addComboDepartmentId(ids, combo?.id_tipo_departamento_principal);
-  addComboDepartmentArrayIds(ids, combo?.departamentos_ids);
-  addComboDepartmentArrayIds(ids, combo?.departamentos);
-  addComboDepartmentArrayIds(ids, combo?.departamentos_derivados);
-  return [...ids];
-};
-
 export const filterBySearch = (rows, search, fields) => {
   const needle = String(search || '').trim().toLowerCase();
   if (!needle) return rows;
@@ -135,10 +106,6 @@ export const filterBySearch = (rows, search, fields) => {
 };
 
 export const getResultsLabel = (catalogKey, count) => {
-  if (catalogKey === 'COMBOS') {
-    return `${count} ${count === 1 ? 'combo' : 'combos'}`;
-  }
-
   if (catalogKey === 'RECETAS') {
     return `${count} ${count === 1 ? 'receta' : 'recetas'}`;
   }

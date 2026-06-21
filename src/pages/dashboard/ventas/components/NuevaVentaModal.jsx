@@ -11,7 +11,6 @@ export default function NuevaVentaModal({
   productos,
   categorias,
   clientes,
-  combos,
   recetas,
   onClose,
   onSubmit
@@ -20,7 +19,6 @@ export default function NuevaVentaModal({
     productos,
     categorias,
     clientes,
-    combos,
     recetas,
     onSubmit,
     resetKey: open

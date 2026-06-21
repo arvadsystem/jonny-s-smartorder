@@ -22,14 +22,12 @@ const normalizeToken = (value) =>
     .replace(/[^a-z0-9_:-]/g, '');
 
 const getCatalogIdentity = (product) => {
-  if (Number(product?.id_combo || 0) > 0) return `combo:${Number(product.id_combo)}`;
   if (Number(product?.id_receta || 0) > 0) return `receta:${Number(product.id_receta)}`;
   if (Number(product?.id_producto || 0) > 0) return `producto:${Number(product.id_producto)}`;
   return `anon:${String(product?.nombre_producto || product?.descripcion || '').trim().toLowerCase()}`;
 };
 
 const getCatalogKind = (product) => {
-  if (Number(product?.id_combo || 0) > 0) return 'combo';
   if (Number(product?.id_receta || 0) > 0) return 'receta';
   if (Number(product?.id_producto || 0) > 0) return 'producto';
   return 'desconocido';
@@ -125,7 +123,6 @@ export const buildOrderLineFromProduct = ({
     itemType: getCatalogKind(product),
     id_producto: Number(product?.id_producto || 0) || null,
     id_receta: Number(product?.id_receta || 0) || null,
-    id_combo: Number(product?.id_combo || 0) || null,
     nombre: getDisplayName(product),
     precioBase,
     precioUnitario,
@@ -190,7 +187,6 @@ const buildLineObservation = (line) => {
 
 const toVentaItemContract = (line) => ({
   id_producto: line?.id_producto || null,
-  id_combo: line?.id_combo || null,
   id_receta: line?.id_receta || null,
   cantidad: toSafeQuantity(line?.cantidad || 1),
   observacion: buildLineObservation(line)

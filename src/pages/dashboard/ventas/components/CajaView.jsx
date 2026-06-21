@@ -194,7 +194,6 @@ export default function CajaView({
   tiposDepartamento,
   clientes,
   clientesMeta,
-  combos,
   recetas,
   descuentosCatalogo,
   canApplyDiscount,
@@ -343,7 +342,6 @@ export default function CajaView({
     categorias,
     tiposDepartamento,
     clientes,
-    combos,
     recetas,
     descuentosCatalogo,
     canApplyDiscount,
@@ -366,16 +364,12 @@ export default function CajaView({
   );
   const activeCatalogLoading = composer.activeCatalog === 'PRODUCTOS'
     ? Boolean(catalogLoadingStates.productsLoading)
-    : composer.activeCatalog === 'COMBOS'
-      ? Boolean(catalogLoadingStates.combosLoading)
-      : composer.activeCatalog === 'EXTRAS'
+    : composer.activeCatalog === 'EXTRAS'
         ? Boolean(composer.currentCatalogLoading)
       : Boolean(catalogLoadingStates.bootstrapLoading || catalogLoadingStates.recipesLoading || catalogLoading);
   const activeCatalogStatus = composer.activeCatalog === 'PRODUCTOS'
     ? catalogStatuses.productos || 'idle'
-    : composer.activeCatalog === 'COMBOS'
-      ? catalogStatuses.combos || 'idle'
-      : composer.activeCatalog === 'EXTRAS'
+    : composer.activeCatalog === 'EXTRAS'
         ? !hasCajaSession
           ? 'idle'
           : composer.currentCatalogStatus || 'idle'
@@ -1317,7 +1311,7 @@ export default function CajaView({
         onClose={closeAutoModal}
       />
       <VentaComplementosModal
-        key={`${composer.complementModal.mode}:${composer.complementModal.cartKey || composer.complementModal.row?.entityId || composer.complementModal.row?.id_combo || composer.complementModal.row?.id_receta || ''}:${composer.complementModal.open ? '1' : '0'}`}
+        key={`${composer.complementModal.mode}:${composer.complementModal.cartKey || composer.complementModal.row?.entityId || composer.complementModal.row?.id_receta || ''}:${composer.complementModal.open ? '1' : '0'}`}
         open={composer.complementModal.open}
         mode={composer.complementModal.mode}
         row={composer.complementModal.row}

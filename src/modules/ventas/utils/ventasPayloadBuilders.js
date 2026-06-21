@@ -11,7 +11,6 @@ export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) 
       cart_key: line.cartKey,
       line_id: line.lineId || null,
       id_producto: line.id_producto,
-      id_combo: line.id_combo,
       id_receta: line.id_receta,
       id_extra: line.kind === 'ITEM' ? line.id_extra : null,
       cantidad: isSimpleProduct ? Number(line.cantidad) : 1

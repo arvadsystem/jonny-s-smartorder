@@ -18,7 +18,6 @@ Endpoints usados:
 - `GET /ventas/pedidos-pendientes`
 - `POST /ventas/pedidos/:id/registrar-pago`
 - `GET /ventas/catalogos/clientes`
-- `GET /ventas/catalogos/combos`
 - `GET /ventas/catalogos/recetas`
 - `GET /ventas/catalogos/extras-permitidos`
 - `GET /ventas/catalogos/descuentos`

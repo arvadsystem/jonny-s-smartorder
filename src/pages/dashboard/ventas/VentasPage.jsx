@@ -68,7 +68,6 @@ export default function VentasPage() {
     sucursales,
     categorias,
     productos,
-    combos,
     recetas,
     descuentosCatalogo,
     tiposDepartamento,
@@ -79,7 +78,6 @@ export default function VentasPage() {
     bootstrapLoading,
     recipesLoading,
     productsLoading,
-    combosLoading,
     clientsLoading,
     discountsLoading,
     catalogStatuses,
@@ -861,7 +859,6 @@ export default function VentasPage() {
           tiposDepartamento={tiposDepartamento}
           clientes={clientes}
           clientesMeta={clientesMeta}
-          combos={combos}
           recetas={recetas}
           descuentosCatalogo={descuentosCatalogo}
           canApplyDiscount={canApplyDiscount}
@@ -870,7 +867,6 @@ export default function VentasPage() {
             bootstrapLoading,
             recipesLoading,
             productsLoading,
-            combosLoading,
             clientsLoading,
             discountsLoading
           }}
@@ -908,7 +904,6 @@ export default function VentasPage() {
           canToggle={canToggleDescuentos}
           productos={productos}
           recetas={recetas}
-          combos={combos}
           sucursales={sucursales}
           isSuperAdmin={isSuperAdmin}
           defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}

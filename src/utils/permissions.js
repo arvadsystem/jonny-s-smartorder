@@ -284,15 +284,9 @@ const PERMISSION_VALUES = Object.freeze({
   MENU_EXTRAS_CREAR: 'MENU_EXTRAS_CREAR',
   MENU_EXTRAS_EDITAR: 'MENU_EXTRAS_EDITAR',
   MENU_EXTRAS_ESTADO_CAMBIAR: 'MENU_EXTRAS_ESTADO_CAMBIAR',
-  MENU_COMBOS_VER: 'MENU_COMBOS_VER',
-  MENU_COMBOS_CREAR: 'MENU_COMBOS_CREAR',
-  MENU_COMBOS_EDITAR: 'MENU_COMBOS_EDITAR',
-  MENU_COMBOS_ESTADO_CAMBIAR: 'MENU_COMBOS_ESTADO_CAMBIAR',
-  MENU_COMBOS_DETALLE_EDITAR: 'MENU_COMBOS_DETALLE_EDITAR',
   MENU_POS_VER: 'MENU_POS_VER',
   MENU_POS_ARCHIVOS_SUBIR: 'MENU_POS_ARCHIVOS_SUBIR',
   MENU_POS_PRODUCTOS_IMAGEN_EDITAR: 'MENU_POS_PRODUCTOS_IMAGEN_EDITAR',
-  MENU_POS_COMBOS_IMAGEN_EDITAR: 'MENU_POS_COMBOS_IMAGEN_EDITAR',
   MENU_POS_ARCHIVOS_ELIMINAR: 'MENU_POS_ARCHIVOS_ELIMINAR',
   MENU_DEPARTAMENTOS_VER: 'MENU_DEPARTAMENTOS_VER',
   MENU_DEPARTAMENTOS_CREAR: 'MENU_DEPARTAMENTOS_CREAR',
@@ -790,14 +784,6 @@ const MENU_TAB_PERMISSIONS_MAP = Object.freeze({
     PERMISSIONS.MENU_EXTRAS_EDITAR,
     PERMISSIONS.MENU_EXTRAS_ESTADO_CAMBIAR
   ]),
-  combos: uniquePermissions([
-    ...MENU_TAB_BASE_PERMISSIONS,
-    PERMISSIONS.MENU_COMBOS_VER,
-    PERMISSIONS.MENU_COMBOS_CREAR,
-    PERMISSIONS.MENU_COMBOS_EDITAR,
-    PERMISSIONS.MENU_COMBOS_ESTADO_CAMBIAR,
-    PERMISSIONS.MENU_COMBOS_DETALLE_EDITAR
-  ]),
   salsas: uniquePermissions([
     ...MENU_TAB_BASE_PERMISSIONS,
     PERMISSIONS.MENU_SALSAS_VER,
@@ -1054,7 +1040,6 @@ export const MODULE_TAB_CONFIG = Object.freeze({
   menu: [
     { key: 'departamentos', label: 'Departamentos', icon: 'bi bi-diagram-3', required: MENU_TAB_PERMISSIONS_MAP.departamentos },
     { key: 'recetas', label: 'Recetas', icon: 'bi bi-journal-richtext', required: MENU_TAB_PERMISSIONS_MAP.recetas },
-    { key: 'combos', label: 'Combos', icon: 'bi bi-collection', required: MENU_TAB_PERMISSIONS_MAP.combos },
     { key: 'extras', label: 'Extras', icon: 'bi bi-plus-square-dotted', required: MENU_TAB_PERMISSIONS_MAP.extras },
     { key: 'salsas', label: 'Salsas', icon: 'bi bi-droplet', required: MENU_TAB_PERMISSIONS_MAP.salsas },
     { key: 'publicacion', label: 'Publicaciones', icon: 'bi bi-cloud-upload', required: MENU_TAB_PERMISSIONS_MAP.publicacion },

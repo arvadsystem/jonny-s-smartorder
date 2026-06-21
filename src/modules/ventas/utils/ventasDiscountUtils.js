@@ -17,7 +17,6 @@ export const normalizeDiscountScope = (value) => {
 
   if (normalized === 'PRODUCTOS') return 'PRODUCTO';
   if (normalized === 'RECETAS') return 'RECETA';
-  if (normalized === 'COMBOS') return 'COMBO';
   return normalized || 'FACTURA_COMPLETA';
 };
 
@@ -34,7 +33,7 @@ const appendDiscountTargetIds = (ids, value, legacyKey) => {
   if (typeof value === 'object') {
     appendDiscountTargetIds(
       ids,
-      value[legacyKey] ?? value.id ?? value.value ?? value.id_producto ?? value.id_receta ?? value.id_combo,
+      value[legacyKey] ?? value.id ?? value.value ?? value.id_producto ?? value.id_receta,
       legacyKey
     );
     return;
@@ -114,9 +113,6 @@ export const isDiscountApplicableToLine = (discount, line, selectedSucursalId) =
   }
   if (scope === 'RECETA') {
     return normalizeDiscountTargetIds(discount, 'recetas', 'id_receta').includes(Number(line.id_receta || 0));
-  }
-  if (scope === 'COMBO') {
-    return normalizeDiscountTargetIds(discount, 'combos', 'id_combo').includes(Number(line.id_combo || 0));
   }
   return false;
 };

@@ -4,8 +4,7 @@ import { notifyPublicMenuCatalogChanged } from '../../../../modules/public-menu/
 
 const TYPE_LABELS = Object.freeze({
   PRODUCTO: 'Producto',
-  RECETA: 'Receta',
-  COMBO: 'Combo'
+  RECETA: 'Receta'
 });
 
 const VISIBILITY_LABELS = Object.freeze({
@@ -35,7 +34,6 @@ const formatContentCount = (item) => {
   const count = Number(item?.cantidad_contenido || 0);
   const type = String(item?.tipo_item || '').toUpperCase();
   if (type === 'RECETA') return `${count} ${count === 1 ? 'receta' : 'recetas'}`;
-  if (type === 'COMBO') return `${count} ${count === 1 ? 'combo' : 'combos'}`;
   return `${count} ${count === 1 ? 'producto' : 'productos'}`;
 };
 
@@ -227,7 +225,7 @@ const OrdenMenuPublicoDrawer = ({
                               <span title={item.nombre_publico}>{item.nombre_publico}</span>
                               <small>{formatContentCount(item)}</small>
                             </div>
-                            <span className={`menu-pub-admin__type-badge is-${type === 'RECETA' ? 'receta' : type === 'COMBO' ? 'combo' : 'producto'}`}>
+                            <span className={`menu-pub-admin__type-badge is-${type === 'RECETA' ? 'receta' : 'producto'}`}>
                               {TYPE_LABELS[type] || 'Item'}
                             </span>
                             <span className={`menu-recetas-admin__estado-badge ${visibility === 'VISIBLE' ? 'is-active' : visibility === 'INACTIVO' ? 'is-inactive' : 'is-neutral'}`}>

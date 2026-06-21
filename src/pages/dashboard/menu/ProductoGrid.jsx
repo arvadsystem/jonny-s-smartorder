@@ -31,11 +31,9 @@ const ProductoGrid = ({ productos, loading, onAgregar, onOpenDetail, canAdd = tr
         <div
           className="col d-flex"
           key={
-            producto.id_combo
-              ? `combo-${producto.id_combo}`
-              : producto.id_receta
+            producto.id_receta
                 ? `receta-${producto.id_receta}`
-                : `producto-${producto.id_producto}`
+              : `producto-${producto.id_producto}`
           }
         >
           <ProductoCard

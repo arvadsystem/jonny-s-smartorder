@@ -5,7 +5,6 @@ import {
   createCartLineId,
   filterBySearch,
   findLineIndex,
-  getComboDepartmentIds,
   getExtrasCount,
   getExtrasSubtotal,
   getResultsLabel,
@@ -32,7 +31,6 @@ import ventasService from '../../../../services/ventasService';
 import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
 
 export { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
-export { getComboDepartmentIds } from '../../../../modules/ventas/utils/ventasCartUtils';
 
 const DEFAULT_CATALOG_KEY = 'RECETAS';
 const DEFAULT_DEPARTMENT_NAME = 'ALITAS';
@@ -227,7 +225,6 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
   const lineId = isCustomizableVentaLineKind(normalizedKind)
     ? String(options?.lineId || createCartLineId())
     : null;
-  const comboTitle = row?.nombre_combo || row?.descripcion || 'Combo';
   const complementosDisponibles = (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
     .map((entry) => ({
       id_complemento: Number(entry?.id_complemento ?? 0) || null,
@@ -255,7 +252,6 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
       kind,
       entityId: row.id_producto,
       id_producto: row.id_producto,
-      id_combo: null,
       id_receta: null,
       nombre_item: row.nombre_producto,
       categoria_label: row.categoria_label || 'Productos',
@@ -283,7 +279,6 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
       kind,
       entityId: row.id_extra,
       id_producto: null,
-      id_combo: null,
       id_receta: null,
       id_extra: row.id_extra,
       nombre_item: row.nombre,
@@ -312,41 +307,12 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
     };
   }
 
-  if (kind === 'COMBO') {
-    return {
-      cartKey: buildCartKey(kind, row.id_combo, complementosSeleccionados, [], lineId),
-      lineId,
-      kind,
-      entityId: row.id_combo,
-      id_producto: null,
-      id_combo: row.id_combo,
-      id_receta: null,
-      nombre_item: comboTitle,
-      categoria_label: 'Combos',
-      descripcion_item: row.descripcion || 'Combo',
-      precio_unitario: row.precio,
-      cantidad: 1,
-      stock_disponible: null,
-      observacion: '',
-      imagen_principal_url: resolveCatalogImageUrl(row),
-      complementos: complementosSeleccionados,
-      extras: [],
-      complementos_disponibles: complementosDisponibles,
-      complementos_requiere: requiereComplementos,
-      minimo_complementos: complementosMinimo,
-      maximo_complementos: complementosMaximo,
-      complementos_incompletos_autorizados: complementosIncompletosAutorizados,
-      tipo_complemento: row?.tipo_complemento || 'SALSAS'
-    };
-  }
-
   return {
     cartKey: buildCartKey(kind, row.id_receta, complementosSeleccionados, [], lineId),
     lineId,
     kind,
     entityId: row.id_receta,
     id_producto: null,
-    id_combo: null,
     id_receta: row.id_receta,
     nombre_item: row.nombre_receta,
     categoria_label: 'Recetas',
@@ -378,7 +344,6 @@ export const useVentaComposer = ({
   onDepartmentDemand,
   catalogsEnabled = true,
   clientes,
-  combos,
   recetas,
   descuentosCatalogo,
   onSubmit,
@@ -590,9 +555,8 @@ export const useVentaComposer = ({
           };
         }
 
-        const catalogRow = line.kind === 'COMBO'
-          ? (Array.isArray(combos) ? combos : []).find((row) => Number(row?.id_combo) === Number(line.id_combo))
-          : (Array.isArray(recetas) ? recetas : []).find((row) => Number(row?.id_receta) === Number(line.id_receta));
+        const catalogRow = (Array.isArray(recetas) ? recetas : [])
+          .find((row) => Number(row?.id_receta) === Number(line.id_receta));
         if (!catalogRow) return line;
 
         const disponibles = (Array.isArray(catalogRow.complementos_disponibles) ? catalogRow.complementos_disponibles : [])
@@ -638,7 +602,7 @@ export const useVentaComposer = ({
       });
       return changed ? { ...current, cart: nextCart } : current;
     });
-  }, [combos, recetas]);
+  }, [recetas]);
 
   const descuentoGlobalOptions = useMemo(
     () =>
@@ -729,18 +693,6 @@ export const useVentaComposer = ({
     ]);
   }, [deferredSearch, productos, state.activeCategory]);
 
-  const filteredCombos = useMemo(() => {
-    const categoryValue = state.activeCategory;
-    const categoryId = toNormalizedId(categoryValue);
-    const categoryFiltered = (Array.isArray(combos) ? combos : []).filter((combo) =>
-      categoryValue === 'all'
-        ? true
-        : getComboDepartmentIds(combo).some((id) => Number(id) === Number(categoryId))
-    );
-
-    return filterBySearch(categoryFiltered, deferredSearch, ['nombre_combo', 'descripcion']);
-  }, [combos, deferredSearch, state.activeCategory]);
-
   const filteredRecetas = useMemo(() => {
     const categoryValue = state.activeCategory;
     const categoryFiltered = (Array.isArray(recetas) ? recetas : []).filter((receta) =>
@@ -762,10 +714,9 @@ export const useVentaComposer = ({
 
   const currentCatalogRows = useMemo(() => {
     if (state.activeCatalog === 'EXTRAS') return filteredGlobalExtras;
-    if (state.activeCatalog === 'COMBOS') return filteredCombos;
     if (state.activeCatalog === 'RECETAS') return filteredRecetas;
     return filteredProducts;
-  }, [filteredCombos, filteredGlobalExtras, filteredProducts, filteredRecetas, state.activeCatalog]);
+  }, [filteredGlobalExtras, filteredProducts, filteredRecetas, state.activeCatalog]);
 
   const discountCatalogRows = useMemo(() => {
     if (!canApplyDiscount) return [];
@@ -775,17 +726,12 @@ export const useVentaComposer = ({
       'descripcion_producto',
       'categoria_label'
     ]);
-    const discountCombos = filterBySearch(Array.isArray(combos) ? combos : [], deferredSearch, [
-      'nombre_combo',
-      'descripcion'
-    ]);
     const discountRecetas = filterBySearch(Array.isArray(recetas) ? recetas : [], deferredSearch, [
       'nombre_receta',
       'nombre_producto_base'
     ]);
     const candidates = [
       ...discountProducts.map((row) => ({ kind: 'PRODUCTO', row })),
-      ...discountCombos.map((row) => ({ kind: 'COMBO', row })),
       ...discountRecetas.map((row) => ({ kind: 'RECETA', row }))
     ];
 
@@ -798,7 +744,6 @@ export const useVentaComposer = ({
             kind: entry.kind,
             id_producto: entry.row?.id_producto ?? null,
             id_receta: entry.row?.id_receta ?? null,
-            id_combo: entry.row?.id_combo ?? null,
             precio_unitario: Number(entry.row?.precio ?? 0) || 0,
             cantidad: 1
           }
@@ -808,7 +753,6 @@ export const useVentaComposer = ({
       .filter(Boolean);
   }, [
     canApplyDiscount,
-    combos,
     deferredSearch,
     normalizedDescuentosCatalogo,
     productos,
@@ -1301,11 +1245,6 @@ export const useVentaComposer = ({
       return;
     }
 
-    if (state.activeCatalog === 'COMBOS') {
-      addCatalogItem('COMBO', currentCatalogRows[0]);
-      return;
-    }
-
     if (state.activeCatalog === 'RECETAS') {
       addCatalogItem('RECETA', currentCatalogRows[0]);
       return;
@@ -1617,7 +1556,6 @@ export const useVentaComposer = ({
           kind,
           id_producto: row?.id_producto ?? null,
           id_receta: row?.id_receta ?? null,
-          id_combo: row?.id_combo ?? null,
           precio_unitario: Number(row?.precio ?? 0) || 0,
           cantidad: 1
         }
