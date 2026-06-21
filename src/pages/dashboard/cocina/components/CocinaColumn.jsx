@@ -1,8 +1,5 @@
-import { AnimatePresence, motion } from 'framer-motion';
 import { getColumnMeta } from '../utils/cocinaHelpers';
 import CocinaOrderCard from './CocinaOrderCard';
-
-const _MOTION = motion;
 
 const COLUMN_CSS_CLASS = {
   PENDIENTES: 'is-pending',
@@ -37,26 +34,24 @@ export default function CocinaColumn({
         <span className="kds-column__count">{pedidos.length}</span>
       </header>
 
-      <motion.div layout className="kds-column__body">
-        <AnimatePresence initial={false}>
-          {pedidos.map((pedido) => (
-            <CocinaOrderCard
-              key={pedido.id_pedido}
-              pedido={pedido}
-              isPendingColumn={columnKey === 'PENDIENTES'}
-              now={now}
-              canAdvance={canAdvancePedido(pedido)}
-              isSuperAdmin={isSuperAdmin}
-              canOpenDetail={canOpenDetail}
-              isScreenMode={isScreenMode}
-              canDeliverPedido={canDeliverPedido}
-              disabled={mutatingIds.includes(pedido.id_pedido)}
-              onOpenDetail={onOpenDetail}
-              onOpenInventoryAlerts={onOpenInventoryAlerts}
-              onOpenConfirm={onOpenConfirm}
-            />
-          ))}
-        </AnimatePresence>
+      <div className="kds-column__body">
+        {pedidos.map((pedido) => (
+          <CocinaOrderCard
+            key={pedido.id_pedido}
+            pedido={pedido}
+            isPendingColumn={columnKey === 'PENDIENTES'}
+            now={now}
+            canAdvance={canAdvancePedido(pedido)}
+            isSuperAdmin={isSuperAdmin}
+            canOpenDetail={canOpenDetail}
+            isScreenMode={isScreenMode}
+            canDeliverPedido={canDeliverPedido}
+            disabled={mutatingIds.includes(pedido.id_pedido)}
+            onOpenDetail={onOpenDetail}
+            onOpenInventoryAlerts={onOpenInventoryAlerts}
+            onOpenConfirm={onOpenConfirm}
+          />
+        ))}
 
         {pedidos.length === 0 ? (
           <div className="kds-column__empty">
@@ -64,7 +59,7 @@ export default function CocinaColumn({
             <span>Sin pedidos</span>
           </div>
         ) : null}
-      </motion.div>
+      </div>
     </section>
   );
 }

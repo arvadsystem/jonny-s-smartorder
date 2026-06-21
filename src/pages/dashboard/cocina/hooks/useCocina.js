@@ -292,7 +292,7 @@ export const useCocina = ({
   useEffect(() => {
     const interval = window.setInterval(() => {
       pollBoard();
-    }, 7000);
+    }, 10000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {

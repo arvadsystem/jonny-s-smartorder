@@ -59,6 +59,43 @@ export const resolveKitchenBaseDate = (order) =>
       order?.created_at
   );
 
+const parseOrderDateMs = (value) => {
+  const date = parseDate(value);
+  if (!date) return null;
+  const ms = date.getTime();
+  return Number.isFinite(ms) ? ms : null;
+};
+
+export const getKitchenOrderSortMs = (pedido) => {
+  const candidates = [
+    pedido?.visible_en_cocina_at,
+    pedido?.kds_timer_base_at,
+    pedido?.kds_started_at,
+    pedido?.fecha_hora_facturacion,
+    pedido?.fecha_hora_pedido,
+    pedido?.created_at
+  ];
+
+  for (const value of candidates) {
+    const parsed = parseOrderDateMs(value);
+    if (parsed !== null) return parsed;
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+};
+
+export const compareKitchenOrders = (a, b) => {
+  const timeA = getKitchenOrderSortMs(a);
+  const timeB = getKitchenOrderSortMs(b);
+
+  if (timeA !== timeB) return timeA - timeB;
+
+  const idA = Number(a?.id_pedido ?? 0) || 0;
+  const idB = Number(b?.id_pedido ?? 0) || 0;
+
+  return idA - idB;
+};
+
 const roundMoney = (value) => Number(Number(value || 0).toFixed(2));
 
 const splitObservationSegments = (value) => {
@@ -84,6 +121,58 @@ const inferModifications = (item) => {
   if (itemObservation) return [];
 
   return [];
+};
+
+const KITCHEN_ITEM_TYPE_ALLOWLIST = new Set([
+  'RECETA',
+  'COMBO',
+  'EXTRA',
+  'SALSA',
+  'INSUMO',
+  'INGREDIENTE',
+  'COMPONENTE',
+  'PREPARACION',
+  'MODIFICADOR'
+]);
+
+const KITCHEN_DIRECT_PRODUCT_TYPE_KEYS = new Set([
+  'PRODUCTO',
+  'PRODUCT',
+  'PRODUCTO_DIRECTO',
+  'DIRECT_PRODUCT'
+]);
+
+const hasPositiveId = (value) => Number(value ?? 0) > 0;
+
+const isDirectProductKitchenItem = (item) => {
+  const typeCandidates = [
+    item?.tipo_item,
+    item?.tipo,
+    item?.tipo_producto,
+    item?.origen,
+    item?.source
+  ]
+    .map((value) => normalizeTextKey(value).toUpperCase())
+    .filter(Boolean);
+
+  if (typeCandidates.some((type) => KITCHEN_ITEM_TYPE_ALLOWLIST.has(type))) {
+    return false;
+  }
+
+  const hasKitchenRecipeSignal =
+    hasPositiveId(item?.id_receta) ||
+    hasPositiveId(item?.id_combo) ||
+    hasPositiveId(item?.id_extra) ||
+    hasPositiveId(item?.id_salsa) ||
+    hasPositiveId(item?.id_insumo);
+
+  if (hasKitchenRecipeSignal) return false;
+
+  const hasProductTypeSignal = typeCandidates.some((type) =>
+    KITCHEN_DIRECT_PRODUCT_TYPE_KEYS.has(type) || type.includes('PRODUCTO') || type.includes('PRODUCT')
+  );
+
+  return hasPositiveId(item?.id_producto) || item?.es_producto === true || hasProductTypeSignal;
 };
 
 const itemNameKey = (value) => normalizeTextKey(value).replace(/_/g, ' ');
@@ -214,16 +303,18 @@ export const normalizeKitchenOrder = (row) => {
     columna_kds: row?.columna_kds,
     estado_codigo: estadoCodigo
   });
-  const items = (Array.isArray(row?.items) ? row.items : []).map((item) => ({
-    ...item,
-    id_detalle: Number(item?.id_detalle ?? 0) || null,
-    id_producto: Number(item?.id_producto ?? 0) || null,
-    id_receta: Number(item?.id_receta ?? 0) || null,
-    cantidad: Number(item?.cantidad ?? 0) || 0,
-    nombre_item: String(item?.nombre_item ?? 'Item de cocina'),
-    observacion: String(item?.observacion ?? '').trim() || null,
-    modificaciones: inferModifications(item)
-  }));
+  const items = (Array.isArray(row?.items) ? row.items : [])
+    .filter((item) => !isDirectProductKitchenItem(item))
+    .map((item) => ({
+      ...item,
+      id_detalle: Number(item?.id_detalle ?? 0) || null,
+      id_producto: Number(item?.id_producto ?? 0) || null,
+      id_receta: Number(item?.id_receta ?? 0) || null,
+      cantidad: Number(item?.cantidad ?? 0) || 0,
+      nombre_item: String(item?.nombre_item ?? 'Item de cocina'),
+      observacion: String(item?.observacion ?? '').trim() || null,
+      modificaciones: inferModifications(item)
+    }));
 
   return {
     ...row,
@@ -299,11 +390,7 @@ export const groupOrdersByColumn = (orders) => {
   });
 
   Object.values(grouped).forEach((list) => {
-    list.sort((a, b) => {
-      const left = parseDate(a?.fecha_hora_facturacion || a?.fecha_hora_pedido)?.getTime() || 0;
-      const right = parseDate(b?.fecha_hora_facturacion || b?.fecha_hora_pedido)?.getTime() || 0;
-      return left - right;
-    });
+    list.sort(compareKitchenOrders);
   });
 
   return grouped;

@@ -1,5 +1,3 @@
-﻿import { motion } from 'framer-motion';
-const _MOTION = motion;
 import {
   buildKitchenCountdown,
   formatServiceLabel,
@@ -11,6 +9,7 @@ const SERVICE_CLASSES = {
   PARA_LLEVAR: 'is-service',
   LOCAL: 'is-service'
 };
+
 
 const classifyModification = (value) => {
   const text = String(value || '').trim();
@@ -154,7 +153,9 @@ export default function CocinaOrderCard({
   const isExpiring = countdown.isDelayed;
 
   const allItems = Array.isArray(pedido.items) ? pedido.items : [];
-  const isDensePendingCard = isPendingColumn && allItems.length > 3;
+
+  const isLargeScreenOrder = isScreenMode && allItems.length > 4;
+  const isDensePendingCard = !isScreenMode && isPendingColumn && allItems.length > 3;
   const denseSplitIndex = Math.ceil(allItems.length / 2);
   const denseLeftItems = isDensePendingCard ? allItems.slice(0, denseSplitIndex) : allItems;
   const denseRightItems = isDensePendingCard ? allItems.slice(denseSplitIndex) : [];
@@ -216,92 +217,90 @@ export default function CocinaOrderCard({
   };
 
   return (
-    <motion.article
-      layout
-      initial={{ opacity: 0, y: 14, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -10, scale: 0.97 }}
-      transition={{ duration: 0.16 }}
-      className={`kds-card${isExpiring ? ' is-expiring' : ''}${disabled ? ' is-disabled' : ''}${isDensePendingCard ? ' cocina-order-card--dense' : ''}`}
+    <article
+      className={`kds-card${isExpiring ? ' is-expiring' : ''}${disabled ? ' is-disabled' : ''}${isDensePendingCard ? ' cocina-order-card--dense' : ''}${isLargeScreenOrder ? ' cocina-order-card--tv-large' : ''}`}
       role={canOpenDetail ? 'button' : undefined}
       tabIndex={canOpenDetail ? 0 : -1}
       onClick={handleCardClick}
       onKeyDown={handleKeyDown}
     >
-      <div className="kds-card__head">
-        <div className="kds-card__head-main">
-          <span className="kds-card__ticket">{pedido.numero_ticket}</span>
-          {!isScreenMode ? (
-            <div className="kds-card__head-client">
-              <i className="bi bi-person" aria-hidden="true" />
-              <span>{pedido.cliente_nombre || 'Consumidor final'}</span>
+      <div className="kds-card__content">
+        <div className="kds-card__head">
+          <div className="kds-card__head-main">
+            <span className="kds-card__ticket">{pedido.numero_ticket}</span>
+            {!isScreenMode ? (
+              <div className="kds-card__head-client">
+                <i className="bi bi-person" aria-hidden="true" />
+                <span>{pedido.cliente_nombre || 'Consumidor final'}</span>
+              </div>
+            ) : null}
+            <span className={`kds-chip kds-card__head-type ${SERVICE_CLASSES[pedido.tipo_servicio] || 'is-service'}`}>
+              {tipoPedidoLabel}
+            </span>
+          </div>
+          <div className="kds-card__head-meta">
+            <div className={`kds-card__timer ${timerClass}`} aria-label="Tiempo de espera">
+              <i className="bi bi-clock" />
+              <span>{countdown.remainingLabel}</span>
+              {countdown.isDelayed ? (
+                <span className="kds-card__timer-delay">{countdown.delayedLabel}</span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {hasStatusBadges ? (
+          <div className="kds-card__badges">
+            {isExpiring && (
+              <span className="kds-chip is-expiring">
+                <i className="bi bi-exclamation-triangle-fill" /> {countdown.isDelayed ? 'Retrasado' : 'Alerta'}
+              </span>
+            )}
+            {isPublicMenu && (
+              <span className="kds-chip is-public-menu">
+                <i className="bi bi-globe" /> Online
+              </span>
+            )}
+            {hasInventoryAlerts && (
+              <button
+                type="button"
+                className="kds-chip kds-card__inventory-alert"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenInventoryAlerts?.(pedido);
+                }}
+                aria-label={`Ver ${inventoryAlertsTotal} alertas de inventario del pedido`}
+              >
+                <i className="bi bi-exclamation-diamond-fill" aria-hidden="true" />
+                <span>Inventario con advertencias</span>
+                <strong>{inventoryAlertsPending || inventoryAlertsTotal}</strong>
+              </button>
+            )}
+          </div>
+        ) : null}
+
+        <div className="kds-card__body-scroll">
+          <div className="kds-card__items">
+            {denseLeftItems.map(renderItem)}
+          </div>
+          {isDensePendingCard ? (
+            <div className="kds-card__items kds-card__items--secondary">
+              {denseRightItems.map(renderItem)}
             </div>
           ) : null}
-          <span className={`kds-chip kds-card__head-type ${SERVICE_CLASSES[pedido.tipo_servicio] || 'is-service'}`}>
-            {tipoPedidoLabel}
-          </span>
-        </div>
-        <div className="kds-card__head-meta">
-          <div className={`kds-card__timer ${timerClass}`} aria-label="Tiempo de espera">
-            <i className="bi bi-clock" />
-            <span>{countdown.remainingLabel}</span>
-            {countdown.isDelayed ? (
-              <span className="kds-card__timer-delay">{countdown.delayedLabel}</span>
-            ) : null}
-          </div>
+
+          {Array.isArray(pedido.nota_general_pedido) && pedido.nota_general_pedido.length > 0 ? (
+            <div className="kds-card__order-note">
+              <span className="kds-card__order-note-label">Nota general del pedido</span>
+              <div className="kds-card__order-note-text">
+                {pedido.nota_general_pedido.join(' � ')}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
-
-      {hasStatusBadges ? (
-        <div className="kds-card__badges">
-          {isExpiring && (
-            <span className="kds-chip is-expiring">
-              <i className="bi bi-exclamation-triangle-fill" /> {countdown.isDelayed ? 'Retrasado' : 'Alerta'}
-            </span>
-          )}
-          {isPublicMenu && (
-            <span className="kds-chip is-public-menu">
-              <i className="bi bi-globe" /> Online
-            </span>
-          )}
-          {hasInventoryAlerts && (
-            <button
-              type="button"
-              className="kds-chip kds-card__inventory-alert"
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenInventoryAlerts?.(pedido);
-              }}
-              aria-label={`Ver ${inventoryAlertsTotal} alertas de inventario del pedido`}
-            >
-              <i className="bi bi-exclamation-diamond-fill" aria-hidden="true" />
-              <span>Inventario con advertencias</span>
-              <strong>{inventoryAlertsPending || inventoryAlertsTotal}</strong>
-            </button>
-          )}
-        </div>
-      ) : null}
-
-      <div className="kds-card__items">
-        {(isDensePendingCard ? denseLeftItems : allItems).map(renderItem)}
-      </div>
-      {isDensePendingCard ? (
-        <div className="kds-card__items kds-card__items--secondary">
-          {denseRightItems.map(renderItem)}
-        </div>
-      ) : null}
-
-      {Array.isArray(pedido.nota_general_pedido) && pedido.nota_general_pedido.length > 0 ? (
-        <div className="kds-card__order-note">
-          <span className="kds-card__order-note-label">Nota general del pedido</span>
-          <div className="kds-card__order-note-text">
-            {pedido.nota_general_pedido.join(' · ')}
-          </div>
-        </div>
-      ) : null}
-
       {showAdvanceBtn && (
-        <>
+        <div className="kds-card__footer">
           <div className="kds-card__divider" />
           <div className="kds-card__actions">
             <button
@@ -317,8 +316,8 @@ export default function CocinaOrderCard({
               <span>{action.label}</span>
             </button>
           </div>
-        </>
+        </div>
       )}
-    </motion.article>
+    </article>
   );
 }

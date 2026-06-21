@@ -13,6 +13,12 @@ let qzSecuritySetupPromise = null;
 
 const QZ_DEBUG_ENABLED = String(import.meta.env.DEV || '').trim() === 'true'
   || /qa\.jonnyshn\.com$/i.test(typeof window !== 'undefined' ? window.location.hostname : '');
+const QZ_LOCAL_CONNECTION_OPTIONS = {
+  usingSecure: true,
+  retries: 1,
+  delay: 0
+};
+const QZ_DEFAULT_REMOTE_PORT = 8182;
 
 const createQzError = (code, message, cause = null) => {
   const error = new Error(message);
@@ -144,21 +150,87 @@ const setupQzSecurity = async (qz) => {
   return qzSecuritySetupPromise;
 };
 
+const isEnvTrue = (value) => String(value || '').trim().toLowerCase() === 'true';
+
+const isAndroidDevice = () => {
+  if (typeof navigator === 'undefined') return false;
+
+  if (typeof navigator.userAgentData?.mobile === 'boolean') {
+    return navigator.userAgentData.mobile
+      && /Android/i.test(navigator.userAgent || '');
+  }
+
+  return /Android/i.test(navigator.userAgent || '');
+};
+
+const resolveQzRemotePort = () => {
+  const rawPort = String(import.meta.env.VITE_QZ_REMOTE_PORT || '').trim();
+  if (!rawPort) return QZ_DEFAULT_REMOTE_PORT;
+
+  const parsedPort = Number(rawPort);
+  if (Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535) {
+    return parsedPort;
+  }
+
+  return QZ_DEFAULT_REMOTE_PORT;
+};
+
+const resolveQzConnectionOptions = () => {
+  const remoteEnabled = isEnvTrue(import.meta.env.VITE_QZ_REMOTE_ENABLED);
+  const remoteHost = String(import.meta.env.VITE_QZ_REMOTE_HOST || '').trim();
+  const androidOnly = isEnvTrue(import.meta.env.VITE_QZ_REMOTE_ANDROID_ONLY);
+
+  if (!remoteEnabled || !remoteHost) return { ...QZ_LOCAL_CONNECTION_OPTIONS };
+  if (androidOnly && !isAndroidDevice()) return { ...QZ_LOCAL_CONNECTION_OPTIONS };
+
+  const remotePort = resolveQzRemotePort();
+  return {
+    host: remoteHost,
+    usingSecure: false,
+    port: {
+      insecure: [remotePort]
+    },
+    retries: 2,
+    delay: 1
+  };
+};
+
+const describeQzConnectionOptions = (connectionOptions) => {
+  if (connectionOptions?.host) {
+    const port = connectionOptions?.port?.insecure?.[0] || QZ_DEFAULT_REMOTE_PORT;
+    return {
+      mode: 'remote',
+      host: connectionOptions.host,
+      port,
+      secure: false,
+      debugMessage: `modo=remote host=${connectionOptions.host} port=${port} secure=false`,
+      errorMessage: `No se pudo conectar con QZ Tray en la computadora puente ${connectionOptions.host}:${port}.`
+    };
+  }
+
+  return {
+    mode: 'local',
+    secure: true,
+    debugMessage: 'modo=local secure=true',
+    errorMessage: 'No se pudo establecer conexion con QZ Tray.'
+  };
+};
+
 const ensureConnectedQz = async () => {
   const qz = await ensureQzLibrary();
   await setupQzSecurity(qz);
   if (qz.websocket.isActive()) return qz;
 
+  const connectionOptions = resolveQzConnectionOptions();
+  const connectionContext = describeQzConnectionOptions(connectionOptions);
+  debugQz(connectionContext.debugMessage);
+
   try {
-    await qz.websocket.connect({
-      retries: 1,
-      delay: 0,
-      usingSecure: true
-    });
+    await qz.websocket.connect(connectionOptions);
   } catch (error) {
     throw createQzError(
       'QZ_NOT_CONNECTED',
-      'No se pudo establecer conexion con QZ Tray.',
+      connectionContext.errorMessage,
       error
     );
   }
