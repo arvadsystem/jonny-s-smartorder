@@ -1,5 +1,3 @@
-ï»¿import { motion } from 'framer-motion';
-const _MOTION = motion;
 import {
   buildKitchenCountdown,
   formatServiceLabel,
@@ -11,6 +9,8 @@ const SERVICE_CLASSES = {
   PARA_LLEVAR: 'is-service',
   LOCAL: 'is-service'
 };
+
+const SCREEN_MODE_VISIBLE_ITEMS_LIMIT = 4;
 
 const classifyModification = (value) => {
   const text = String(value || '').trim();
@@ -154,9 +154,17 @@ export default function CocinaOrderCard({
   const isExpiring = countdown.isDelayed;
 
   const allItems = Array.isArray(pedido.items) ? pedido.items : [];
-  const isDensePendingCard = isPendingColumn && allItems.length > 3;
+  const shouldLimitItemsForScreen = isScreenMode && allItems.length > SCREEN_MODE_VISIBLE_ITEMS_LIMIT;
+  const screenVisibleItems = shouldLimitItemsForScreen
+    ? allItems.slice(0, SCREEN_MODE_VISIBLE_ITEMS_LIMIT)
+    : allItems;
+  const hiddenScreenItemsCount = shouldLimitItemsForScreen
+    ? allItems.length - screenVisibleItems.length
+    : 0;
+
+  const isDensePendingCard = !isScreenMode && isPendingColumn && allItems.length > 3;
   const denseSplitIndex = Math.ceil(allItems.length / 2);
-  const denseLeftItems = isDensePendingCard ? allItems.slice(0, denseSplitIndex) : allItems;
+  const denseLeftItems = isDensePendingCard ? allItems.slice(0, denseSplitIndex) : screenVisibleItems;
   const denseRightItems = isDensePendingCard ? allItems.slice(denseSplitIndex) : [];
 
   const showAdvanceBtn = canAdvance || isSuperAdmin;
@@ -216,12 +224,7 @@ export default function CocinaOrderCard({
   };
 
   return (
-    <motion.article
-      layout
-      initial={{ opacity: 0, y: 14, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -10, scale: 0.97 }}
-      transition={{ duration: 0.16 }}
+    <article
       className={`kds-card${isExpiring ? ' is-expiring' : ''}${disabled ? ' is-disabled' : ''}${isDensePendingCard ? ' cocina-order-card--dense' : ''}`}
       role={canOpenDetail ? 'button' : undefined}
       tabIndex={canOpenDetail ? 0 : -1}
@@ -283,25 +286,33 @@ export default function CocinaOrderCard({
           </div>
         ) : null}
 
-        <div className="kds-card__items">
-          {(isDensePendingCard ? denseLeftItems : allItems).map(renderItem)}
-        </div>
-        {isDensePendingCard ? (
-          <div className="kds-card__items kds-card__items--secondary">
-            {denseRightItems.map(renderItem)}
+        <div className="kds-card__body-scroll">
+          <div className="kds-card__items">
+            {denseLeftItems.map(renderItem)}
           </div>
-        ) : null}
-
-        {Array.isArray(pedido.nota_general_pedido) && pedido.nota_general_pedido.length > 0 ? (
-          <div className="kds-card__order-note">
-            <span className="kds-card__order-note-label">Nota general del pedido</span>
-            <div className="kds-card__order-note-text">
-              {pedido.nota_general_pedido.join(' Â· ')}
+          {isDensePendingCard ? (
+            <div className="kds-card__items kds-card__items--secondary">
+              {denseRightItems.map(renderItem)}
             </div>
-          </div>
-        ) : null}
-      </div>
+          ) : null}
 
+          {hiddenScreenItemsCount > 0 ? (
+            <div className="kds-card__more kds-card__more--tv">
+              <i className="bi bi-plus-circle" aria-hidden="true" />
+              <span>+{hiddenScreenItemsCount} más</span>
+            </div>
+          ) : null}
+
+          {Array.isArray(pedido.nota_general_pedido) && pedido.nota_general_pedido.length > 0 ? (
+            <div className="kds-card__order-note">
+              <span className="kds-card__order-note-label">Nota general del pedido</span>
+              <div className="kds-card__order-note-text">
+                {pedido.nota_general_pedido.join(' · ')}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
       {showAdvanceBtn && (
         <div className="kds-card__footer">
           <div className="kds-card__divider" />
@@ -321,6 +332,6 @@ export default function CocinaOrderCard({
           </div>
         </div>
       )}
-    </motion.article>
+    </article>
   );
 }

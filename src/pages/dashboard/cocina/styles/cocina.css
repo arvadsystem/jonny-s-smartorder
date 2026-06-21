@@ -442,6 +442,29 @@
 .kds-column.is-prep     .kds-column__dot { background: var(--kds-orange); box-shadow: 0 0 8px var(--kds-orange); }
 .kds-column.is-ready    .kds-column__dot { background: var(--kds-green);  box-shadow: 0 0 8px var(--kds-green); }
 
+.kds-column__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.kds-column__page-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 28px;
+  padding: 0 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--kds-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--kds-text-3);
+  font-family: var(--kds-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .kds-column__count {
   min-width: 28px;
   height: 28px;
@@ -501,13 +524,17 @@
   min-width: 0;
   min-height: 0;
   height: auto;
-  overflow: visible;
+  overflow: hidden;
   isolation: isolate;
-  /* No usar overflow:hidden aquí — corta el botón de acción al pie de la tarjeta */
   cursor: pointer;
-  transition: border-color 0.18s, box-shadow 0.18s, transform 0.12s;
+  transition: border-color 0.18s, box-shadow 0.18s;
   position: relative;
   flex-shrink: 0; /* impide que las tarjetas se encojan dentro de la columna */
+}
+
+.kds-card,
+.kds-card * {
+  box-sizing: border-box;
 }
 
 .kds-card__content {
@@ -516,6 +543,15 @@
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
+}
+
+.kds-card__body-scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .kds-card__footer {
@@ -533,7 +569,6 @@
 .kds-card:hover {
   border-color: var(--kds-amber);
   box-shadow: 0 0 0 1px rgba(212, 164, 76, 0.1), var(--kds-shadow);
-  transform: translateY(-1px);
 }
 
 /* Franja de color izquierda según columna */
@@ -884,20 +919,21 @@
 .kds-column.is-pending .kds-column__body {
   padding: 0.95rem;
   gap: 0.85rem;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: auto;
-  align-content: start;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  align-content: initial;
+  align-items: stretch;
 }
 
 .kds-column.is-pending .kds-column__empty {
-  grid-column: 1 / -1;
+  width: 100%;
 }
 
 .kds-column.is-pending .kds-card {
   border-left-width: 4px;
   height: auto;
+  min-height: 0;
+  flex: 0 0 auto;
 }
 
 .kds-column.is-pending .kds-card.cocina-order-card--dense {
@@ -910,7 +946,10 @@
 }
 
 .kds-column.is-pending .kds-card.cocina-order-card--dense .kds-card__items--secondary {
-  padding-top: 0;
+  padding-left: 1.1rem;
+  border-left: 0;
+  border-top: 1px dashed var(--kds-border);
+  padding-top: 0.75rem;
 }
 
 .kds-column.is-pending .kds-card__head {
@@ -1815,5 +1854,526 @@
   .kds-card__timer {
     justify-content: flex-start;
     text-align: left;
+  }
+}
+/* AM: KDS stable layout - single source for operator and TV cards */
+.cocina-page--operator-mode .kds-board,
+.cocina-page--tv-mode .kds-board,
+.cocina-page--operator-mode .kds-column,
+.cocina-page--tv-mode .kds-column,
+.cocina-page--operator-mode .kds-column__body,
+.cocina-page--tv-mode .kds-column__body,
+.cocina-page--operator-mode .kds-card,
+.cocina-page--tv-mode .kds-card {
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.cocina-page--operator-mode .kds-column__body,
+.cocina-page--tv-mode .kds-column__body,
+.cocina-page--operator-mode .kds-column.is-pending .kds-column__body,
+.cocina-page--tv-mode .kds-column.is-pending .kds-column__body,
+.cocina-page--operator-mode .kds-column.is-prep .kds-column__body,
+.cocina-page--tv-mode .kds-column.is-prep .kds-column__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: stretch;
+  align-content: start;
+  overflow-x: hidden;
+}
+
+.cocina-page--operator-mode .kds-card,
+.cocina-page--tv-mode .kds-card {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  overflow: hidden;
+  contain: none;
+}
+
+.cocina-page--operator-mode .kds-card__content,
+.cocina-page--tv-mode .kds-card__content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+}
+
+.cocina-page--operator-mode .kds-card__footer,
+.cocina-page--tv-mode .kds-card__footer {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: auto;
+  box-shadow: 0 -1px 0 var(--kds-border);
+}
+
+.cocina-page--operator-mode .kds-card__item-name,
+.cocina-page--operator-mode .kds-mod-line,
+.cocina-page--operator-mode .kds-mod-line__values,
+.cocina-page--operator-mode .kds-card__order-note-text,
+.cocina-page--tv-mode .kds-card__item-name,
+.cocina-page--tv-mode .kds-mod-line,
+.cocina-page--tv-mode .kds-mod-line__values,
+.cocina-page--tv-mode .kds-card__order-note-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cocina-page--operator-mode .kds-card__body-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.cocina-page--operator-mode .kds-card__body-scroll::-webkit-scrollbar-thumb {
+  background: var(--kds-border-strong);
+  border-radius: 999px;
+}
+
+@media (orientation: portrait), (max-width: 900px) {
+  .cocina-page--operator-mode .kds-root {
+    height: auto;
+    min-height: calc(100dvh - 80px);
+    overflow: visible;
+  }
+
+  .cocina-page--operator-mode .kds-board {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .cocina-page--operator-mode .kds-column {
+    min-height: min(560px, calc(100dvh - 220px));
+    overflow: hidden;
+  }
+
+  .cocina-page--operator-mode .kds-column__body,
+  .cocina-page--operator-mode .kds-column.is-pending .kds-column__body,
+  .cocina-page--operator-mode .kds-column.is-prep .kds-column__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    overflow-y: auto;
+  }
+
+  .cocina-page--operator-mode .kds-card {
+    max-height: min(430px, 54dvh);
+  }
+
+  .cocina-page--operator-mode .kds-card__body-scroll {
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 901px) {
+  .cocina-page--operator-mode .kds-root {
+    height: calc(100dvh - 80px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .cocina-page--operator-mode .kds-board {
+    grid-template-columns: minmax(0, 7fr) minmax(300px, 3fr);
+    gap: 0.75rem;
+    overflow: hidden;
+  }
+
+  .cocina-page--operator-mode .kds-column {
+    overflow: hidden;
+  }
+
+  .cocina-page--operator-mode .kds-column__body,
+  .cocina-page--operator-mode .kds-column.is-pending .kds-column__body,
+  .cocina-page--operator-mode .kds-column.is-prep .kds-column__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    overflow-y: auto;
+  }
+
+  .cocina-page--operator-mode .kds-card {
+    max-height: min(460px, 66dvh);
+  }
+
+  .cocina-page--operator-mode .kds-card__body-scroll {
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+}
+
+.cocina-page--tv-mode .kds-root {
+  height: 100dvh;
+  min-height: 100dvh;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.cocina-page--tv-mode .kds-board {
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
+  gap: 0.8rem;
+  padding: 0.8rem;
+  overflow: hidden;
+}
+
+.cocina-page--tv-mode .kds-column {
+  overflow: hidden;
+}
+
+.cocina-page--tv-mode .kds-column.is-prep {
+  min-width: 280px;
+}
+
+.cocina-page--tv-mode .kds-column__body,
+.cocina-page--tv-mode .kds-column.is-prep .kds-column__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.65rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.cocina-page--tv-mode .kds-column.is-pending .kds-column__body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  align-items: start;
+  align-content: start;
+  padding: 0.8rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.cocina-page--tv-mode .kds-card {
+  max-height: none;
+  overflow: hidden;
+}
+
+.cocina-page--tv-mode .kds-card__content,
+.cocina-page--tv-mode .kds-card__body-scroll {
+  overflow: hidden;
+  max-height: none;
+}
+
+.cocina-page--tv-mode .kds-card__head {
+  padding: 0.65rem 0.8rem 0.25rem;
+  gap: 0.5rem;
+}
+
+.cocina-page--tv-mode .kds-card__ticket {
+  font-size: 1.02rem;
+}
+
+.cocina-page--tv-mode .kds-card__timer {
+  font-size: 0.92rem;
+  gap: 0.2rem;
+}
+
+.cocina-page--tv-mode .kds-card__timer-delay {
+  font-size: 0.82rem;
+  line-height: 1.05;
+}
+
+.cocina-page--tv-mode .kds-chip {
+  font-size: 0.58rem;
+  padding: 0.12rem 0.4rem;
+}
+
+.cocina-page--tv-mode .kds-card__badges {
+  padding: 0 0.8rem 0.42rem;
+  gap: 0.25rem;
+}
+
+.cocina-page--tv-mode .kds-card__items {
+  gap: 0.36rem;
+  padding-left: 0.8rem;
+  padding-right: 0.8rem;
+  padding-bottom: 0.48rem;
+}
+
+.cocina-page--tv-mode .kds-card__item {
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 0.44rem;
+}
+
+.cocina-page--tv-mode .kds-qty {
+  width: 26px;
+  height: 26px;
+  font-size: 0.68rem;
+}
+
+.cocina-page--tv-mode .kds-card__item-name,
+.cocina-page--tv-mode .kds-mod-line,
+.cocina-page--tv-mode .kds-card__order-note-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cocina-page--tv-mode .kds-card__item-name {
+  font-size: 0.9rem;
+  line-height: 1.18;
+  -webkit-line-clamp: 2;
+}
+
+.cocina-page--tv-mode .kds-mod-line {
+  font-size: 0.68rem;
+  line-height: 1.18;
+  -webkit-line-clamp: 2;
+}
+
+.cocina-page--tv-mode .kds-card__order-note {
+  margin: 0 0.8rem 0.5rem;
+  padding: 0.38rem 0.5rem;
+}
+
+.cocina-page--tv-mode .kds-card__order-note-label {
+  font-size: 0.56rem;
+}
+
+.cocina-page--tv-mode .kds-card__order-note-text {
+  font-size: 0.66rem;
+  line-height: 1.2;
+  -webkit-line-clamp: 2;
+}
+
+.cocina-page--tv-mode .kds-card__more--tv {
+  width: auto;
+  margin: 0 0.8rem 0.55rem;
+  padding: 0.34rem 0.55rem;
+  border-radius: 9px;
+  background: var(--kds-surface-3);
+  border: 1px dashed var(--kds-border-strong);
+  color: var(--kds-text-2);
+  font-size: 0.68rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.32rem;
+  cursor: default;
+}
+
+@media (min-width: 1600px) and (min-height: 850px) {
+  .cocina-page--tv-mode .kds-board {
+    grid-template-columns: minmax(0, 3fr) minmax(320px, 1fr);
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .cocina-page--tv-mode .kds-column.is-pending .kds-column__body {
+    gap: 1rem;
+  }
+
+  .cocina-page--tv-mode .kds-card__item-name {
+    font-size: 1rem;
+  }
+
+  .cocina-page--tv-mode .kds-mod-line {
+    font-size: 0.74rem;
+  }
+}
+
+/* AM: TV polish - observer-only KDS profile */
+.cocina-page--tv-mode .kds-board {
+  grid-template-columns: minmax(0, 72fr) minmax(320px, 28fr);
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.cocina-page--tv-mode .kds-column {
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+}
+
+.cocina-page--tv-mode .kds-column__header {
+  min-height: 74px;
+  padding: 0.95rem 1rem;
+  border-bottom-color: rgba(255, 255, 255, 0.11);
+}
+
+.cocina-page--tv-mode .kds-column__title {
+  font-size: 1.02rem;
+  letter-spacing: 0.02em;
+}
+
+.cocina-page--tv-mode .kds-column__count {
+  min-width: 38px;
+  height: 38px;
+  font-size: 1rem;
+  border-radius: 12px;
+}
+
+.cocina-page--tv-mode .kds-column__meta {
+  gap: 0.6rem;
+}
+
+.cocina-page--tv-mode .kds-column__page-indicator {
+  min-width: 50px;
+  height: 32px;
+  border-radius: 10px;
+  color: var(--kds-text-2);
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.14);
+  font-size: 0.82rem;
+}
+
+.cocina-page--tv-mode .kds-column__body,
+.cocina-page--tv-mode .kds-column.is-prep .kds-column__body {
+  gap: 0.8rem;
+  padding: 0.8rem;
+}
+
+.cocina-page--tv-mode .kds-column.is-pending .kds-column__body {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  padding: 0.9rem;
+}
+
+.cocina-page--tv-mode .kds-card {
+  min-height: 0;
+  max-height: clamp(178px, 27dvh, 286px);
+  border-radius: 14px;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+.cocina-page--tv-mode .kds-column.is-prep .kds-card {
+  max-height: clamp(160px, 25dvh, 260px);
+}
+
+.cocina-page--tv-mode .kds-card__content,
+.cocina-page--tv-mode .kds-card__body-scroll {
+  overflow: hidden;
+}
+
+.cocina-page--tv-mode .kds-card__head {
+  padding: 0.72rem 0.85rem 0.36rem;
+  align-items: flex-start;
+}
+
+.cocina-page--tv-mode .kds-card__head-main {
+  gap: 0.22rem;
+}
+
+.cocina-page--tv-mode .kds-card__head-meta {
+  min-width: 116px;
+  max-width: 42%;
+}
+
+.cocina-page--tv-mode .kds-card__ticket {
+  font-size: 1.22rem;
+  line-height: 1;
+  color: #93c5fd;
+}
+
+.cocina-page--tv-mode .kds-card__timer {
+  font-size: 1.08rem;
+  line-height: 1;
+  color: #f8fafc;
+}
+
+.cocina-page--tv-mode .kds-card__timer.is-critical {
+  color: #fecaca;
+}
+
+.cocina-page--tv-mode .kds-card__timer-delay {
+  font-size: 0.76rem;
+  line-height: 1.05;
+}
+
+.cocina-page--tv-mode .kds-card__head-type,
+.cocina-page--tv-mode .kds-chip {
+  font-size: 0.58rem;
+  line-height: 1;
+}
+
+.cocina-page--tv-mode .kds-card__badges {
+  padding: 0 0.85rem 0.42rem;
+}
+
+.cocina-page--tv-mode .kds-card__items {
+  gap: 0.34rem;
+  padding: 0 0.85rem 0.5rem;
+}
+
+.cocina-page--tv-mode .kds-card__item {
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 0.48rem;
+}
+
+.cocina-page--tv-mode .kds-qty {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  font-size: 0.78rem;
+  color: #f8fafc;
+}
+
+.cocina-page--tv-mode .kds-card__item-name {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.12;
+  -webkit-line-clamp: 2;
+}
+
+.cocina-page--tv-mode .kds-card__item-mods {
+  gap: 0.18rem;
+  margin-top: 0.2rem;
+}
+
+.cocina-page--tv-mode .kds-mod-line {
+  font-size: 0.72rem;
+  line-height: 1.12;
+  -webkit-line-clamp: 1;
+}
+
+.cocina-page--tv-mode .kds-card__order-note {
+  margin: 0 0.85rem 0.52rem;
+  padding: 0.36rem 0.5rem;
+}
+
+.cocina-page--tv-mode .kds-card__order-note-text {
+  font-size: 0.7rem;
+  line-height: 1.15;
+  -webkit-line-clamp: 2;
+}
+
+.cocina-page--tv-mode .kds-card__more--tv {
+  margin: 0 0.85rem 0.52rem;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+@media (min-width: 1600px) and (min-height: 850px) {
+  .cocina-page--tv-mode .kds-card {
+    max-height: clamp(200px, 28dvh, 330px);
+  }
+
+  .cocina-page--tv-mode .kds-column.is-prep .kds-card {
+    max-height: clamp(182px, 26dvh, 300px);
+  }
+
+  .cocina-page--tv-mode .kds-card__ticket {
+    font-size: 1.34rem;
+  }
+
+  .cocina-page--tv-mode .kds-card__timer {
+    font-size: 1.18rem;
+  }
+
+  .cocina-page--tv-mode .kds-card__item-name {
+    font-size: 1.08rem;
   }
 }
