@@ -154,7 +154,7 @@ export default function CocinaOrderCard({
 
   const allItems = Array.isArray(pedido.items) ? pedido.items : [];
 
-  const isLargeScreenOrder = isScreenMode && allItems.length > 3;
+  const isLargeScreenOrder = isScreenMode && allItems.length > 4;
   const isDensePendingCard = !isScreenMode && isPendingColumn && allItems.length > 3;
   const denseSplitIndex = Math.ceil(allItems.length / 2);
   const denseLeftItems = isDensePendingCard ? allItems.slice(0, denseSplitIndex) : allItems;
