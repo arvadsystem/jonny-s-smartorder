@@ -133,6 +133,7 @@ export default function VentaFinalizarOperacionModal({
   const pendingSubmittingRef = useRef(false);
   const paidErrorPendingRef = useRef(false);
   const lastAutoPhoneRef = useRef('');
+  const lastAutoNameRef = useRef('');
   const lastClientSearchRequestRef = useRef(null);
   const phoneSaveAskedRef = useRef(new Set());
   const phoneSaveBypassRef = useRef(false);
@@ -190,15 +191,25 @@ export default function VentaFinalizarOperacionModal({
     if (!selected || selected.es_consumidor_final) return;
 
     const nextPhone = normalizePhoneText(selected.telefono);
-    if (!nextPhone) return;
+    const nextName = normalizeOptionalText(
+      selected?.label ||
+      selected?.nombre_cliente ||
+      [selected?.nombre, selected?.apellido].filter(Boolean).join(' ')
+    );
+    if (!nextPhone && !nextName) return;
 
     setContact((current) => {
       const currentPhone = normalizePhoneText(current.telefono_contacto);
-      if (currentPhone && currentPhone !== lastAutoPhoneRef.current) return current;
-      lastAutoPhoneRef.current = nextPhone;
+      const currentName = normalizeOptionalText(current.nombre_contacto);
+      const phoneLockedByUser = currentPhone && currentPhone !== lastAutoPhoneRef.current;
+      const nameLockedByUser = currentName && currentName !== lastAutoNameRef.current;
+      if (phoneLockedByUser && nameLockedByUser) return current;
+      if (nextPhone && !phoneLockedByUser) lastAutoPhoneRef.current = nextPhone;
+      if (nextName && !nameLockedByUser) lastAutoNameRef.current = nextName;
       return {
         ...current,
-        telefono_contacto: nextPhone
+        telefono_contacto: phoneLockedByUser ? current.telefono_contacto : nextPhone,
+        nombre_contacto: nameLockedByUser ? current.nombre_contacto : (nextName || current.nombre_contacto)
       };
     });
   }, [composer.clientes, composer.selectedClient, open]);
@@ -242,6 +253,7 @@ export default function VentaFinalizarOperacionModal({
     setSubmitDialogError('');
     paidErrorPendingRef.current = false;
     lastAutoPhoneRef.current = '';
+    lastAutoNameRef.current = '';
     phoneSaveAskedRef.current = new Set();
     phoneSaveBypassRef.current = false;
     setActiveTab('pagar');
@@ -374,7 +386,7 @@ export default function VentaFinalizarOperacionModal({
     try {
       const response = await composer.submitPaidSale({
         contacto: {
-          nombre_contacto: normalizeOptionalText(contact.nombre_contacto),
+          nombre_contacto: resolvedContactName,
           telefono_contacto: normalizeOptionalText(contact.telefono_contacto),
           dni: null,
           rtn: null,
@@ -411,7 +423,7 @@ export default function VentaFinalizarOperacionModal({
       const canal = contact.canal;
       const payload = composer.buildPedidoPendientePayload({
         contacto: {
-          nombre_contacto: normalizeOptionalText(contact.nombre_contacto),
+          nombre_contacto: resolvedContactName,
           telefono_contacto: normalizeOptionalText(contact.telefono_contacto),
           dni: null,
           rtn: null,
@@ -490,6 +502,7 @@ export default function VentaFinalizarOperacionModal({
     selectedCliente?.nombre_cliente ||
     [selectedCliente?.nombre, selectedCliente?.apellido].filter(Boolean).join(' ')
   );
+  const resolvedContactName = normalizeOptionalText(contact.nombre_contacto) || selectedClienteLabel;
   const canalOptions = [
     { value: 'LOCAL', label: 'LOCAL' },
     { value: 'TELEFONO', label: 'TELEFONO' },
