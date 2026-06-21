@@ -1,5 +1,22 @@
 const resolveTicketWidthMm = (value) => Number(value) === 58 ? 58 : 80;
-const resolveContentWidthMm = (ticketWidthMm) => ticketWidthMm === 58 ? 54 : 76;
+
+const resolveFacturaLikeMetrics = (ticketWidthMm) => {
+  if (ticketWidthMm === 58) {
+    return {
+      ticketWidthMm: 58,
+      marginLeftMm: 4,
+      marginRightMm: 5,
+      contentWidthMm: 47.5
+    };
+  }
+
+  return {
+    ticketWidthMm: 80,
+    marginLeftMm: 7,
+    marginRightMm: 10,
+    contentWidthMm: 61.5
+  };
+};
 
 const escapeHtml = (value) =>
   String(value ?? '')
@@ -133,9 +150,22 @@ export const buildComandaCocinaHtml = (comanda, options = {}) => {
   }
 
   const ticketWidthMm = resolveTicketWidthMm(options?.widthMm);
-  const contentWidthMm = resolveContentWidthMm(ticketWidthMm);
-  const itemQtyMinWidth = ticketWidthMm === 58 ? '10mm' : '14mm';
-  const itemDetailPaddingLeft = ticketWidthMm === 58 ? '8mm' : '14mm';
+  const printMetrics = resolveFacturaLikeMetrics(ticketWidthMm);
+  const contentWidthMm = printMetrics.contentWidthMm;
+  const marginLeftMm = printMetrics.marginLeftMm;
+  const marginRightMm = printMetrics.marginRightMm;
+  const isNarrowTicket = ticketWidthMm === 58;
+  const baseFontPx = isNarrowTicket ? 10.5 : 11.5;
+  const titleFontPx = isNarrowTicket ? 14 : 16;
+  const orderFontPx = isNarrowTicket ? 13 : 14;
+  const dateFontPx = isNarrowTicket ? 10.5 : 11.5;
+  const metaFontPx = isNarrowTicket ? 10.5 : 11;
+  const qtyFontPx = isNarrowTicket ? 15 : 17;
+  const nameFontPx = isNarrowTicket ? 13.5 : 15.5;
+  const tagFontPx = isNarrowTicket ? 10 : 10.8;
+  const qtyWidthMm = isNarrowTicket ? 7 : 8;
+  const nestedPaddingMm = isNarrowTicket ? 7 : 8;
+  const metaLabelWidthMm = isNarrowTicket ? 16 : 18;
   const items = validation.items;
   const fecha = formatDateTime(comanda?.fecha_hora_pedido || comanda?.fecha_hora_facturacion);
   const numeroPedido = toSafeText(comanda?.numero_pedido || comanda?.numero_venta || comanda?.codigo_venta);
@@ -168,7 +198,10 @@ export const buildComandaCocinaHtml = (comanda, options = {}) => {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Comanda cocina</title>
     <style>
-      @page { size: ${ticketWidthMm}mm auto; margin: 2mm; }
+      @page {
+        size: ${ticketWidthMm}mm auto;
+        margin: 0;
+      }
       *,
       *::before,
       *::after {
@@ -177,8 +210,8 @@ export const buildComandaCocinaHtml = (comanda, options = {}) => {
       html, body {
         margin: 0;
         padding: 0;
-        width: 100%;
-        max-width: 100%;
+        width: ${ticketWidthMm}mm;
+        max-width: ${ticketWidthMm}mm;
         overflow-x: hidden;
         background: #fff;
         color: #111;
@@ -190,59 +223,73 @@ export const buildComandaCocinaHtml = (comanda, options = {}) => {
       }
       .comanda-cocina-print-root {
         width: ${contentWidthMm}mm;
-        max-width: 100%;
-        margin: 0 auto;
+        max-width: ${contentWidthMm}mm;
+        margin-left: ${marginLeftMm}mm;
+        margin-right: ${marginRightMm}mm;
+        padding: 0;
+        overflow-x: hidden;
         overflow-wrap: anywhere;
         word-break: break-word;
       }
       .comanda-cocina-print {
         width: 100%;
         max-width: 100%;
-        font-size: 13px;
-        line-height: 1.4;
+        font-size: ${baseFontPx}px;
+        line-height: 1.28;
         font-weight: 500;
+        overflow-x: hidden;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .comanda-cocina-print,
+      .comanda-cocina-print * {
+        max-width: 100%;
         overflow-wrap: anywhere;
         word-break: break-word;
       }
       .comanda-cocina-print__header {
         text-align: center;
-        margin-bottom: 8px;
+        margin-bottom: 5px;
       }
       .comanda-cocina-print__header h1 {
-        margin: 0 0 5px;
-        font-size: 20px;
+        margin: 0 0 3px;
+        font-size: ${titleFontPx}px;
         font-weight: 800;
         letter-spacing: 0.06em;
       }
       .comanda-cocina-print__header strong {
         display: block;
-        font-size: 17px;
-        margin-bottom: 5px;
+        font-size: ${orderFontPx}px;
+        margin-bottom: 3px;
       }
       .comanda-cocina-print__header span {
         display: block;
-        font-size: 14px;
+        font-size: ${dateFontPx}px;
       }
       .comanda-cocina-print__divider {
         border-top: 1px dashed #111;
-        margin: 9px 0;
+        margin: 5px 0;
       }
       .comanda-cocina-print__meta {
         display: grid;
-        gap: 5px;
+        gap: 3px;
       }
       .comanda-cocina-print__meta-row {
         display: flex;
-        justify-content: space-between;
-        gap: 8px;
+        gap: 3px;
         align-items: flex-start;
         min-width: 0;
+        max-width: 100%;
+        font-size: ${metaFontPx}px;
       }
       .comanda-cocina-print__meta-row span:first-child {
+        flex: 0 0 ${metaLabelWidthMm}mm;
+        min-width: 0;
+        max-width: ${metaLabelWidthMm}mm;
         font-weight: 700;
-        min-width: 24mm;
       }
       .comanda-cocina-print__meta-row span:last-child {
+        flex: 1 1 auto;
         text-align: right;
         min-width: 0;
         max-width: 100%;
@@ -251,48 +298,51 @@ export const buildComandaCocinaHtml = (comanda, options = {}) => {
       }
       .comanda-cocina-print__items {
         display: grid;
-        gap: 8px;
+        gap: 5px;
       }
       .comanda-cocina-print__item {
         border-bottom: 1px dashed #ccc;
-        padding-bottom: 7px;
+        padding-bottom: 4px;
       }
       .comanda-cocina-print__item-head {
         display: flex;
-        gap: 8px;
+        gap: 4px;
         align-items: baseline;
         min-width: 0;
+        max-width: 100%;
       }
       .comanda-cocina-print__qty {
-        font-size: 22px;
+        flex: 0 0 ${qtyWidthMm}mm;
+        min-width: 0;
+        max-width: ${qtyWidthMm}mm;
+        font-size: ${qtyFontPx}px;
         line-height: 1;
         font-weight: 800;
-        min-width: ${itemQtyMinWidth};
-        flex: 0 0 auto;
       }
       .comanda-cocina-print__name {
-        font-size: 19px;
-        line-height: 1.15;
-        font-weight: 800;
-        text-transform: uppercase;
+        flex: 1 1 auto;
         min-width: 0;
         max-width: 100%;
+        font-size: ${nameFontPx}px;
+        line-height: 1.1;
+        font-weight: 800;
+        text-transform: uppercase;
         overflow-wrap: anywhere;
         word-break: break-word;
       }
       .comanda-cocina-print__tags,
       .comanda-cocina-print__notes {
-        margin-top: 5px;
-        padding-left: ${itemDetailPaddingLeft};
+        margin-top: 3px;
+        padding-left: ${nestedPaddingMm}mm;
         display: grid;
-        gap: 4px;
+        gap: 2px;
         min-width: 0;
         max-width: 100%;
       }
       .comanda-cocina-print__tag,
       .comanda-cocina-print__note {
-        font-size: 13px;
-        line-height: 1.35;
+        font-size: ${tagFontPx}px;
+        line-height: 1.25;
         min-width: 0;
         max-width: 100%;
         overflow-wrap: anywhere;
@@ -303,9 +353,9 @@ export const buildComandaCocinaHtml = (comanda, options = {}) => {
         font-weight: 700;
       }
       .comanda-cocina-print__general-note {
-        margin-top: 10px;
-        font-size: 14px;
-        line-height: 1.35;
+        margin-top: 6px;
+        font-size: ${tagFontPx}px;
+        line-height: 1.25;
         font-weight: 700;
         text-transform: uppercase;
         min-width: 0;
