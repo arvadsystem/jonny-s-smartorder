@@ -10,7 +10,6 @@ const SERVICE_CLASSES = {
   LOCAL: 'is-service'
 };
 
-const SCREEN_MODE_VISIBLE_ITEMS_LIMIT = 4;
 
 const classifyModification = (value) => {
   const text = String(value || '').trim();
@@ -154,17 +153,11 @@ export default function CocinaOrderCard({
   const isExpiring = countdown.isDelayed;
 
   const allItems = Array.isArray(pedido.items) ? pedido.items : [];
-  const shouldLimitItemsForScreen = isScreenMode && allItems.length > SCREEN_MODE_VISIBLE_ITEMS_LIMIT;
-  const screenVisibleItems = shouldLimitItemsForScreen
-    ? allItems.slice(0, SCREEN_MODE_VISIBLE_ITEMS_LIMIT)
-    : allItems;
-  const hiddenScreenItemsCount = shouldLimitItemsForScreen
-    ? allItems.length - screenVisibleItems.length
-    : 0;
 
+  const isLargeScreenOrder = isScreenMode && allItems.length > 3;
   const isDensePendingCard = !isScreenMode && isPendingColumn && allItems.length > 3;
   const denseSplitIndex = Math.ceil(allItems.length / 2);
-  const denseLeftItems = isDensePendingCard ? allItems.slice(0, denseSplitIndex) : screenVisibleItems;
+  const denseLeftItems = isDensePendingCard ? allItems.slice(0, denseSplitIndex) : allItems;
   const denseRightItems = isDensePendingCard ? allItems.slice(denseSplitIndex) : [];
 
   const showAdvanceBtn = canAdvance || isSuperAdmin;
@@ -225,7 +218,7 @@ export default function CocinaOrderCard({
 
   return (
     <article
-      className={`kds-card${isExpiring ? ' is-expiring' : ''}${disabled ? ' is-disabled' : ''}${isDensePendingCard ? ' cocina-order-card--dense' : ''}`}
+      className={`kds-card${isExpiring ? ' is-expiring' : ''}${disabled ? ' is-disabled' : ''}${isDensePendingCard ? ' cocina-order-card--dense' : ''}${isLargeScreenOrder ? ' cocina-order-card--tv-large' : ''}`}
       role={canOpenDetail ? 'button' : undefined}
       tabIndex={canOpenDetail ? 0 : -1}
       onClick={handleCardClick}
@@ -293,13 +286,6 @@ export default function CocinaOrderCard({
           {isDensePendingCard ? (
             <div className="kds-card__items kds-card__items--secondary">
               {denseRightItems.map(renderItem)}
-            </div>
-          ) : null}
-
-          {hiddenScreenItemsCount > 0 ? (
-            <div className="kds-card__more kds-card__more--tv">
-              <i className="bi bi-plus-circle" aria-hidden="true" />
-              <span>+{hiddenScreenItemsCount} más</span>
             </div>
           ) : null}
 

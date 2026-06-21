@@ -8,21 +8,42 @@ const COLUMN_CSS_CLASS = {
   LISTOS_PARA_ENTREGA: 'is-ready'
 };
 
-const TV_PENDING_PAGE_SIZE = 6;
-const TV_PREPARING_PAGE_SIZE = 3;
+const TV_PENDING_PAGE_SIZE = 4;
+const TV_PREPARING_PAGE_SIZE = 2;
 const TV_ROTATION_MS = 10000;
+const TV_LARGE_ORDER_ITEMS_THRESHOLD = 3;
 
 const getTvPageSize = (columnKey) =>
   columnKey === 'PENDIENTES' ? TV_PENDING_PAGE_SIZE : TV_PREPARING_PAGE_SIZE;
+
+const isLargeKitchenOrderForTv = (pedido) =>
+  (Array.isArray(pedido?.items) ? pedido.items.length : 0) > TV_LARGE_ORDER_ITEMS_THRESHOLD;
 
 const paginateItems = (items, pageSize) => {
   const rows = Array.isArray(items) ? items : [];
   const size = Math.max(1, Number(pageSize) || 1);
   const pages = [];
+  let currentPage = [];
 
-  for (let index = 0; index < rows.length; index += size) {
-    pages.push(rows.slice(index, index + size));
-  }
+  rows.forEach((item) => {
+    if (isLargeKitchenOrderForTv(item)) {
+      if (currentPage.length > 0) {
+        pages.push(currentPage);
+        currentPage = [];
+      }
+      pages.push([item]);
+      return;
+    }
+
+    currentPage.push(item);
+
+    if (currentPage.length >= size) {
+      pages.push(currentPage);
+      currentPage = [];
+    }
+  });
+
+  if (currentPage.length > 0) pages.push(currentPage);
 
   return pages.length ? pages : [[]];
 };

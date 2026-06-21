@@ -2116,7 +2116,6 @@
 .cocina-page--tv-mode .kds-mod-line,
 .cocina-page--tv-mode .kds-card__order-note-text {
   display: -webkit-box;
-  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -2124,13 +2123,11 @@
 .cocina-page--tv-mode .kds-card__item-name {
   font-size: 0.9rem;
   line-height: 1.18;
-  -webkit-line-clamp: 2;
 }
 
 .cocina-page--tv-mode .kds-mod-line {
   font-size: 0.68rem;
   line-height: 1.18;
-  -webkit-line-clamp: 2;
 }
 
 .cocina-page--tv-mode .kds-card__order-note {
@@ -2145,25 +2142,8 @@
 .cocina-page--tv-mode .kds-card__order-note-text {
   font-size: 0.66rem;
   line-height: 1.2;
-  -webkit-line-clamp: 2;
 }
 
-.cocina-page--tv-mode .kds-card__more--tv {
-  width: auto;
-  margin: 0 0.8rem 0.55rem;
-  padding: 0.34rem 0.55rem;
-  border-radius: 9px;
-  background: var(--kds-surface-3);
-  border: 1px dashed var(--kds-border-strong);
-  color: var(--kds-text-2);
-  font-size: 0.68rem;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.32rem;
-  cursor: default;
-}
 
 @media (min-width: 1600px) and (min-height: 850px) {
   .cocina-page--tv-mode .kds-board {
@@ -2243,14 +2223,12 @@
 
 .cocina-page--tv-mode .kds-card {
   min-height: 0;
-  max-height: clamp(178px, 27dvh, 286px);
   border-radius: 14px;
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
 }
 
 .cocina-page--tv-mode .kds-column.is-prep .kds-card {
-  max-height: clamp(160px, 25dvh, 260px);
 }
 
 .cocina-page--tv-mode .kds-card__content,
@@ -2325,7 +2303,6 @@
   font-size: 1rem;
   font-weight: 800;
   line-height: 1.12;
-  -webkit-line-clamp: 2;
 }
 
 .cocina-page--tv-mode .kds-card__item-mods {
@@ -2336,7 +2313,6 @@
 .cocina-page--tv-mode .kds-mod-line {
   font-size: 0.72rem;
   line-height: 1.12;
-  -webkit-line-clamp: 1;
 }
 
 .cocina-page--tv-mode .kds-card__order-note {
@@ -2347,22 +2323,14 @@
 .cocina-page--tv-mode .kds-card__order-note-text {
   font-size: 0.7rem;
   line-height: 1.15;
-  -webkit-line-clamp: 2;
 }
 
-.cocina-page--tv-mode .kds-card__more--tv {
-  margin: 0 0.85rem 0.52rem;
-  padding: 0.28rem 0.5rem;
-  font-size: 0.72rem;
-}
 
 @media (min-width: 1600px) and (min-height: 850px) {
   .cocina-page--tv-mode .kds-card {
-    max-height: clamp(200px, 28dvh, 330px);
   }
 
   .cocina-page--tv-mode .kds-column.is-prep .kds-card {
-    max-height: clamp(182px, 26dvh, 300px);
   }
 
   .cocina-page--tv-mode .kds-card__ticket {
@@ -2376,4 +2344,46 @@
   .cocina-page--tv-mode .kds-card__item-name {
     font-size: 1.08rem;
   }
+}
+
+/* AM: TV full-order visibility - no hidden kitchen lines inside cards */
+.cocina-page--tv-mode .kds-card,
+.cocina-page--tv-mode .kds-column.is-prep .kds-card {
+  max-height: none;
+  height: auto;
+  overflow: hidden;
+}
+
+.cocina-page--tv-mode .kds-column.is-pending .kds-card.cocina-order-card--tv-large {
+  grid-column: 1 / -1;
+}
+
+.cocina-page--tv-mode .kds-card__content,
+.cocina-page--tv-mode .kds-card__body-scroll {
+  overflow: hidden;
+  max-height: none;
+  height: auto;
+}
+
+.cocina-page--tv-mode .kds-card__item-name,
+.cocina-page--tv-mode .kds-mod-line,
+.cocina-page--tv-mode .kds-card__order-note-text {
+  display: block;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.cocina-page--tv-mode .kds-card__item-name {
+  line-height: 1.18;
+}
+
+.cocina-page--tv-mode .kds-mod-line,
+.cocina-page--tv-mode .kds-card__order-note-text {
+  line-height: 1.2;
+}
+
+.cocina-page--tv-mode .kds-column.is-pending .kds-column__body,
+.cocina-page--tv-mode .kds-column.is-prep .kds-column__body {
+  align-items: stretch;
 }
