@@ -43,6 +43,33 @@ const formatExtraTicketLabel = (extra) => {
   return `${name} x${toNumber(extra?.cantidad)} ${formatCurrency(getExtraSubtotal(extra))}`;
 };
 
+const getSnapshotSalsas = (item) => {
+  const componentes = item?.origen_snapshot?.componentes;
+  if (Array.isArray(componentes)) return componentes;
+  if (Array.isArray(componentes?.seleccion)) return componentes.seleccion;
+
+  const complementos = item?.origen_snapshot?.complementos;
+  if (Array.isArray(complementos)) return complementos;
+  if (Array.isArray(complementos?.seleccion)) return complementos.seleccion;
+
+  return [];
+};
+
+const resolveItemSalsas = (item) => {
+  const directComplementos = Array.isArray(item?.complementos) ? item.complementos : [];
+  if (directComplementos.length > 0) {
+    return directComplementos
+      .map((entry) => cleanText(entry?.nombre) || 'Salsa')
+      .filter(Boolean);
+  }
+
+  const snapshotComponentes = getSnapshotSalsas(item);
+
+  return snapshotComponentes
+    .map((entry) => cleanText(entry?.nombre) || 'Salsa')
+    .filter(Boolean);
+};
+
 const resolveFacturaDateTime = (venta) =>
   venta?.fecha_hora_facturacion || venta?.fecha_hora_pedido || null;
 
@@ -256,6 +283,7 @@ export default function VentaTicketPrint({
               const subtotalLinea = toNumber(item?.sub_total);
               const descuentoLinea = toNumber(item?.descuento || item?.descuento_linea);
               const extras = isStandaloneExtraItem(item) ? [] : (Array.isArray(item?.extras) ? item.extras : []);
+              const salsas = isStandaloneExtraItem(item) ? [] : resolveItemSalsas(item);
               const extrasSubtotal = getItemExtrasSubtotal(item);
               const netoLinea = roundMoney(Math.max(subtotalLinea - descuentoLinea, 0) + extrasSubtotal);
               const descuentoPorcentaje = getLineDiscountPercent(item);
@@ -275,6 +303,11 @@ export default function VentaTicketPrint({
                   {extras.length > 0 ? (
                     <div className="venta-ticket-print__item-row-note">
                       <span>Extras: {extras.map(formatExtraTicketLabel).join(', ')}</span>
+                    </div>
+                  ) : null}
+                  {salsas.length > 0 ? (
+                    <div className="venta-ticket-print__item-row-note">
+                      <span>{salsas.length === 1 ? 'Salsa' : 'Salsas'}: {salsas.join(', ')}</span>
                     </div>
                   ) : null}
                 </div>

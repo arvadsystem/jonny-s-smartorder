@@ -33,16 +33,28 @@ const normalizeDetailList = (items, mapItem) => (
   Array.isArray(items) ? items : []
 ).map(mapItem).filter(Boolean);
 
+const getSnapshotSalsas = (item) => {
+  const componentes = item?.origen_snapshot?.componentes;
+  if (Array.isArray(componentes)) return componentes;
+  if (Array.isArray(componentes?.seleccion)) return componentes.seleccion;
+
+  const complementos = item?.origen_snapshot?.complementos;
+  if (Array.isArray(complementos)) return complementos;
+  if (Array.isArray(complementos?.seleccion)) return complementos.seleccion;
+
+  return [];
+};
+
 const resolveItemComplementos = (item) => {
   const directComplementos = normalizeDetailList(item?.complementos, (complemento, complementoIndex) => ({
     key: `${complemento?.id_complemento || complementoIndex}-${complementoIndex}`,
-    nombre: toSafeText(complemento?.nombre, 'Complemento')
+    nombre: toSafeText(complemento?.nombre, 'Salsa')
   }));
   if (directComplementos.length > 0) return directComplementos;
 
-  const snapshotComponentes = normalizeDetailList(item?.origen_snapshot?.componentes, (componente, componenteIndex) => ({
+  const snapshotComponentes = normalizeDetailList(getSnapshotSalsas(item), (componente, componenteIndex) => ({
     key: `${componente?.id_complemento || componenteIndex}-${componenteIndex}`,
-    nombre: toSafeText(componente?.nombre, 'Complemento')
+    nombre: toSafeText(componente?.nombre, 'Salsa')
   }));
   return snapshotComponentes;
 };
@@ -57,6 +69,18 @@ const renderTags = (title, items = [], valueBuilder) => {
           <span>${valueBuilder(item)}</span>
         </div>
       `).join('')}
+    </div>
+  `;
+};
+
+const renderTagSummary = (title, items = [], valueBuilder) => {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  return `
+    <div class="comanda-cocina-print__tags">
+      <div class="comanda-cocina-print__tag">
+        <span class="comanda-cocina-print__tag-title">${escapeHtml(title)}:</span>
+        <span>${escapeHtml(items.map(valueBuilder).join(', '))}</span>
+      </div>
     </div>
   `;
 };
@@ -295,7 +319,7 @@ export const buildComandaCocinaHtml = (comanda) => {
                 <span class="comanda-cocina-print__name">${escapeHtml(item.nombreItem)}</span>
               </div>
               ${renderTags('Extra', item.extras, (extra) => `${escapeHtml(extra.nombre)} x${escapeHtml(extra.cantidad)}`)}
-              ${renderTags('Complemento', item.complementos, (complemento) => escapeHtml(complemento.nombre))}
+              ${renderTagSummary(item.complementos.length === 1 ? 'Salsa' : 'Salsas', item.complementos, (complemento) => complemento.nombre)}
               ${item.observacion ? `
                 <div class="comanda-cocina-print__notes">
                   <div class="comanda-cocina-print__note">
