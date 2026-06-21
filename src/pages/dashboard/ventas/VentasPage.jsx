@@ -232,6 +232,174 @@ export default function VentasPage() {
     return response;
   };
 
+  const printFacturaAfterSuccessfulPayment = async ({
+    response,
+    payload = null,
+    ventaDetail: providedVentaDetail = null,
+    facturaPrintWindow = openPrintWindow('Preparando factura'),
+    origin = 'POST_PAYMENT',
+    failureMessage = 'La venta se creo, pero no se pudo imprimir la factura automaticamente ni abrir la impresion manual.',
+    qzFallbackMessage = 'La factura no se pudo imprimir automaticamente con QZ Tray, pero se abrio la impresion manual.',
+    browserFailureMessage = 'La venta se creo, pero no se pudo abrir la factura para imprimir.'
+  } = {}) => {
+    const idFactura = Number(response?.id_factura || providedVentaDetail?.id_factura || 0) || null;
+    if (!idFactura) {
+      if (facturaPrintWindow) facturaPrintWindow.close();
+      return { ok: false, ventaDetail: providedVentaDetail };
+    }
+
+    let ventaDetail = providedVentaDetail || normalizeVentaDetail(response);
+
+    if (!providedVentaDetail && !hasCreateVentaDetailPayload(response)) {
+      try {
+        ventaDetail = await getVentaDetail(idFactura);
+      } catch {
+        // El detalle completo mejora el ticket, pero la impresion puede resolverse por id_factura.
+      }
+    }
+
+    const resolvedSucursalId = Number.parseInt(
+      String(ventaDetail?.id_sucursal ?? response?.id_sucursal ?? payload?.id_sucursal ?? ''),
+      10
+    );
+    const resolvedCajaId = Number.parseInt(
+      String(ventaDetail?.id_caja ?? response?.id_caja ?? payload?.id_caja ?? ''),
+      10
+    );
+    const runtimePrinterConfig = Number.isInteger(resolvedSucursalId) && resolvedSucursalId > 0
+      ? await getRuntimePrinterConfig({
+        idSucursal: resolvedSucursalId,
+        idCaja: Number.isInteger(resolvedCajaId) && resolvedCajaId > 0 ? resolvedCajaId : null
+      }).catch(() => null)
+      : null;
+    const facturaPrinterConfig = resolvePrinterByType(runtimePrinterConfig, 'FACTURA');
+    const facturaWidthMm = resolvePrintWidthMm(
+      facturaPrinterConfig?.ancho_mm,
+      ventaDetail?.facturacion?.ticket?.ancho_ticket_mm
+    );
+    const attemptedQzMode = isQzMode(facturaPrinterConfig)
+      ? String(facturaPrinterConfig?.modo_impresion || 'QZ_HTML').trim().toUpperCase()
+      : null;
+    const canUseQzFactura = Boolean(
+      facturaPrinterConfig?.activa !== false
+      && attemptedQzMode
+      && String(facturaPrinterConfig?.nombre_impresora_sistema || '').trim()
+    );
+
+    try {
+      if (canUseQzFactura) {
+        await printVentaTicketWithQz(idFactura, facturaPrinterConfig);
+        if (facturaPrintWindow && !facturaPrintWindow.closed) facturaPrintWindow.close();
+      } else {
+        await printVentaTicketPdf(idFactura, facturaPrintWindow);
+      }
+      void ventasService.registerPrintEvent(idFactura, {
+        tipo_documento: 'FACTURA',
+        estado: 'GENERADA',
+        nombre_logico: 'FACTURA',
+        id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
+        nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
+        ancho_mm: facturaWidthMm,
+        metadata: {
+          origin,
+          printMode: canUseQzFactura ? attemptedQzMode : 'BROWSER',
+          logicalPrinterName: 'FACTURA',
+          printerType: 'FACTURA',
+          fallbackUsed: false
+        }
+      }).catch(() => undefined);
+      return { ok: true, ventaDetail };
+    } catch (error) {
+      const printErrorMessage = error?.message || 'No se pudo abrir la factura para imprimir.';
+
+      if (attemptedQzMode && canUseQzFactura) {
+        void ventasService.registerPrintEvent(idFactura, {
+          tipo_documento: 'FACTURA',
+          estado: 'ERROR',
+          nombre_logico: 'FACTURA',
+          id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
+          nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
+          ancho_mm: facturaWidthMm,
+          detalle_error: printErrorMessage,
+          metadata: {
+            origin,
+            printMode: attemptedQzMode,
+            logicalPrinterName: 'FACTURA',
+            printerType: 'FACTURA',
+            fallbackPlanned: 'BROWSER'
+          }
+        }).catch(() => undefined);
+
+        try {
+          await printVentaTicketPdf(idFactura, facturaPrintWindow);
+          openToast('IMPRESION FACTURA', qzFallbackMessage, 'warning');
+          void ventasService.registerPrintEvent(idFactura, {
+            tipo_documento: 'FACTURA',
+            estado: 'GENERADA',
+            nombre_logico: 'FACTURA',
+            id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
+            nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
+            ancho_mm: facturaWidthMm,
+            metadata: {
+              origin,
+              printMode: 'BROWSER',
+              logicalPrinterName: 'FACTURA',
+              printerType: 'FACTURA',
+              fallbackUsed: true,
+              fallbackFrom: attemptedQzMode,
+              qzError: printErrorMessage
+            }
+          }).catch(() => undefined);
+          return { ok: true, ventaDetail, fallbackUsed: true };
+        } catch (fallbackError) {
+          if (facturaPrintWindow) facturaPrintWindow.close();
+          console.error('[Ventas] No se pudo imprimir la factura ni con QZ ni con el navegador.', fallbackError);
+          openToast('IMPRESION FACTURA', failureMessage, 'warning');
+          void ventasService.registerPrintEvent(idFactura, {
+            tipo_documento: 'FACTURA',
+            estado: 'ERROR',
+            nombre_logico: 'FACTURA',
+            id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
+            nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
+            ancho_mm: facturaWidthMm,
+            detalle_error: fallbackError?.message || printErrorMessage,
+            metadata: {
+              origin,
+              printMode: 'BROWSER',
+              logicalPrinterName: 'FACTURA',
+              printerType: 'FACTURA',
+              fallbackAttempted: true,
+              fallbackFrom: attemptedQzMode,
+              qzError: printErrorMessage
+            }
+          }).catch(() => undefined);
+          return { ok: false, ventaDetail, error: fallbackError };
+        }
+      }
+
+      if (facturaPrintWindow) facturaPrintWindow.close();
+      console.error('[Ventas] No se pudo abrir la factura para impresion.', error);
+      openToast('IMPRESION FACTURA', browserFailureMessage, 'warning');
+      void ventasService.registerPrintEvent(idFactura, {
+        tipo_documento: 'FACTURA',
+        estado: 'ERROR',
+        nombre_logico: 'FACTURA',
+        id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
+        nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
+        ancho_mm: facturaWidthMm,
+        detalle_error: printErrorMessage,
+        metadata: {
+          origin,
+          printMode: 'BROWSER',
+          logicalPrinterName: 'FACTURA',
+          printerType: 'FACTURA',
+          fallbackUsed: false
+        }
+      }).catch(() => undefined);
+      return { ok: false, ventaDetail, error };
+    }
+  };
+
   const openDetail = async (venta) => {
     if (!venta?.id_factura) return;
 
@@ -287,149 +455,14 @@ export default function VentasPage() {
         }
       }
 
-      const resolvedSucursalId = Number.parseInt(
-        String(ventaDetail?.id_sucursal ?? response?.id_sucursal ?? payload?.id_sucursal ?? ''),
-        10
-      );
-      const resolvedCajaId = Number.parseInt(
-        String(ventaDetail?.id_caja ?? response?.id_caja ?? payload?.id_caja ?? ''),
-        10
-      );
-      const runtimePrinterConfig = Number.isInteger(resolvedSucursalId) && resolvedSucursalId > 0
-        ? await getRuntimePrinterConfig({
-          idSucursal: resolvedSucursalId,
-          idCaja: Number.isInteger(resolvedCajaId) && resolvedCajaId > 0 ? resolvedCajaId : null
-        }).catch(() => null)
-        : null;
-      const facturaPrinterConfig = resolvePrinterByType(runtimePrinterConfig, 'FACTURA');
-      const facturaWidthMm = resolvePrintWidthMm(
-        facturaPrinterConfig?.ancho_mm,
-        ventaDetail?.facturacion?.ticket?.ancho_ticket_mm
-      );
-      const attemptedQzMode = isQzMode(facturaPrinterConfig)
-        ? String(facturaPrinterConfig?.modo_impresion || 'QZ_HTML').trim().toUpperCase()
-        : null;
-      const canUseQzFactura = Boolean(
-        facturaPrinterConfig?.activa !== false
-        && attemptedQzMode
-        && String(facturaPrinterConfig?.nombre_impresora_sistema || '').trim()
-      );
-
-      try {
-        if (canUseQzFactura) {
-          await printVentaTicketWithQz(response.id_factura, facturaPrinterConfig);
-          if (facturaPrintWindow && !facturaPrintWindow.closed) facturaPrintWindow.close();
-        } else {
-          await printVentaTicketPdf(response.id_factura, facturaPrintWindow);
-        }
-        void ventasService.registerPrintEvent(response.id_factura, {
-          tipo_documento: 'FACTURA',
-          estado: 'GENERADA',
-          nombre_logico: 'FACTURA',
-          id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
-          nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
-          ancho_mm: facturaWidthMm,
-          metadata: {
-            printMode: canUseQzFactura ? attemptedQzMode : 'BROWSER',
-            logicalPrinterName: 'FACTURA',
-            printerType: 'FACTURA',
-            fallbackUsed: false
-          }
-        }).catch(() => undefined);
-      } catch (error) {
-        const printErrorMessage = error?.message || 'No se pudo abrir la factura para imprimir.';
-
-        if (attemptedQzMode && canUseQzFactura) {
-          void ventasService.registerPrintEvent(response.id_factura, {
-            tipo_documento: 'FACTURA',
-            estado: 'ERROR',
-            nombre_logico: 'FACTURA',
-            id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
-            nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
-            ancho_mm: facturaWidthMm,
-            detalle_error: printErrorMessage,
-            metadata: {
-              printMode: attemptedQzMode,
-              logicalPrinterName: 'FACTURA',
-              printerType: 'FACTURA',
-              fallbackPlanned: 'BROWSER'
-            }
-          }).catch(() => undefined);
-
-          try {
-            await printVentaTicketPdf(response.id_factura, facturaPrintWindow);
-            openToast(
-              'IMPRESION FACTURA',
-              'La factura no se pudo imprimir automaticamente con QZ Tray, pero se abrio la impresion manual.',
-              'warning'
-            );
-            void ventasService.registerPrintEvent(response.id_factura, {
-              tipo_documento: 'FACTURA',
-              estado: 'GENERADA',
-              nombre_logico: 'FACTURA',
-              id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
-              nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
-              ancho_mm: facturaWidthMm,
-              metadata: {
-                printMode: 'BROWSER',
-                logicalPrinterName: 'FACTURA',
-                printerType: 'FACTURA',
-                fallbackUsed: true,
-                fallbackFrom: attemptedQzMode,
-                qzError: printErrorMessage
-              }
-            }).catch(() => undefined);
-          } catch (fallbackError) {
-            if (facturaPrintWindow) facturaPrintWindow.close();
-            console.error('[Ventas] No se pudo imprimir la factura ni con QZ ni con el navegador.', fallbackError);
-            openToast(
-              'IMPRESION FACTURA',
-              'La venta se creo, pero no se pudo imprimir la factura automaticamente ni abrir la impresion manual.',
-              'warning'
-            );
-            void ventasService.registerPrintEvent(response.id_factura, {
-              tipo_documento: 'FACTURA',
-              estado: 'ERROR',
-              nombre_logico: 'FACTURA',
-              id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
-              nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
-              ancho_mm: facturaWidthMm,
-              detalle_error: fallbackError?.message || printErrorMessage,
-              metadata: {
-                printMode: 'BROWSER',
-                logicalPrinterName: 'FACTURA',
-                printerType: 'FACTURA',
-                fallbackAttempted: true,
-                fallbackFrom: attemptedQzMode,
-                qzError: printErrorMessage
-              }
-            }).catch(() => undefined);
-          }
-        } else {
-          if (facturaPrintWindow) facturaPrintWindow.close();
-          console.error('[Ventas] No se pudo abrir la factura para impresion.', error);
-          openToast(
-            'IMPRESION FACTURA',
-            'La venta se creo, pero no se pudo abrir la factura para imprimir.',
-            'warning'
-          );
-          void ventasService.registerPrintEvent(response.id_factura, {
-            tipo_documento: 'FACTURA',
-            estado: 'ERROR',
-            nombre_logico: 'FACTURA',
-            id_impresora: Number(facturaPrinterConfig?.id_impresora || 0) || null,
-            nombre_impresora_snapshot: facturaPrinterConfig?.nombre_impresora_sistema || null,
-            ancho_mm: facturaWidthMm,
-            detalle_error: printErrorMessage,
-            metadata: {
-              printMode: 'BROWSER',
-              logicalPrinterName: 'FACTURA',
-              printerType: 'FACTURA',
-              fallbackUsed: false
-            }
-          }).catch(() => undefined);
-        }
-      }
+      const printResult = await printFacturaAfterSuccessfulPayment({
+        response,
+        payload,
+        ventaDetail,
+        facturaPrintWindow,
+        origin: 'DIRECT_SALE'
+      });
+      ventaDetail = printResult.ventaDetail || ventaDetail;
 
       setComandaPrompt({
         open: true,
@@ -443,6 +476,29 @@ export default function VentasPage() {
     }
 
     return response;
+  };
+
+  const handlePendingOrderCreatedPrintPrompt = (comanda) => {
+    setComandaPrompt({
+      open: true,
+      venta: comanda,
+      loading: false,
+      error: '',
+      mode: 'pending-order'
+    });
+  };
+
+  const handleSuccessfulPendingOrderPaymentPrint = async (response, options = {}) => {
+    const printResult = await printFacturaAfterSuccessfulPayment({
+      response,
+      payload: options?.payload || null,
+      ventaDetail: null,
+      origin: options?.origin || 'PENDING_ORDER_PAYMENT',
+      failureMessage: 'El pago se registro correctamente, pero la factura no pudo imprimirse',
+      qzFallbackMessage: 'El pago se registro correctamente. La factura no se pudo imprimir automaticamente con QZ Tray, pero se abrio la impresion manual.',
+      browserFailureMessage: 'El pago se registro correctamente, pero la factura no pudo imprimirse'
+    });
+    return printResult;
   };
 
   const closeComandaPrompt = async ({ markAsCancelled = true } = {}) => {
@@ -643,9 +699,10 @@ export default function VentasPage() {
   const handleAcceptComanda = async () => {
     const venta = comandaPrompt.venta;
     const mode = comandaPrompt.mode;
-    if (!venta?.id_factura || comandaPrompt.loading) return;
+    const isPendingOrderComanda = mode === 'pending-order';
+    if ((isPendingOrderComanda ? !venta?.id_pedido : !venta?.id_factura) || comandaPrompt.loading) return;
 
-    const comandaPrintWindow = openPrintWindow('Preparando comanda');
+    const comandaPrintWindow = isPendingOrderComanda ? null : openPrintWindow('Preparando comanda');
 
     setComandaPrompt((current) => ({
       ...current,
@@ -653,30 +710,43 @@ export default function VentasPage() {
       error: ''
     }));
 
-    const resolvedSucursalId = Number.parseInt(String(venta?.id_sucursal ?? ''), 10);
-    const resolvedCajaId = Number.parseInt(String(venta?.id_caja ?? ''), 10);
-    const runtimePrinterConfig = Number.isInteger(resolvedSucursalId) && resolvedSucursalId > 0
-      ? await getRuntimePrinterConfig({
-        idSucursal: resolvedSucursalId,
-        idCaja: Number.isInteger(resolvedCajaId) && resolvedCajaId > 0 ? resolvedCajaId : null
-      }).catch(() => null)
-      : null;
-    const cocinaPrinterConfig = resolvePrinterByType(runtimePrinterConfig, 'COCINA');
-    const cocinaWidthMm = resolvePrintWidthMm(cocinaPrinterConfig?.ancho_mm);
-    const attemptedQzMode = isQzMode(cocinaPrinterConfig)
-      ? String(cocinaPrinterConfig?.modo_impresion || 'QZ_HTML').trim().toUpperCase()
-      : null;
-    const canUseQzComanda = Boolean(
-      cocinaPrinterConfig?.activa !== false
-      && attemptedQzMode
-      && String(cocinaPrinterConfig?.nombre_impresora_sistema || '').trim()
-    );
+    let comandaForPrint = venta;
+    let cocinaPrinterConfig = null;
+    let cocinaWidthMm = 80;
+    let attemptedQzMode = null;
+    let canUseQzComanda = false;
 
     try {
-      const comanda = venta;
+      const comanda = isPendingOrderComanda
+        ? await ventasService.getPedidoComanda(venta.id_pedido)
+        : venta;
+      comandaForPrint = comanda;
+
+      const resolvedSucursalId = Number.parseInt(String(comanda?.id_sucursal ?? ''), 10);
+      const resolvedCajaId = Number.parseInt(String(comanda?.id_caja ?? ''), 10);
+      const runtimePrinterConfig = Number.isInteger(resolvedSucursalId) && resolvedSucursalId > 0
+        ? await getRuntimePrinterConfig({
+          idSucursal: resolvedSucursalId,
+          idCaja: Number.isInteger(resolvedCajaId) && resolvedCajaId > 0 ? resolvedCajaId : null
+        }).catch(() => null)
+        : null;
+      cocinaPrinterConfig = resolvePrinterByType(runtimePrinterConfig, 'COCINA');
+      cocinaWidthMm = resolvePrintWidthMm(cocinaPrinterConfig?.ancho_mm);
+      attemptedQzMode = isQzMode(cocinaPrinterConfig)
+        ? String(cocinaPrinterConfig?.modo_impresion || 'QZ_HTML').trim().toUpperCase()
+        : null;
+      canUseQzComanda = Boolean(
+        cocinaPrinterConfig?.activa !== false
+        && attemptedQzMode
+        && String(cocinaPrinterConfig?.nombre_impresora_sistema || '').trim()
+      );
+
       const validation = validateComandaForPrint(comanda);
       if (!validation.ok) {
         throw new Error(validation.message);
+      }
+      if (isPendingOrderComanda && !canUseQzComanda) {
+        throw new Error('El pedido fue creado, pero la comanda no se imprimio. Revisa la impresora logica COCINA en QZ Tray.');
       }
 
       if (canUseQzComanda) {
@@ -686,73 +756,47 @@ export default function VentasPage() {
         await printComandaCocinaInWindow(comanda, comandaPrintWindow, { widthMm: cocinaWidthMm });
       }
 
-      void ventasService.registerPrintEvent(venta.id_factura, {
-        tipo_documento: 'COMANDA',
-        estado: 'ENVIADA',
-        nombre_logico: 'COCINA',
-        id_impresora: Number(cocinaPrinterConfig?.id_impresora || 0) || null,
-        nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
-        ancho_mm: cocinaWidthMm,
-        metadata: {
-          promptMode: mode,
-          printMode: canUseQzComanda ? attemptedQzMode : 'BROWSER',
-          logicalPrinterName: 'COCINA',
-          printerType: 'COCINA',
-          fallbackUsed: false
-        }
-      }).catch(() => undefined);
+      if (venta.id_factura) {
+        void ventasService.registerPrintEvent(venta.id_factura, {
+          tipo_documento: 'COMANDA',
+          estado: 'ENVIADA',
+          nombre_logico: 'COCINA',
+          id_impresora: Number(cocinaPrinterConfig?.id_impresora || 0) || null,
+          nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
+          ancho_mm: cocinaWidthMm,
+          metadata: {
+            promptMode: mode,
+            printMode: canUseQzComanda ? attemptedQzMode : 'BROWSER',
+            logicalPrinterName: 'COCINA',
+            printerType: 'COCINA',
+            fallbackUsed: false
+          }
+        }).catch(() => undefined);
+      }
       openToast('COMANDA COCINA', 'Comanda enviada a impresion.', 'success');
       await closeComandaPrompt({ markAsCancelled: false });
     } catch (error) {
       const printErrorMessage = error?.message || 'No se pudo imprimir la comanda de cocina.';
 
-      if (attemptedQzMode && canUseQzComanda) {
-        void ventasService.registerPrintEvent(venta.id_factura, {
-          tipo_documento: 'COMANDA',
-          estado: 'ERROR',
-          nombre_logico: 'COCINA',
-          id_impresora: Number(cocinaPrinterConfig?.id_impresora || 0) || null,
-          nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
-          ancho_mm: cocinaWidthMm,
-          detalle_error: printErrorMessage,
-          metadata: {
-            promptMode: mode,
-            printMode: attemptedQzMode,
-            logicalPrinterName: 'COCINA',
-            printerType: 'COCINA',
-            fallbackPlanned: 'BROWSER'
-          }
-        }).catch(() => undefined);
+      if (isPendingOrderComanda) {
+        if (comandaPrintWindow) comandaPrintWindow.close();
+        console.error('[Ventas] No se pudo imprimir la comanda del pedido pendiente.', error);
+        const pendingOrderErrorMessage = comandaForPrint === venta
+          ? 'El pedido fue creado, pero no se pudo cargar la comanda para imprimir'
+          : 'El pedido fue creado, pero la comanda no se imprimio.';
+        setComandaPrompt((current) => ({
+          ...current,
+          loading: false,
+          error: comandaForPrint === venta
+            ? pendingOrderErrorMessage
+            : `${pendingOrderErrorMessage} ${printErrorMessage}`.trim()
+        }));
+        openToast('COMANDA COCINA', pendingOrderErrorMessage, 'warning');
+        return;
+      }
 
-        try {
-          await printComandaCocinaInWindow(venta, comandaPrintWindow, { widthMm: cocinaWidthMm });
-          openToast(
-            'COMANDA COCINA',
-            'La comanda no se pudo imprimir automaticamente con QZ Tray, pero se abrio la impresion manual.',
-            'warning'
-          );
-          void ventasService.registerPrintEvent(venta.id_factura, {
-            tipo_documento: 'COMANDA',
-            estado: 'ENVIADA',
-            nombre_logico: 'COCINA',
-            id_impresora: Number(cocinaPrinterConfig?.id_impresora || 0) || null,
-            nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
-            ancho_mm: cocinaWidthMm,
-            metadata: {
-              promptMode: mode,
-              printMode: 'BROWSER',
-              logicalPrinterName: 'COCINA',
-              printerType: 'COCINA',
-              fallbackUsed: true,
-              fallbackFrom: attemptedQzMode,
-              qzError: printErrorMessage
-            }
-          }).catch(() => undefined);
-          await closeComandaPrompt({ markAsCancelled: false });
-          return;
-        } catch (fallbackError) {
-          if (comandaPrintWindow) comandaPrintWindow.close();
-          console.error('[Ventas] No se pudo imprimir la comanda ni con QZ ni con el navegador.', fallbackError);
+      if (attemptedQzMode && canUseQzComanda) {
+        if (venta.id_factura) {
           void ventasService.registerPrintEvent(venta.id_factura, {
             tipo_documento: 'COMANDA',
             estado: 'ERROR',
@@ -760,17 +804,68 @@ export default function VentasPage() {
             id_impresora: Number(cocinaPrinterConfig?.id_impresora || 0) || null,
             nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
             ancho_mm: cocinaWidthMm,
-            detalle_error: fallbackError?.message || printErrorMessage,
+            detalle_error: printErrorMessage,
             metadata: {
               promptMode: mode,
-              printMode: 'BROWSER',
+              printMode: attemptedQzMode,
               logicalPrinterName: 'COCINA',
               printerType: 'COCINA',
-              fallbackAttempted: true,
-              fallbackFrom: attemptedQzMode,
-              qzError: printErrorMessage
+              fallbackPlanned: 'BROWSER'
             }
           }).catch(() => undefined);
+        }
+
+        try {
+          await printComandaCocinaInWindow(comandaForPrint, comandaPrintWindow, { widthMm: cocinaWidthMm });
+          openToast(
+            'COMANDA COCINA',
+            'La comanda no se pudo imprimir automaticamente con QZ Tray, pero se abrio la impresion manual.',
+            'warning'
+          );
+          if (venta.id_factura) {
+            void ventasService.registerPrintEvent(venta.id_factura, {
+              tipo_documento: 'COMANDA',
+              estado: 'ENVIADA',
+              nombre_logico: 'COCINA',
+              id_impresora: Number(cocinaPrinterConfig?.id_impresora || 0) || null,
+              nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
+              ancho_mm: cocinaWidthMm,
+              metadata: {
+                promptMode: mode,
+                printMode: 'BROWSER',
+                logicalPrinterName: 'COCINA',
+                printerType: 'COCINA',
+                fallbackUsed: true,
+                fallbackFrom: attemptedQzMode,
+                qzError: printErrorMessage
+              }
+            }).catch(() => undefined);
+          }
+          await closeComandaPrompt({ markAsCancelled: false });
+          return;
+        } catch (fallbackError) {
+          if (comandaPrintWindow) comandaPrintWindow.close();
+          console.error('[Ventas] No se pudo imprimir la comanda ni con QZ ni con el navegador.', fallbackError);
+          if (venta.id_factura) {
+            void ventasService.registerPrintEvent(venta.id_factura, {
+              tipo_documento: 'COMANDA',
+              estado: 'ERROR',
+              nombre_logico: 'COCINA',
+              id_impresora: Number(cocinaPrinterConfig?.id_impresora || 0) || null,
+              nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
+              ancho_mm: cocinaWidthMm,
+              detalle_error: fallbackError?.message || printErrorMessage,
+              metadata: {
+                promptMode: mode,
+                printMode: 'BROWSER',
+                logicalPrinterName: 'COCINA',
+                printerType: 'COCINA',
+                fallbackAttempted: true,
+                fallbackFrom: attemptedQzMode,
+                qzError: printErrorMessage
+              }
+            }).catch(() => undefined);
+          }
           setComandaPrompt((current) => ({
             ...current,
             loading: false,
@@ -782,22 +877,24 @@ export default function VentasPage() {
 
       if (comandaPrintWindow) comandaPrintWindow.close();
       console.error('[Ventas] No se pudo imprimir la comanda de cocina.', error);
-      void ventasService.registerPrintEvent(venta.id_factura, {
-        tipo_documento: 'COMANDA',
-        estado: 'ERROR',
-        nombre_logico: 'COCINA',
-        id_impresora: Number(cocinaPrinterConfig?.id_impresora || 0) || null,
-        nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
-        ancho_mm: cocinaWidthMm,
-        detalle_error: printErrorMessage,
-        metadata: {
-          promptMode: mode,
-          printMode: 'BROWSER',
-          logicalPrinterName: 'COCINA',
-          printerType: 'COCINA',
-          fallbackUsed: false
-        }
-      }).catch(() => undefined);
+      if (venta.id_factura) {
+        void ventasService.registerPrintEvent(venta.id_factura, {
+          tipo_documento: 'COMANDA',
+          estado: 'ERROR',
+          nombre_logico: 'COCINA',
+          id_impresora: Number(cocinaPrinterConfig?.id_impresora || 0) || null,
+          nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
+          ancho_mm: cocinaWidthMm,
+          detalle_error: printErrorMessage,
+          metadata: {
+            promptMode: mode,
+            printMode: 'BROWSER',
+            logicalPrinterName: 'COCINA',
+            printerType: 'COCINA',
+            fallbackUsed: false
+          }
+        }).catch(() => undefined);
+      }
       setComandaPrompt((current) => ({
         ...current,
         loading: false,
@@ -878,6 +975,8 @@ export default function VentasPage() {
           onSubmit={handleCreateVenta}
           onCreatePedidoPendiente={createPedidoPendiente}
           onRegistrarPagoPedido={registrarPagoPedido}
+          onPedidoPendienteCreated={handlePendingOrderCreatedPrintPrompt}
+          onSuccessfulPendingOrderPaymentPrint={handleSuccessfulPendingOrderPaymentPrint}
           onCatalogSucursalChange={loadCajaBootstrap}
           onCatalogDemand={loadCajaCatalog}
           onRecipesDepartmentDemand={loadCajaRecipesDepartment}
@@ -894,6 +993,7 @@ export default function VentasPage() {
           defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
           scopeInfo={scopeInfo}
           canPrintVenta={canPrintVenta}
+          onSuccessfulPendingOrderPaymentPrint={handleSuccessfulPendingOrderPaymentPrint}
         />
       ) : null}
       {activeTab === 'descuentos' ? (

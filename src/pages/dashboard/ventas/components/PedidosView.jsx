@@ -88,6 +88,12 @@ const canCobrarPedido = (pedido) => {
   );
 };
 
+const isPagoPedidoStillPending = (response) => {
+  const pendingAmount = Number(response?.monto_pendiente ?? 0) || 0;
+  const estadoPago = normalizePaymentCode(response?.estado_pago || response?.estado_pago_control);
+  return pendingAmount > 0.009 || estadoPago === 'PENDIENTE_PAGO' || estadoPago === 'PENDIENTE_DE_PAGO';
+};
+
 const TECHNICAL_MESSAGE_PATTERNS = [
   /cannot read/i,
   /internal server error/i,
@@ -208,7 +214,8 @@ export default function PedidosView({
   defaultSucursalId = null,
   scopeInfo = null,
   selectedSessionId = null,
-  canPrintVenta = false
+  canPrintVenta = false,
+  onSuccessfulPendingOrderPaymentPrint
 }) {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -525,6 +532,20 @@ export default function PedidosView({
         const response = await ventasService.registrarPagoPedido(idPedido, payload);
         lastActionRefreshAtRef.current = Date.now();
         openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
+        if (!isPagoPedidoStillPending(response)) {
+          try {
+            await onSuccessfulPendingOrderPaymentPrint?.(response, {
+              payload,
+              origin: 'PEDIDOS_PENDING_ORDER_PAYMENT'
+            });
+          } catch {
+            openToast(
+              'IMPRESION FACTURA',
+              'El pago se registró correctamente, pero la factura no pudo imprimirse',
+              'warning'
+            );
+          }
+        }
         void loadPedidos({ source: 'action' }).catch(() => undefined);
         return response;
       } catch (error) {
@@ -536,7 +557,7 @@ export default function PedidosView({
         setPagoPedidoSaving(false);
       }
     },
-    [loadPedidos, openToast]
+    [loadPedidos, onSuccessfulPendingOrderPaymentPrint, openToast]
   );
 
   const closeConfirmDialog = useCallback(() => {

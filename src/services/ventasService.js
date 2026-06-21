@@ -153,6 +153,7 @@ const ventasService = {
   getTicketById: (id) => apiFetch(`/ventas/${id}/ticket`, 'GET'),
   getTicketPdf: (id) => fetchPdfBlob(`/ventas/${id}/ticket.pdf`),
   getComandaById: (id) => apiFetch(`/ventas/${id}/comanda`, 'GET'),
+  getPedidoComanda: (id) => apiFetch(`/ventas/pedidos/${id}/comanda`, 'GET'),
   getPrintRuntimeConfig: (params = {}) => apiFetch(`/ventas/impresoras-config${buildQuery(params)}`, 'GET'),
   getQzCertificate: () => apiFetch('/ventas/qz/certificate', 'GET'),
   signQzRequest: (request) => apiFetch('/ventas/qz/sign', 'POST', { request }),

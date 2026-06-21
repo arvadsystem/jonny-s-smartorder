@@ -207,6 +207,8 @@ export default function CajaView({
   onSubmit,
   onCreatePedidoPendiente,
   onRegistrarPagoPedido,
+  onPedidoPendienteCreated,
+  onSuccessfulPendingOrderPaymentPrint,
   onCatalogSucursalChange,
   onCatalogDemand,
   onRecipesDepartmentDemand,
@@ -280,6 +282,7 @@ export default function CajaView({
   const sesionesAbiertasInFlightRef = useRef(null);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
+
   const catalogSucursalRequestRef = useRef('');
   const bootstrapSesionCaja = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
   const hasCajaSession = Boolean(cajaSesionActiva?.id_sesion_caja || bootstrapSesionCaja?.id_sesion_caja);
@@ -918,6 +921,34 @@ export default function CajaView({
     try {
       const response = await onCreatePedidoPendiente(payload);
       await loadPendientesSummary();
+      const idPedido = toPositiveId(response?.id_pedido);
+      if (idPedido) {
+        try {
+          const comanda = await ventasService.getPedidoComanda(idPedido);
+          onPedidoPendienteCreated?.(comanda);
+        } catch (error) {
+          if (Number(error?.status || 0) >= 500) {
+            console.error('[Ventas] No se pudo cargar la comanda persistida del pedido pendiente', error);
+          } else if (import.meta.env.DEV) {
+            console.warn('[Ventas] No se pudo cargar la comanda persistida del pedido pendiente', {
+              status: error?.status,
+              code: error?.code,
+              message: error?.message
+            });
+          }
+          onNotify?.(
+            'COMANDA COCINA',
+            'El pedido fue creado, pero no se pudo cargar la comanda para imprimir',
+            'warning'
+          );
+        }
+      } else {
+        onNotify?.(
+          'COMANDA COCINA',
+          'El pedido fue creado, pero no se pudo cargar la comanda para imprimir',
+          'warning'
+        );
+      }
       setFinalizarOpen(false);
       setDeliveryCostPreview(0);
       return response;
@@ -947,6 +978,18 @@ export default function CajaView({
       const paymentState = String(response?.estado_pago || response?.estado_pago_control || '').trim().toUpperCase();
       const stillPending = pendingAmount > 0.009 || paymentState === 'PENDIENTE_PAGO' || paymentState === 'PENDIENTE_DE_PAGO';
       if (!stillPending) {
+        try {
+          await onSuccessfulPendingOrderPaymentPrint?.(response, {
+            payload,
+            origin: 'CAJA_PENDING_ORDER_PAYMENT'
+          });
+        } catch {
+          onNotify?.(
+            'IMPRESION FACTURA',
+            'El pago se registró correctamente, pero la factura no pudo imprimirse',
+            'warning'
+          );
+        }
         setRegistrarPagoOpen(false);
       }
       void loadPendientesSummary().catch(() => undefined);
