@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import importedQz from 'qz-tray';
 
 const QZ_LIBRARY_SOURCES = [
   import.meta.env.VITE_QZ_TRAY_SCRIPT_URL,
@@ -26,6 +27,14 @@ const toBrowserQz = () => {
   return window.qz || null;
 };
 
+const isUsableQz = (candidate) =>
+  Boolean(candidate?.websocket && candidate?.security && candidate?.printers && candidate?.configs);
+
+const toImportedQz = () => {
+  const candidate = importedQz?.default || importedQz;
+  return isUsableQz(candidate) ? candidate : null;
+};
+
 const injectQzScript = (src) => new Promise((resolve, reject) => {
   if (typeof document === 'undefined') {
     reject(createQzError('QZ_NOT_AVAILABLE', 'QZ Tray no esta disponible en este entorno.'));
@@ -49,8 +58,14 @@ const injectQzScript = (src) => new Promise((resolve, reject) => {
 });
 
 const ensureQzLibrary = async () => {
+  const bundled = toImportedQz();
+  if (bundled) {
+    if (typeof window !== 'undefined' && !window.qz) window.qz = bundled;
+    return bundled;
+  }
+
   const existing = toBrowserQz();
-  if (existing) return existing;
+  if (isUsableQz(existing)) return existing;
 
   if (!qzLoadPromise) {
     qzLoadPromise = (async () => {
@@ -210,7 +225,7 @@ export const isQzConnected = async () => {
 export const connectQz = async () => ensureConnectedQz();
 
 export const disconnectQz = async () => {
-  const qz = toBrowserQz();
+  const qz = toImportedQz() || toBrowserQz();
   if (!qz?.websocket?.isActive?.()) return false;
   await qz.websocket.disconnect();
   return true;

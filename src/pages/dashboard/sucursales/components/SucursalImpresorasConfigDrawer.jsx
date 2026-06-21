@@ -33,6 +33,78 @@ const PRINTER_TITLES = {
 
 const normalizeText = (value) => String(value ?? '').trim();
 
+const isQzPrintMode = (value) => ['QZ_HTML', 'QZ_RAW'].includes(normalizeText(value).toUpperCase());
+
+const getLocalDateTime = () => new Date().toLocaleString('es-HN', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit'
+});
+
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const buildQzTestHtml = ({ title, sucursalNombre, widthMm }) => {
+  const safeWidth = Number(widthMm) === 58 ? 58 : 80;
+  const contentWidth = safeWidth === 58 ? 47.5 : 61.5;
+  const marginLeft = safeWidth === 58 ? 4 : 7;
+
+  return `
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page { size: ${safeWidth}mm auto; margin: 0; }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: ${safeWidth}mm;
+        max-width: ${safeWidth}mm;
+        overflow-x: hidden;
+        font-family: Arial, sans-serif;
+        color: #111;
+        background: #fff;
+      }
+      .ticket {
+        width: ${contentWidth}mm;
+        max-width: ${contentWidth}mm;
+        margin-left: ${marginLeft}mm;
+        padding: 3mm 0;
+        text-align: center;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      h1 {
+        margin: 0 0 3mm;
+        font-size: ${safeWidth === 58 ? 14 : 16}px;
+        font-weight: 800;
+      }
+      p {
+        margin: 0 0 2mm;
+        font-size: ${safeWidth === 58 ? 10.5 : 11.5}px;
+        line-height: 1.25;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="ticket">
+      <h1>${escapeHtml(title)}</h1>
+      <p><strong>JONNY'S SMARTORDER</strong></p>
+      <p>${escapeHtml(sucursalNombre || 'Sucursal')}</p>
+      <p>${escapeHtml(getLocalDateTime())}</p>
+    </section>
+  </body>
+</html>`.trim();
+};
+
 const buildErrors = (form = {}) => {
   const errors = {};
   const impresoras = Array.isArray(form?.impresoras) ? form.impresoras : [];
@@ -92,6 +164,8 @@ export default function SucursalImpresorasConfigDrawer({
   const [detectingPrinters, setDetectingPrinters] = useState(false);
   const [detectedPrinters, setDetectedPrinters] = useState([]);
   const [detectError, setDetectError] = useState('');
+  const [qzStatus, setQzStatus] = useState('idle');
+  const [testStatus, setTestStatus] = useState({});
 
   if (!open) return null;
 
@@ -111,22 +185,83 @@ export default function SucursalImpresorasConfigDrawer({
   const handleDetectPrinters = async () => {
     setDetectingPrinters(true);
     setDetectError('');
+    setQzStatus('detecting');
     try {
       const response = await qzPrintService.testQzConnection();
       const printers = Array.isArray(response?.printers)
         ? response.printers.map((item) => String(item || '').trim()).filter(Boolean)
         : [];
       setDetectedPrinters(printers);
+      setQzStatus(response?.connected ? 'connected' : 'disconnected');
       if (printers.length === 0) {
         setDetectError('QZ Tray esta conectado, pero no devolvio impresoras disponibles.');
       }
     } catch (error) {
       setDetectedPrinters([]);
+      setQzStatus('error');
       setDetectError(error?.message || 'No se pudo conectar con QZ Tray para listar impresoras.');
     } finally {
       setDetectingPrinters(false);
     }
   };
+
+  const handleTestPrinter = async (printer) => {
+    const tipo = String(printer?.tipo_impresora || '').trim().toUpperCase();
+    const printerName = normalizeText(printer?.nombre_impresora_sistema);
+    if (!printerName) {
+      setTestStatus((current) => ({
+        ...current,
+        [tipo]: { type: 'error', message: `Selecciona el nombre de impresora para ${tipo === 'COCINA' ? 'cocina' : 'factura'} antes de probar QZ.` }
+      }));
+      return;
+    }
+
+    setTestStatus((current) => ({
+      ...current,
+      [tipo]: { type: 'loading', message: 'Enviando prueba a QZ Tray...' }
+    }));
+
+    try {
+      await qzPrintService.printHtmlToPrinter({
+        printerName,
+        html: buildQzTestHtml({
+          title: tipo === 'COCINA' ? 'PRUEBA COCINA' : 'PRUEBA FACTURA',
+          sucursalNombre,
+          widthMm: printer?.ancho_mm
+        }),
+        widthMm: Number(printer?.ancho_mm) === 58 ? 58 : 80,
+        copies: 1,
+        jobName: tipo === 'COCINA' ? 'Prueba cocina' : 'Prueba factura'
+      });
+      setQzStatus('connected');
+      setTestStatus((current) => ({
+        ...current,
+        [tipo]: { type: 'success', message: 'Prueba enviada correctamente.' }
+      }));
+    } catch (error) {
+      setQzStatus('error');
+      setTestStatus((current) => ({
+        ...current,
+        [tipo]: { type: 'error', message: error?.message || 'No se pudo imprimir la prueba con QZ Tray.' }
+      }));
+    }
+  };
+
+  const qzStatusLabel = {
+    idle: 'QZ Tray no conectado',
+    detecting: 'Detectando impresoras...',
+    connected: 'QZ Tray conectado',
+    disconnected: 'QZ Tray no conectado',
+    error: 'Error de conexion QZ'
+  }[qzStatus] || 'QZ Tray no conectado';
+
+  const qzStatusClass = {
+    idle: 'secondary',
+    detecting: 'info',
+    connected: 'success',
+    disconnected: 'secondary',
+    error: 'danger'
+  }[qzStatus] || 'secondary';
 
   return createPortal(
     <>
@@ -160,7 +295,10 @@ export default function SucursalImpresorasConfigDrawer({
                 <div className="alert alert-info py-2 mb-0">
                   Configura FACTURA y COCINA por nombre exacto de impresora, modo de impresion y ancho del ticket.
                 </div>
-                <div className="d-flex flex-wrap gap-2 mt-3">
+                <div className="d-flex flex-wrap align-items-center gap-2 mt-3">
+                  <span className={`badge text-bg-${qzStatusClass}`}>
+                    {qzStatusLabel}
+                  </span>
                   <button
                     type="button"
                     className="btn btn-outline-secondary btn-sm"
@@ -179,14 +317,52 @@ export default function SucursalImpresorasConfigDrawer({
                 {detectError ? (
                   <div className="alert alert-warning py-2 mt-3 mb-0">{detectError}</div>
                 ) : null}
+                {detectedPrinters.length > 0 ? (
+                  <div className="mt-3">
+                    <div className="text-muted small mb-2">Impresoras detectadas por QZ</div>
+                    <div className="d-flex flex-wrap gap-2">
+                      {detectedPrinters.map((printerName) => (
+                        <span className="badge text-bg-light border" key={printerName}>{printerName}</span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </section>
 
               {impresoras.map((item) => {
                 const tipo = String(item?.tipo_impresora || '').trim().toUpperCase();
                 const typeLabel = PRINTER_TITLES[tipo] || tipo;
+                const modo = normalizeText(item?.modo_impresion).toUpperCase() || 'BROWSER';
+                const printerName = normalizeText(item?.nombre_impresora_sistema);
+                const currentTestStatus = testStatus[tipo] || null;
                 return (
                   <section className="inv-prod-pmodal__section" key={tipo}>
-                    <div className="inv-prod-pmodal__section-title">{typeLabel}</div>
+                    <div className="d-flex align-items-center justify-content-between gap-2">
+                      <div className="inv-prod-pmodal__section-title">{typeLabel}</div>
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary btn-sm"
+                        onClick={() => handleTestPrinter(item)}
+                        disabled={saving || currentTestStatus?.type === 'loading'}
+                      >
+                        <i className="bi bi-printer me-1" />
+                        {currentTestStatus?.type === 'loading'
+                          ? 'Probando...'
+                          : tipo === 'COCINA'
+                            ? 'Probar cocina'
+                            : 'Probar factura'}
+                      </button>
+                    </div>
+                    {isQzPrintMode(modo) && !printerName ? (
+                      <div className="alert alert-warning py-2 mt-3 mb-0">
+                        Para {modo} se recomienda seleccionar el nombre exacto de impresora detectado por QZ Tray.
+                      </div>
+                    ) : null}
+                    {currentTestStatus ? (
+                      <div className={`alert alert-${currentTestStatus.type === 'success' ? 'success' : currentTestStatus.type === 'error' ? 'danger' : 'info'} py-2 mt-3 mb-0`}>
+                        {currentTestStatus.message}
+                      </div>
+                    ) : null}
                     <div className="row g-3 mt-1">
                       <div className="col-12">
                         <AppSelect

@@ -20,6 +20,7 @@
     "bootstrap-icons": "^1.13.1",
     "framer-motion": "^12.34.3",
     "nodemailer": "^8.0.4",
+    "qz-tray": "^2.2.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-icons": "^5.5.0",
