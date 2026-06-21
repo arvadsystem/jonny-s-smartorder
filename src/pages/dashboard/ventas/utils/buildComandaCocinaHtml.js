@@ -123,6 +123,7 @@ export const buildComandaCocinaHtml = (comanda) => {
     'N/D'
   );
   const cliente = toSafeText(comanda?.cliente_nombre || comanda?.contacto?.nombre_contacto, 'N/D');
+  const telefonoCliente = toSafeText(comanda?.contacto?.telefono_contacto, '');
   const notaGeneral = String(
     comanda?.observaciones ||
     comanda?.observacion ||
@@ -283,6 +284,11 @@ export const buildComandaCocinaHtml = (comanda) => {
             <span>Cliente</span>
             <span>${escapeHtml(cliente)}</span>
           </div>
+          ${telefonoCliente ? `
+          <div class="comanda-cocina-print__meta-row">
+            <span>Telefono</span>
+            <span>${escapeHtml(telefonoCliente)}</span>
+          </div>` : ''}
         </div>
 
         <div class="comanda-cocina-print__divider"></div>

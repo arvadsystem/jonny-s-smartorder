@@ -68,6 +68,12 @@ export default function ComandaCocina80mm({ comanda }) {
             <span>Cliente</span>
             <span>{toSafeText(comanda?.cliente_nombre || comanda?.contacto?.nombre_contacto)}</span>
           </div>
+          {comanda?.contacto?.telefono_contacto ? (
+            <div className="comanda-cocina-print__meta-row">
+              <span>Telefono</span>
+              <span>{toSafeText(comanda.contacto.telefono_contacto)}</span>
+            </div>
+          ) : null}
         </div>
 
         <div className="comanda-cocina-print__divider" />

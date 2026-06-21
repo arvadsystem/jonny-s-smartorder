@@ -488,11 +488,13 @@ export const normalizeVentaDetail = (row) => {
     ...base,
     monto_reversado_total: resolvedReversedTotal
   });
+  const contacto = normalizeVentaContacto(row?.contacto);
 
   return {
     ...base,
+    cliente_nombre: contacto?.nombre_contacto || base.cliente_nombre,
     delivery: normalizeVentaDelivery(row?.delivery),
-    contacto: normalizeVentaContacto(row?.contacto),
+    contacto,
     contexto: normalizeVentaContexto(row?.contexto),
     reversiones,
     monto_reversado_total: resolvedReversedTotal,

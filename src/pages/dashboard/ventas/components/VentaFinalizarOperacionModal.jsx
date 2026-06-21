@@ -132,10 +132,11 @@ export default function VentaFinalizarOperacionModal({
   const phoneSaveAskedRef = useRef(new Set());
   const phoneSaveBypassRef = useRef(false);
   const isSubmitting = saving || paidSubmitting || pendingSubmitting;
-  const handleModalClose = () => {
-    composer.resetPaymentDraft?.();
+  const resetPaymentDraft = composer.resetPaymentDraft;
+  const handleModalClose = useCallback(() => {
+    resetPaymentDraft?.();
     onClose();
-  };
+  }, [onClose, resetPaymentDraft]);
 
   const deliveryCost = useMemo(() => {
     if (!String(delivery.costo_envio || '').trim()) return 0;
@@ -238,6 +239,9 @@ export default function VentaFinalizarOperacionModal({
     lastAutoPhoneRef.current = '';
     phoneSaveAskedRef.current = new Set();
     phoneSaveBypassRef.current = false;
+    setActiveTab('pagar');
+    setContact(CONTACT_INITIAL);
+    setDelivery(DELIVERY_INITIAL);
     setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
   }, [open]);
 
@@ -342,37 +346,7 @@ export default function VentaFinalizarOperacionModal({
       return false;
     }
 
-    if (requiresPendingContactName && !normalizeOptionalText(contact.nombre_contacto)) {
-      setLocalError('Nombre contacto es obligatorio para pedido pendiente sin cliente registrado.');
-      return false;
-    }
-
-    const phoneRequired =
-      activeTab === 'pendiente' ||
-      contact.canal === 'TELEFONO' ||
-      contact.canal === 'WHATSAPP' ||
-      contact.modalidad === 'RECOGER';
-
-    if (phoneRequired && !normalizeOptionalText(contact.telefono_contacto)) {
-      setLocalError(activeTab === 'pendiente'
-        ? 'Telefono es obligatorio para crear un pedido pendiente.'
-        : 'Telefono es obligatorio para este canal o modalidad.');
-      return false;
-    }
-
     if (activeTab === 'pendiente' && contact.modalidad === 'DELIVERY') {
-      const missing = [
-        ['nombre_receptor', 'Nombre receptor'],
-        ['telefono_receptor', 'Telefono receptor'],
-        ['direccion_entrega', 'Direccion entrega'],
-        ['referencia_entrega', 'Referencia entrega']
-      ].find(([field]) => !normalizeOptionalText(delivery[field]));
-
-      if (missing) {
-        setLocalError(`${missing[1]} es obligatorio para delivery.`);
-        return false;
-      }
-
       const hasDeliveryCost = Boolean(String(delivery.costo_envio || '').trim());
       const parsedCost = Number(delivery.costo_envio);
       if (hasDeliveryCost && (!Number.isFinite(parsedCost) || parsedCost < 0)) {
@@ -393,7 +367,20 @@ export default function VentaFinalizarOperacionModal({
     setSubmitDialogError('');
     paidErrorPendingRef.current = true;
     try {
-      const response = await composer.submitPaidSale();
+      const response = await composer.submitPaidSale({
+        contacto: {
+          nombre_contacto: normalizeOptionalText(contact.nombre_contacto),
+          telefono_contacto: normalizeOptionalText(contact.telefono_contacto),
+          dni: null,
+          rtn: null,
+          correo: null
+        },
+        contexto: {
+          canal: contact.canal,
+          modalidad: contact.modalidad,
+          observacion_contexto: normalizeOptionalText(contact.observacion_contexto)
+        }
+      });
       if (response) {
         paidErrorPendingRef.current = false;
         onClose();
@@ -417,12 +404,9 @@ export default function VentaFinalizarOperacionModal({
 
       const modalidad = contact.modalidad;
       const canal = contact.canal;
-      const resolvedContactName =
-        normalizeOptionalText(contact.nombre_contacto) ||
-        (hasRegisteredClient ? selectedClienteLabel : null);
       const payload = composer.buildPedidoPendientePayload({
         contacto: {
-          nombre_contacto: resolvedContactName,
+          nombre_contacto: normalizeOptionalText(contact.nombre_contacto),
           telefono_contacto: normalizeOptionalText(contact.telefono_contacto),
           dni: null,
           rtn: null,
@@ -501,7 +485,6 @@ export default function VentaFinalizarOperacionModal({
     selectedCliente?.nombre_cliente ||
     [selectedCliente?.nombre, selectedCliente?.apellido].filter(Boolean).join(' ')
   );
-  const requiresPendingContactName = activeTab === 'pendiente' && !hasRegisteredClient;
   const canalOptions = [
     { value: 'LOCAL', label: 'LOCAL' },
     { value: 'TELEFONO', label: 'TELEFONO' },
@@ -643,43 +626,24 @@ export default function VentaFinalizarOperacionModal({
                 className="app-select--compact app-select--warm ventas-finalizar-modal__field-wide"
               />
 
-              {activeTab === 'pendiente' ? (
-                <label className="ventas-create-modal__field">
-                  <span>
-                    Nombre contacto
-                    {requiresPendingContactName ? (
-                      <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
-                    ) : null}
-                  </span>
+              <label className="ventas-create-modal__field">
+                  <span>Nombre contacto (opcional)</span>
                   <input
                     type="text"
                     value={contact.nombre_contacto}
                     data-testid="ventas-pendiente-nombre-contacto"
                     placeholder="Ej. Angel Perez"
                     onChange={(event) => setContactField('nombre_contacto', event.target.value)}
-                    required={requiresPendingContactName}
-                    aria-required={requiresPendingContactName}
                   />
-                  {requiresPendingContactName ? (
-                    <small className="ventas-finalizar-modal__field-hint">
-                      Requerido si no seleccionas un cliente registrado.
-                    </small>
-                  ) : null}
-                </label>
-              ) : null}
+              </label>
 
               <label className="ventas-create-modal__field">
-                <span>
-                  Telefono
-                  <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
-                </span>
+                <span>Telefono (opcional)</span>
                 <input
                   type="text"
                   value={contact.telefono_contacto}
                   data-testid="ventas-contacto-telefono"
                   onChange={(event) => setContactField('telefono_contacto', event.target.value)}
-                  required={activeTab === 'pendiente'}
-                  aria-required={activeTab === 'pendiente'}
                 />
               </label>
 
@@ -715,19 +679,19 @@ export default function VentaFinalizarOperacionModal({
               <strong>Delivery</strong>
               <div className="ventas-finalizar-modal__grid">
                 <label className="ventas-create-modal__field">
-                  <span>Nombre receptor</span>
+                  <span>Nombre receptor (opcional)</span>
                   <input type="text" value={delivery.nombre_receptor} onChange={(event) => setDeliveryField('nombre_receptor', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">
-                  <span>Telefono receptor</span>
+                  <span>Telefono receptor (opcional)</span>
                   <input type="text" value={delivery.telefono_receptor} onChange={(event) => setDeliveryField('telefono_receptor', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
-                  <span>Direccion entrega</span>
+                  <span>Direccion de entrega (opcional)</span>
                   <input type="text" value={delivery.direccion_entrega} onChange={(event) => setDeliveryField('direccion_entrega', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
-                  <span>Referencia entrega</span>
+                  <span>Referencia de entrega (opcional)</span>
                   <input type="text" value={delivery.referencia_entrega} onChange={(event) => setDeliveryField('referencia_entrega', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">

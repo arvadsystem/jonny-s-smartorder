@@ -2,7 +2,7 @@ import {
   normalizeValidComplementIds,
   normalizeExtras,
   toNormalizedId
-} from './ventasCartUtils';
+} from './ventasCartUtils.js';
 
 export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) =>
   (Array.isArray(cart) ? cart : []).map((line) => {
@@ -61,6 +61,8 @@ export const buildPaidSalePayload = ({
   selectedSucursalId,
   cashValue,
   canApplyDiscount = false,
+  contacto,
+  contexto,
   cuentaDividida
 }) =>
   applyDiscountPayloadFields({
@@ -71,6 +73,8 @@ export const buildPaidSalePayload = ({
     efectivo_entregado: state.paymentMethod === 'efectivo' ? cashValue : null,
     id_sesion_caja: toNormalizedId(state.temporarySessionId),
     descripcion_pedido: null,
+    contacto,
+    contexto,
     items: buildVentaItemsPayload(state.cart, { canApplyDiscount }),
     ...(Array.isArray(cuentaDividida) ? { cuenta_dividida: cuentaDividida } : {})
   }, {

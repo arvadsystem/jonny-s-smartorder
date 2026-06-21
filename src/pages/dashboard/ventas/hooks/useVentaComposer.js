@@ -1376,12 +1376,14 @@ export const useVentaComposer = ({
     return true;
   };
 
-  const buildPaidSalePayload = ({ cuentaDividida } = {}) =>
+  const buildPaidSalePayload = ({ contacto, contexto, cuentaDividida } = {}) =>
     buildPaidSaleRequestPayload({
       state,
       selectedSucursalId,
       cashValue,
       canApplyDiscount,
+      contacto,
+      contexto,
       cuentaDividida
     });
 
@@ -1397,13 +1399,13 @@ export const useVentaComposer = ({
       cuentaDividida
     });
 
-  const submitPaidSale = async (cuentaDividida) => {
+  const submitPaidSale = async ({ contacto, contexto, cuentaDividida } = {}) => {
     if (!validatePaidSale()) return null;
     if (!validateComplementosForPending()) return null;
 
     try {
       const response = await onSubmit(
-        buildPaidSalePayload({ cuentaDividida }),
+        buildPaidSalePayload({ contacto, contexto, cuentaDividida }),
         { suppressErrorToast: suppressSubmitErrorToast }
       );
 

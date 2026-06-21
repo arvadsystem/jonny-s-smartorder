@@ -179,6 +179,7 @@ export default function VentaTicketPrint({
   const cambio = toNumber(venta?.cambio);
 
   const clienteRtn = cleanText(venta?.cliente_rtn || venta?.rtn);
+  const clienteTelefono = cleanText(venta?.contacto?.telefono_contacto || venta?.telefono_contacto);
   const banco = cleanText(venta?.banco);
   const codigoTransaccion = cleanText(venta?.codigo_transaccion || venta?.referencia);
   const cajaLabel = cleanText(venta?.nombre_caja || venta?.codigo_caja || venta?.id_caja);
@@ -236,6 +237,7 @@ export default function VentaTicketPrint({
           <div><dt>Sesion:</dt><dd>{sesionCajaLabel || '--'}</dd></div>
           <div><dt>Cajero:</dt><dd>{venta?.nombre_usuario || '--'}</dd></div>
           <div><dt>Cliente:</dt><dd>{venta?.cliente_nombre || CONSUMIDOR_FINAL}</dd></div>
+          {clienteTelefono ? <div><dt>Telefono cliente:</dt><dd>{clienteTelefono}</dd></div> : null}
           <div><dt>RTN cliente:</dt><dd>{clienteRtn || '--'}</dd></div>
           <div><dt>Pago:</dt><dd>{venta?.metodo_pago || '--'}</dd></div>
           {banco ? <div><dt>Banco:</dt><dd>{banco}</dd></div> : null}
