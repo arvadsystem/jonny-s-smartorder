@@ -13,6 +13,35 @@ const toSafeText = (value, fallback = '--') => {
   return text || fallback;
 };
 
+const getSnapshotSalsas = (item) => {
+  const componentes = item?.origen_snapshot?.componentes;
+  if (Array.isArray(componentes)) return componentes;
+  if (Array.isArray(componentes?.seleccion)) return componentes.seleccion;
+
+  const complementos = item?.origen_snapshot?.complementos;
+  if (Array.isArray(complementos)) return complementos;
+  if (Array.isArray(complementos?.seleccion)) return complementos.seleccion;
+
+  return [];
+};
+
+const resolveItemSalsas = (item) => {
+  const directComplementos = Array.isArray(item?.complementos) ? item.complementos : [];
+  if (directComplementos.length > 0) {
+    return directComplementos.map((entry, index) => ({
+      key: `${entry?.id_complemento || entry?.id_salsa || index}-${index}`,
+      nombre: toSafeText(entry?.nombre, 'Salsa')
+    }));
+  }
+
+  const snapshotComponentes = getSnapshotSalsas(item);
+
+  return snapshotComponentes.map((entry, index) => ({
+    key: `${entry?.id_complemento || entry?.id_salsa || index}-${index}`,
+    nombre: toSafeText(entry?.nombre, 'Salsa')
+  }));
+};
+
 export const COMANDA_COCINA_PRINT_CSS = `
   @page { size: 80mm auto; margin: 4mm; }
   html, body { margin: 0; padding: 0; background: #fff; color: #111; font-family: Arial, sans-serif; }
@@ -84,6 +113,7 @@ export default function ComandaCocina80mm({ comanda }) {
               {(() => {
                 const standaloneExtra = Boolean(item?.es_linea_extra_independiente || item?.origen_snapshot?.es_linea_extra_independiente);
                 const extras = standaloneExtra ? [] : (Array.isArray(item?.extras) ? item.extras : []);
+                const salsas = standaloneExtra ? [] : resolveItemSalsas(item);
                 return (
                   <>
               <div className="comanda-cocina-print__item-head">
@@ -101,13 +131,11 @@ export default function ComandaCocina80mm({ comanda }) {
                 </div>
               ) : null}
 
-              {Array.isArray(item?.complementos) && item.complementos.length > 0 ? (
+              {salsas.length > 0 ? (
                 <div className="comanda-cocina-print__tags">
-                  {item.complementos.map((complemento, complementoIndex) => (
-                    <span className="comanda-cocina-print__tag" key={`${complemento?.id_complemento || complementoIndex}-${complementoIndex}`}>
-                      Complemento: {toSafeText(complemento?.nombre, 'Complemento')}
-                    </span>
-                  ))}
+                  <span className="comanda-cocina-print__tag">
+                    {salsas.length === 1 ? 'Salsa' : 'Salsas'}: {salsas.map((salsa) => salsa.nombre).join(', ')}
+                  </span>
                 </div>
               ) : null}
 

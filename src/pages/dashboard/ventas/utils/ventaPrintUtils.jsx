@@ -4,6 +4,9 @@ import buildComandaCocinaHtml from './buildComandaCocinaHtml';
 
 const PRINT_WINDOW_FEATURES = 'width=420,height=760,resizable=yes,scrollbars=yes';
 const PRINT_FALLBACK_DELAY_MS = 320;
+const PRINT_CLOSE_DELAY_MS = 180;
+const PRINT_CLOSE_ON_FOCUS_DELAY_MS = 700;
+const PRINT_PDF_BOOT_DELAY_MS = 450;
 
 const buildPrintWindowLoadingHtml = (title = 'Preparando documento') => `<!doctype html>
 <html lang="es">
@@ -57,6 +60,129 @@ const writeWindowDocument = (targetWindow, html) => {
   targetWindow.document.close();
 };
 
+const schedulePrintWindowClose = (printWindow, delayMs = PRINT_CLOSE_DELAY_MS) => {
+  if (!printWindow || printWindow.closed || typeof window === 'undefined') return;
+  window.setTimeout(() => {
+    try {
+      if (!printWindow.closed) printWindow.close();
+    } catch {
+      // Ignorar errores de cierre del navegador.
+    }
+  }, delayMs);
+};
+
+const attachPrintWindowAutoClose = (printWindow) => {
+  if (!printWindow) return () => {};
+
+  let closeRequested = false;
+
+  const requestClose = () => {
+    if (closeRequested) return;
+    closeRequested = true;
+    schedulePrintWindowClose(printWindow);
+  };
+
+  const handleAfterPrint = () => requestClose();
+  const handleFocus = () => {
+    if (!closeRequested) {
+      schedulePrintWindowClose(printWindow, PRINT_CLOSE_ON_FOCUS_DELAY_MS);
+    }
+  };
+
+  try {
+    if (typeof printWindow.addEventListener === 'function') {
+      printWindow.addEventListener('afterprint', handleAfterPrint, { once: true });
+      printWindow.addEventListener('focus', handleFocus, { once: true });
+    }
+  } catch {
+    // Fallback a onafterprint abajo.
+  }
+
+  try {
+    printWindow.onafterprint = handleAfterPrint;
+  } catch {
+    // Algunos navegadores restringen la asignacion directa.
+  }
+
+  return () => {
+    try {
+      if (typeof printWindow.removeEventListener === 'function') {
+        printWindow.removeEventListener('afterprint', handleAfterPrint);
+        printWindow.removeEventListener('focus', handleFocus);
+      }
+    } catch {
+      // noop
+    }
+  };
+};
+
+const buildPdfPrintShellHtml = (url, title = 'Factura') => `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #2d2d2d;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="ticket-pdf-frame" title="${title}" src="${url}#toolbar=0&navpanes=0&scrollbar=0"></iframe>
+    <script>
+      (function () {
+        var printed = false;
+        var closeTimer = null;
+        var closeWindow = function () {
+          if (closeTimer) return;
+          closeTimer = window.setTimeout(function () {
+            try { window.close(); } catch (error) {}
+          }, ${PRINT_CLOSE_DELAY_MS});
+        };
+        var printFrame = function () {
+          if (printed) return;
+          printed = true;
+          var frame = document.getElementById('ticket-pdf-frame');
+          try {
+            if (frame && frame.contentWindow) {
+              frame.contentWindow.focus();
+              frame.contentWindow.print();
+              return;
+            }
+          } catch (error) {}
+          try {
+            window.focus();
+            window.print();
+          } catch (error) {}
+        };
+        window.addEventListener('afterprint', closeWindow, { once: true });
+        window.addEventListener('focus', function () {
+          if (printed) {
+            window.setTimeout(closeWindow, ${PRINT_CLOSE_ON_FOCUS_DELAY_MS});
+          }
+        }, { once: true });
+        var frame = document.getElementById('ticket-pdf-frame');
+        if (frame) {
+          frame.addEventListener('load', function () {
+            window.setTimeout(printFrame, ${PRINT_PDF_BOOT_DELAY_MS});
+          }, { once: true });
+        } else {
+          window.setTimeout(printFrame, ${PRINT_PDF_BOOT_DELAY_MS});
+        }
+      })();
+    </script>
+  </body>
+</html>`;
+
 const ensurePrintWindow = (printWindow, title) => {
   if (!printWindow || printWindow.closed) {
     throw new Error('La ventana de impresion no esta disponible. Revisa las ventanas emergentes e intenta nuevamente.');
@@ -89,7 +215,7 @@ export const printVentaTicketPdf = async (idFactura, printWindow = openPrintWind
 
     if (printWindow && !printWindow.closed) {
       try {
-        printWindow.location.replace(url);
+        writeWindowDocument(printWindow, buildPdfPrintShellHtml(url, 'Factura de venta'));
         printWindow.focus();
       } catch {
         window.open(url, '_blank');
@@ -125,6 +251,7 @@ export const printHtmlDocument = async (html, options = {}) => {
   return new Promise((resolve, reject) => {
     let finished = false;
     let printInvoked = false;
+    const detachAutoClose = attachPrintWindowAutoClose(printWindow);
 
     const finalize = (callback) => {
       if (finished) return;
@@ -146,6 +273,7 @@ export const printHtmlDocument = async (html, options = {}) => {
         printWindow.print();
         finalize(() => resolve(true));
       } catch (error) {
+        detachAutoClose();
         finalize(() => reject(error));
       }
     };
@@ -156,6 +284,7 @@ export const printHtmlDocument = async (html, options = {}) => {
       printWindow.onload = triggerPrint;
       writeWindowDocument(printWindow, safeHtml);
     } catch (error) {
+      detachAutoClose();
       finalize(() => reject(error));
     }
   });
