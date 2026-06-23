@@ -65,6 +65,7 @@ export default function CierreCajaCerrarModal({
   const transferenciaObservacionRef = useRef(null);
   const validationLoadingRef = useRef(false);
   const validationRequestIdRef = useRef(0);
+  const validationPayloadKeyRef = useRef('');
 
   const fieldRefs = useMemo(() => ({
     EFECTIVO: {
@@ -200,8 +201,11 @@ export default function CierreCajaCerrarModal({
     setStaleValidationNotice('');
 
     try {
-      const response = await onValidate(buildArqueosPayload(), { silent: true });
+      const payload = buildArqueosPayload();
+      const payloadKey = JSON.stringify(payload);
+      const response = await onValidate(payload, { silent: true });
       if (validationRequestIdRef.current !== requestId) return null;
+      validationPayloadKeyRef.current = payloadKey;
       setValidationData(response || null);
       setInlineMethodErrors({});
       return response || null;
@@ -226,6 +230,7 @@ export default function CierreCajaCerrarModal({
     validationLoadingRef.current = false;
     setValidationLoading(false);
     setValidationData(null);
+    validationPayloadKeyRef.current = '';
     setValidationError('');
     setInlineMethodErrors({});
     setStaleValidationNotice('');
@@ -241,6 +246,7 @@ export default function CierreCajaCerrarModal({
   useEffect(() => {
     if (!open || !externalInvalidationKey) return;
     setValidationData(null);
+    validationPayloadKeyRef.current = '';
     setValidationError('');
     setStaleValidationNotice(externalInvalidationMessage || 'Movimiento registrado. Revisa diferencias nuevamente.');
   }, [externalInvalidationKey, externalInvalidationMessage, open]);
@@ -248,6 +254,7 @@ export default function CierreCajaCerrarModal({
   if (!open) return null;
 
   const invalidateValidation = () => {
+    validationPayloadKeyRef.current = '';
     setValidationData((current) => {
       if (!current) return current;
       setStaleValidationNotice('Cambiaste montos después de revisar diferencias. Debes revisar diferencias nuevamente.');
@@ -264,10 +271,8 @@ export default function CierreCajaCerrarModal({
       }
     }));
 
-    if (field === 'monto' || field === 'cantidad_referencias') {
-      invalidateValidation();
-      setValidationError('');
-    }
+    invalidateValidation();
+    setValidationError('');
 
     if (field === 'observacion') {
       setInlineMethodErrors((current) => {
@@ -294,10 +299,14 @@ export default function CierreCajaCerrarModal({
     if (!canSubmit || saving || validationLoading) return;
 
     try {
-      const currentValidation = validationData || await runValidation({ focusOnError: true });
+      const payload = buildArqueosPayload();
+      const payloadKey = JSON.stringify(payload);
+      const currentValidation = validationData && validationPayloadKeyRef.current === payloadKey
+        ? validationData
+        : await runValidation({ focusOnError: true });
       if (!currentValidation) return;
       await onSubmit({
-        ...buildArqueosPayload(),
+        ...payload,
         id_validacion_cierre: currentValidation.id_validacion_cierre || null
       });
     } catch (error) {
@@ -558,7 +567,11 @@ export default function CierreCajaCerrarModal({
                   className="ventas-create-modal__note-input"
                   rows="2"
                   value={form.observacion_cierre}
-                  onChange={(event) => setForm((current) => ({ ...current, observacion_cierre: event.target.value }))}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, observacion_cierre: event.target.value }));
+                    invalidateValidation();
+                    setValidationError('');
+                  }}
                   placeholder={isAdministrativeClose ? 'Motivo obligatorio del cierre administrativo...' : 'Observación general opcional...'}
                   required={isAdministrativeClose}
                 />

@@ -440,12 +440,40 @@ export function useCierresCaja() {
 
   const createMiSesionMovimientoManual = useCallback(
     async (tipo, payload, options = {}) => {
+      const idSesionCaja = Number.parseInt(String(options?.idSesionCaja ?? ''), 10);
+      if (Number.isInteger(idSesionCaja) && idSesionCaja > 0) {
+        setSaving(true);
+        try {
+          const response = tipo === 'EGRESO'
+            ? await cajasService.registrarSesionEgreso(idSesionCaja, payload)
+            : await cajasService.registrarSesionIngreso(idSesionCaja, payload);
+          if (!options?.silent) {
+            openToast(
+              tipo === 'EGRESO' ? 'EGRESO REGISTRADO' : 'INGRESO REGISTRADO',
+              response?.message || (tipo === 'EGRESO' ? 'Egreso registrado correctamente.' : 'Ingreso registrado correctamente.'),
+              'success'
+            );
+          }
+          return response;
+        } catch (errorResponse) {
+          if (!options?.silent) {
+            openToast(
+              'ERROR',
+              extractCajasApiMessage(errorResponse, tipo === 'EGRESO' ? 'No se pudo registrar el egreso.' : 'No se pudo registrar el ingreso.'),
+              'danger'
+            );
+          }
+          throw errorResponse;
+        } finally {
+          setSaving(false);
+        }
+      }
       if (tipo === 'EGRESO') {
         return createMiSesionEgreso(payload, options);
       }
       return createMiSesionIngreso(payload, options);
     },
-    [createMiSesionEgreso, createMiSesionIngreso]
+    [createMiSesionEgreso, createMiSesionIngreso, openToast]
   );
 
   const editCierre = useCallback(

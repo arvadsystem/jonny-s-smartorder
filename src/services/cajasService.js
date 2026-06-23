@@ -117,6 +117,10 @@ const cajasService = {
     apiFetch('/ventas/cajas/mi-sesion/ingresos', 'POST', payload),
   registrarMiSesionEgreso: (payload) =>
     apiFetch('/ventas/cajas/mi-sesion/egresos', 'POST', payload),
+  registrarSesionIngreso: (idSesionCaja, payload) =>
+    apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/ingresos`, 'POST', payload),
+  registrarSesionEgreso: (idSesionCaja, payload) =>
+    apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/egresos`, 'POST', payload),
 
   editCierre: (idCierreCaja, payload) =>
     apiFetch(`/ventas/cajas/cierres/${idCierreCaja}`, 'PATCH', payload),

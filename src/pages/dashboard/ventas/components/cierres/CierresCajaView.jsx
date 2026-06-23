@@ -519,7 +519,12 @@ export default function CierresCajaView() {
   };
 
   const openMovimientoManual = (context = {}) => {
-    if (!hasActiveCajaSession) {
+    const contextSession = context?.sesion || selectedSesion || sesionActiva;
+    const canUseSelectedCloseSession =
+      context?.source === 'cierre' &&
+      canAccessMovimientoManual &&
+      contextSession?.id_sesion_caja;
+    if (!hasActiveCajaSession && !canUseSelectedCloseSession) {
       openToast(
         'SESIÓN REQUERIDA',
         'Debes tener una sesión activa para registrar movimientos manuales. Abre una sesión de caja asignada antes de registrar ingresos o egresos.',
@@ -529,7 +534,7 @@ export default function CierresCajaView() {
     }
     setMovimientoManualContext({
       ...context,
-      sesion: context?.sesion || selectedSesion || sesionActiva
+      sesion: contextSession
     });
     setMovimientoManualTipoInicial(context?.tipoInicial === 'EGRESO' ? 'EGRESO' : 'INGRESO');
     setMovimientoManualOpen(true);
@@ -538,10 +543,20 @@ export default function CierresCajaView() {
   const handleSubmitMovimientoManual = async ({ tipo, monto, observacion, referencia }) => {
     const normalizedTipo = tipo === 'EGRESO' ? 'EGRESO' : 'INGRESO';
     const source = movimientoManualContext?.source;
+    const targetSession = movimientoManualContext?.sesion || selectedSesion || sesionActiva;
+    const targetSessionId = toPositiveId(targetSession?.id_sesion_caja);
+    const activeSessionId = toPositiveId(sesionActiva?.id_sesion_caja);
+    const useSelectedSessionEndpoint =
+      source === 'cierre' &&
+      targetSessionId &&
+      targetSessionId !== activeSessionId;
     await createMiSesionMovimientoManual(
       normalizedTipo,
       { monto, observacion, referencia },
-      { silent: Boolean(source === 'cierre') }
+      {
+        silent: Boolean(source === 'cierre'),
+        ...(useSelectedSessionEndpoint ? { idSesionCaja: targetSessionId } : {})
+      }
     );
     await refreshCurrentScope();
     if (selectedSesion?.id_sesion_caja) {

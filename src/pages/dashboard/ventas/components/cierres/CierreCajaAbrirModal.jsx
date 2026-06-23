@@ -6,6 +6,8 @@ const initialOpenForm = Object.freeze({
   monto_apertura: '',
   observacion_apertura: '',
   motivo_contingencia: '',
+  id_usuario_responsable: '',
+  confirma_responsable: false,
   modo_apertura: 'NORMAL'
 });
 
@@ -86,6 +88,14 @@ export default function CierreCajaAbrirModal({
     currentUser?.email ||
     'Usuario actual';
   const contingencyMode = openForm.modo_apertura === 'CONTINGENCIA_SUPER_ADMIN';
+  const requiresResponsibleConfirmation = isSuperAdmin && !assignedCajaMode && !contingencyMode;
+  const selectedResponsible = usuariosDisponibles.find((usuario) =>
+    String(usuario.id_usuario) === String(openForm.id_usuario_responsable)
+  );
+  const selectedResponsibleLabel =
+    selectedResponsible?.nombre_completo ||
+    selectedResponsible?.nombre_usuario ||
+    (openForm.id_usuario_responsable ? `Usuario #${openForm.id_usuario_responsable}` : '');
   const nowLabel = useMemo(() => new Date().toLocaleString('es-HN', {
     timeZone: 'America/Tegucigalpa',
     day: '2-digit',
@@ -120,6 +130,18 @@ export default function CierreCajaAbrirModal({
       void Promise.resolve(onRequestUsuarios(idSucursalTarget, rolOperativo)).catch(() => {});
     }
   }, [createForm.id_sucursal, createForm.rol_operativo, mode, onRequestUsuarios, open]);
+
+  useEffect(() => {
+    if (!open || mode !== 'existente' || assignedCajaMode || contingencyMode) return;
+    const idSucursalTarget = Number.parseInt(String(openForm.id_sucursal || selectedSucursalId || ''), 10);
+    if (!Number.isInteger(idSucursalTarget) || idSucursalTarget <= 0) return;
+    const requestKey = `${idSucursalTarget}:RESPONSABLE`;
+    if (lastRequestedUsuariosKeyRef.current === requestKey) return;
+    lastRequestedUsuariosKeyRef.current = requestKey;
+    if (typeof onRequestUsuarios === 'function') {
+      void Promise.resolve(onRequestUsuarios(idSucursalTarget, 'RESPONSABLE')).catch(() => {});
+    }
+  }, [assignedCajaMode, contingencyMode, mode, onRequestUsuarios, open, openForm.id_sucursal, selectedSucursalId]);
 
   useEffect(() => {
     if (!open || mode !== 'nueva') return;
@@ -159,7 +181,10 @@ export default function CierreCajaAbrirModal({
         assignedCaja?.caja_abierta_por_otro_responsable ||
         assignedCaja?.puede_abrir === false);
     const hasContingencyReason = !contingencyMode || openForm.motivo_contingencia.trim().length > 0;
-    return hasSucursal && hasCaja && Number.isFinite(monto) && monto >= 0 && !assignmentBlocksOpen && hasContingencyReason;
+    const hasExplicitResponsible =
+      !requiresResponsibleConfirmation ||
+      (Number.parseInt(String(openForm.id_usuario_responsable || ''), 10) > 0 && openForm.confirma_responsable);
+    return hasSucursal && hasCaja && Number.isFinite(monto) && monto >= 0 && !assignmentBlocksOpen && hasContingencyReason && hasExplicitResponsible;
   }, [
     assignedCaja?.caja_abierta_por_otro_responsable,
     assignedCaja?.puede_abrir,
@@ -171,10 +196,13 @@ export default function CierreCajaAbrirModal({
     canSelectSucursal,
     contingencyMode,
     loadingAssignedCaja,
+    openForm.confirma_responsable,
     openForm.id_caja,
     openForm.id_sucursal,
+    openForm.id_usuario_responsable,
     openForm.monto_apertura,
-    openForm.motivo_contingencia
+    openForm.motivo_contingencia,
+    requiresResponsibleConfirmation
   ]);
 
   const isCreateValid = useMemo(() => {
@@ -200,6 +228,8 @@ export default function CierreCajaAbrirModal({
       };
       if (contingencyMode) {
         payload.motivo_contingencia = openForm.motivo_contingencia.trim();
+      } else if (requiresResponsibleConfirmation) {
+        payload.id_usuario_responsable = Number(openForm.id_usuario_responsable);
       }
       if (!assignedCajaMode) payload.id_caja = Number(openForm.id_caja);
       await onSubmitOpenSesion(payload);
@@ -294,7 +324,7 @@ export default function CierreCajaAbrirModal({
                 <button
                   type="button"
                   className={`btn ${!contingencyMode ? 'btn-danger' : 'btn-outline-danger'}`}
-                  onClick={() => setOpenForm((current) => ({ ...current, modo_apertura: 'NORMAL' }))}
+                  onClick={() => setOpenForm((current) => ({ ...current, modo_apertura: 'NORMAL', confirma_responsable: false }))}
                   disabled={saving}
                 >
                   Abrir sesion normal
@@ -302,7 +332,12 @@ export default function CierreCajaAbrirModal({
                 <button
                   type="button"
                   className={`btn ${contingencyMode ? 'btn-warning' : 'btn-outline-warning'}`}
-                  onClick={() => setOpenForm((current) => ({ ...current, modo_apertura: 'CONTINGENCIA_SUPER_ADMIN' }))}
+                  onClick={() => setOpenForm((current) => ({
+                    ...current,
+                    modo_apertura: 'CONTINGENCIA_SUPER_ADMIN',
+                    id_usuario_responsable: '',
+                    confirma_responsable: false
+                  }))}
                   disabled={saving}
                 >
                   Abrir por contingencia
@@ -375,6 +410,57 @@ export default function CierreCajaAbrirModal({
                 </select>
               </label>
             )}
+
+            {requiresResponsibleConfirmation ? (
+              <div className="alert alert-danger mb-0">
+                <strong>Apertura normal administrativa</strong>
+                <label className="ventas-create-modal__field mt-2">
+                  <span>Responsable operativo</span>
+                  <select
+                    className="ventas-create-modal__select"
+                    value={openForm.id_usuario_responsable}
+                    onChange={(event) =>
+                      setOpenForm((current) => ({
+                        ...current,
+                        id_usuario_responsable: event.target.value,
+                        confirma_responsable: false
+                      }))
+                    }
+                    disabled={loadingUsuarios}
+                    required
+                  >
+                    <option value="">
+                      {loadingUsuarios ? 'Cargando cajeros...' : 'Selecciona el cajero responsable'}
+                    </option>
+                    {usuariosDisponibles.map((usuario) => (
+                      <option key={usuario.id_usuario} value={usuario.id_usuario}>
+                        {usuario.nombre_completo || usuario.nombre_usuario || `Usuario #${usuario.id_usuario}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {selectedResponsibleLabel ? (
+                  <div className="mt-2">
+                    Responsable seleccionado: <strong>{selectedResponsibleLabel}</strong>
+                  </div>
+                ) : null}
+                <label className="form-check mt-2 mb-0">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    checked={openForm.confirma_responsable}
+                    onChange={(event) =>
+                      setOpenForm((current) => ({ ...current, confirma_responsable: event.target.checked }))
+                    }
+                    disabled={!openForm.id_usuario_responsable}
+                    required
+                  />
+                  <span className="form-check-label">
+                    Confirmo que esta sesiÃ³n normal quedara a cargo del responsable seleccionado.
+                  </span>
+                </label>
+              </div>
+            ) : null}
 
             <label className="ventas-create-modal__field">
               <span>Monto de apertura</span>
