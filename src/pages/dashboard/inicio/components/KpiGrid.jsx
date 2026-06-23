@@ -2,6 +2,10 @@ import React from 'react';
 import MetricCard from './MetricCard';
 
 const KpiGrid = ({ metrics, links = {} }) => {
+  const inventoryCoverageHint = metrics.catalogoActivo > 0
+    ? `${metrics.productosActivos} productos y ${metrics.insumosActivos} insumos activos en el alcance seleccionado.`
+    : 'No hay productos o insumos activos en el alcance seleccionado.';
+
   const criticalCards = [
     {
       id: 'kpi-pedidos',
@@ -90,7 +94,7 @@ const KpiGrid = ({ metrics, links = {} }) => {
       eyebrow: 'Catálogo',
       label: 'Catálogo activo',
       value: metrics.catalogoActivo,
-      hint: 'Ítems listos para vender y visibles para operación.',
+      hint: inventoryCoverageHint,
       badge: 'Disponible',
       tone: 'accent',
       size: 'support',

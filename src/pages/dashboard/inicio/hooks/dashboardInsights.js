@@ -1,40 +1,4 @@
-import {
-  inferSecurityIncidents,
-  isActive,
-  resolveComparisonMeta,
-  resolveSucursalId,
-  toNumber
-} from './dashboardDataUtils';
-
-const normalizeStateText = (value) =>
-  String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-
-const resolvePedidoStateKey = (row = {}) => {
-  const textCandidates = [
-    row?.nombre_estado_pedido,
-    row?.estado_pedido,
-    row?.estado,
-    row?.status
-  ];
-
-  for (const candidate of textCandidates) {
-    const normalized = normalizeStateText(candidate);
-    if (!normalized) continue;
-    if (normalized.includes('pend')) return 'pendiente';
-    if (normalized.includes('cocina') || normalized.includes('preparacion')) return 'cocina';
-    if (normalized.includes('listo')) return 'listo';
-  }
-
-  const numericState = Number.parseInt(String(row?.id_estado_pedido ?? row?.id_estado ?? 0), 10);
-  if (numericState === 1) return 'pendiente';
-  if (numericState === 2) return 'cocina';
-  if (numericState === 3) return 'listo';
-  return '';
-};
+import { inferSecurityIncidents, isActive, resolveComparisonMeta, resolveSucursalId, toNumber } from './dashboardDataUtils';
 
 const resolveToneByScore = (score = 0) => {
   if (score >= 24) return 'danger';
@@ -42,48 +6,27 @@ const resolveToneByScore = (score = 0) => {
   return 'success';
 };
 
-export const buildMetrics = ({ payload, scopedPayload }) => {
-  const summaryGeneral = payload.dashboardSummary?.general || {};
-  const sucursales = scopedPayload.sucursales;
-  const pedidosOperacion = scopedPayload.pedidosOperacion;
-  const productos = scopedPayload.productos;
-  const insumos = scopedPayload.insumos;
-
+export const buildMetrics = ({ payload }) => {
+  const summary = payload.dashboardSummary || {};
+  const sucursales = Array.isArray(summary?.meta?.sucursales) ? summary.meta.sucursales : [];
+  const seguridadIncidentes = inferSecurityIncidents(payload.securitySummary);
   const totalSucursalesFallback = sucursales.length;
   const sucursalesActivasFallback = sucursales.filter((row) => {
     if (row?.isOpen !== undefined) return Boolean(row.isOpen);
     return isActive(row?.estado);
   }).length;
-
-  const pendientesPagoFallback = pedidosOperacion.filter((row) => resolvePedidoStateKey(row) === 'pendiente').length;
-  const enCocinaFallback = pedidosOperacion.filter((row) => resolvePedidoStateKey(row) === 'cocina').length;
-  const listosEntregaFallback = pedidosOperacion.filter((row) => resolvePedidoStateKey(row) === 'listo').length;
-
-  const catalogItems = [...productos, ...insumos];
-  const agotadosFallback = catalogItems.filter((row) => toNumber(row?.cantidad, 0) <= 0).length;
-  const stockBajoFallback = catalogItems.filter((row) => {
-    const cantidad = toNumber(row?.cantidad, 0);
-    const minimo = toNumber(row?.stock_minimo, 0);
-    return cantidad > 0 && cantidad <= minimo;
-  }).length;
-  const catalogoActivoFallback = catalogItems.filter((row) => {
-    if (row?.estado === undefined) return true;
-    return isActive(row?.estado);
-  }).length;
-
-  const seguridadIncidentes = inferSecurityIncidents(payload.securitySummary);
-  const totalSucursales = toNumber(summaryGeneral?.sucursales?.total, totalSucursalesFallback);
-  const sucursalesActivas = toNumber(summaryGeneral?.sucursales?.activas, sucursalesActivasFallback);
-  const pendientesPago = toNumber(summaryGeneral?.pedidos?.pendientesPago, pendientesPagoFallback);
-  const enCocina = toNumber(summaryGeneral?.pedidos?.enCocina, enCocinaFallback);
-  const listosEntrega = toNumber(summaryGeneral?.pedidos?.listosEntrega, listosEntregaFallback);
-  const agotados = toNumber(summaryGeneral?.inventario?.agotados, agotadosFallback);
-  const stockBajo = toNumber(summaryGeneral?.inventario?.stockBajo, stockBajoFallback);
-  const catalogoActivo = toNumber(summaryGeneral?.inventario?.catalogoActivo, catalogoActivoFallback);
-  const totalPedidosOperacion = toNumber(
-    summaryGeneral?.pedidos?.totalOperacion,
-    pendientesPago + enCocina + listosEntrega
-  );
+  const totalSucursales = toNumber(summary?.meta?.sucursalesResumen?.total, totalSucursalesFallback);
+  const sucursalesActivas = toNumber(summary?.meta?.sucursalesResumen?.activas, sucursalesActivasFallback);
+  const pendientesPago = toNumber(summary?.pedidos?.pendientesPago, 0);
+  const enCocina = toNumber(summary?.pedidos?.enCocina, 0);
+  const listosEntrega = toNumber(summary?.pedidos?.listosEntrega, 0);
+  const stockBajo = toNumber(summary?.inventario?.bajoStock, 0);
+  const agotados = toNumber(summary?.inventario?.sinStock, 0);
+  const productosActivos = toNumber(summary?.inventario?.productosActivos, 0);
+  const insumosActivos = toNumber(summary?.inventario?.insumosActivos, 0);
+  const catalogoActivo = productosActivos + insumosActivos;
+  const totalPedidosOperacion = toNumber(summary?.pedidos?.abiertos, pendientesPago + enCocina + listosEntrega);
+  const alertasPendientes = toNumber(summary?.inventario?.alertasPendientes, 0);
 
   return {
     totalSucursales,
@@ -91,9 +34,12 @@ export const buildMetrics = ({ payload, scopedPayload }) => {
     pendientesPago,
     enCocina,
     listosEntrega,
+    productosActivos,
+    insumosActivos,
     stockBajo,
     agotados,
     catalogoActivo,
+    alertasPendientes,
     seguridadIncidentes,
     totalPedidosOperacion
   };
@@ -123,6 +69,16 @@ export const buildAlerts = ({ metrics, can, PERMISSIONS }) => {
       recommendation: 'Valida existencia en almacén y traslada stock antes de la siguiente franja fuerte.',
       detailTo: can(PERMISSIONS.INVENTARIO_VER) ? '/dashboard/inventario?tab=alertas' : '',
       detailTitle: 'Abrir alertas de inventario'
+    });
+  }
+
+  if (metrics.alertasPendientes > 0) {
+    rows.push({
+      id: 'alertas-inventario',
+      level: 'warning',
+      score: 80 + metrics.alertasPendientes,
+      text: `${metrics.alertasPendientes} alertas pendientes de inventario requieren revision.`,
+      recommendation: 'Valida los movimientos recientes y resuelve las alertas pendientes antes del siguiente cierre.'
     });
   }
 
@@ -222,7 +178,7 @@ export const buildHealthSemaphores = ({ metrics, financial }) => [
   }
 ];
 
-export const buildBranchRanking = ({ sucursales = [], pedidosOperacion = [], selectedSucursal = 'all' }) => {
+export const buildBranchRanking = ({ sucursales = [], pedidosPorSucursal = [], selectedSucursal = 'all' }) => {
   const branchMap = new Map();
 
   sucursales.forEach((row) => {
@@ -236,7 +192,7 @@ export const buildBranchRanking = ({ sucursales = [], pedidosOperacion = [], sel
     });
   });
 
-  pedidosOperacion.forEach((row) => {
+  pedidosPorSucursal.forEach((row) => {
     const id = resolveSucursalId(row);
     if (!id) return;
     if (!branchMap.has(id)) {
@@ -247,7 +203,7 @@ export const buildBranchRanking = ({ sucursales = [], pedidosOperacion = [], sel
         pedidos: 0
       });
     }
-    branchMap.get(id).pedidos += 1;
+    branchMap.get(id).pedidos += Number.parseInt(String(row?.pedidos ?? 0), 10) || 0;
   });
 
   const rows = Array.from(branchMap.values())

@@ -58,6 +58,7 @@ const proxiedPaths = [
   '/movimientos',
   '/perfil',
   '/reportes',
+  '/dashboard',
   '/email-campaigns',
   '/archivos',
   '/mobiliario',
