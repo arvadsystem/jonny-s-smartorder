@@ -395,8 +395,8 @@ export default function CierreCajaDetalleModal({
           <tbody>
             {cobrosPorUsuario.length === 0
               ? renderEmptyRow('No hay registros.', 8)
-              : cobrosPorUsuario.map((row) => (
-                  <tr key={row.id_usuario_ejecutor}>
+              : cobrosPorUsuario.map((row, index) => (
+                  <tr key={row.key || `${row.id_usuario_ejecutor || 'usuario'}-${row.rol_participacion || 'rol'}-${row.primer_cobro || index}`}>
                     <td>
                       <div className="ventas-page__table-sale">
                         <strong>{row.nombre_completo || row.nombre_usuario || 'Usuario no disponible'}</strong>
@@ -418,7 +418,7 @@ export default function CierreCajaDetalleModal({
       <DetailMobileCards
         emptyMessage="No hay registros."
         rows={cobrosPorUsuario.map((row) => ({
-          key: row.id_usuario_ejecutor,
+          key: row.key,
           title: row.nombre_completo || row.nombre_usuario || 'Usuario no disponible',
           badge: resolveRolCobroLabel(row),
           items: [

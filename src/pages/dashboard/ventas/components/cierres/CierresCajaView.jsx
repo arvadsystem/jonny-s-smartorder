@@ -523,6 +523,7 @@ export default function CierresCajaView() {
     const canUseSelectedCloseSession =
       context?.source === 'cierre' &&
       canAccessMovimientoManual &&
+      isSuperAdmin &&
       contextSession?.id_sesion_caja;
     if (!hasActiveCajaSession && !canUseSelectedCloseSession) {
       openToast(

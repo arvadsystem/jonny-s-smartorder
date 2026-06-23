@@ -3,14 +3,24 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-export const parseCajaUtcTimestamp = (value) => {
+const HN_LOCAL_OFFSET = '-06:00';
+
+export const parseCajaDateTimeValue = (value) => {
   if (!value || value instanceof Date) return value;
   const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return `${text}T00:00:00${HN_LOCAL_OFFSET}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/i.test(text)) {
+    return text.replace(' ', 'T');
+  }
   if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(text)) {
-    return `${text.replace(' ', 'T')}Z`;
+    return `${text.replace(' ', 'T')}${HN_LOCAL_OFFSET}`;
   }
   return value;
 };
+
+export const parseCajaUtcTimestamp = parseCajaDateTimeValue;
 
 export const truthy = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
@@ -38,7 +48,7 @@ export const formatCajaCurrency = (value) =>
 
 export const formatCajaDateTime = (value) => {
   if (!value) return '-';
-  const date = new Date(parseCajaUtcTimestamp(value));
+  const date = new Date(parseCajaDateTimeValue(value));
   if (Number.isNaN(date.getTime())) return '-';
 
   return date.toLocaleString('es-HN', {
@@ -53,7 +63,7 @@ export const formatCajaDateTime = (value) => {
 
 export const formatCajaDateTimeHN = (value) => {
   if (!value) return '-';
-  const date = new Date(parseCajaUtcTimestamp(value));
+  const date = new Date(parseCajaDateTimeValue(value));
   if (Number.isNaN(date.getTime())) return '-';
 
   return date.toLocaleString('es-HN', {
@@ -249,8 +259,13 @@ export const normalizeSesionDetalle = (payload = {}) => {
       : null,
     participantes: equipoCaja,
     equipo_caja: equipoCaja,
-    cobros_por_usuario: cobrosPorUsuario.map((row) => ({
+    cobros_por_usuario: cobrosPorUsuario.map((row, index) => ({
       ...row,
+      key: [
+        row.id_usuario_ejecutor || 'usuario',
+        row.rol_participacion_codigo || row.rol_participacion || 'rol',
+        row.fecha_inicio || row.primer_cobro || index
+      ].join(':'),
       id_usuario_ejecutor: toNumber(row.id_usuario_ejecutor, 0) || null,
       total_cobrado: toNumber(row.total_cobrado, 0),
       cobros_registrados: toNumber(

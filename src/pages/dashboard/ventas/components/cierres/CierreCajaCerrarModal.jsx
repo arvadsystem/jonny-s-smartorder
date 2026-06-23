@@ -205,6 +205,7 @@ export default function CierreCajaCerrarModal({
       const payloadKey = JSON.stringify(payload);
       const response = await onValidate(payload, { silent: true });
       if (validationRequestIdRef.current !== requestId) return null;
+      if (payloadKey !== JSON.stringify(buildArqueosPayload())) return null;
       validationPayloadKeyRef.current = payloadKey;
       setValidationData(response || null);
       setInlineMethodErrors({});
@@ -245,6 +246,9 @@ export default function CierreCajaCerrarModal({
 
   useEffect(() => {
     if (!open || !externalInvalidationKey) return;
+    validationRequestIdRef.current += 1;
+    validationLoadingRef.current = false;
+    setValidationLoading(false);
     setValidationData(null);
     validationPayloadKeyRef.current = '';
     setValidationError('');
@@ -254,10 +258,13 @@ export default function CierreCajaCerrarModal({
   if (!open) return null;
 
   const invalidateValidation = () => {
+    validationRequestIdRef.current += 1;
+    validationLoadingRef.current = false;
+    setValidationLoading(false);
     validationPayloadKeyRef.current = '';
     setValidationData((current) => {
       if (!current) return current;
-      setStaleValidationNotice('Cambiaste montos después de revisar diferencias. Debes revisar diferencias nuevamente.');
+      setStaleValidationNotice('Cambiaste el formulario despues de revisar diferencias. Debes revisar diferencias nuevamente.');
       return null;
     });
   };
@@ -305,12 +312,24 @@ export default function CierreCajaCerrarModal({
         ? validationData
         : await runValidation({ focusOnError: true });
       if (!currentValidation) return;
+      if (validationPayloadKeyRef.current !== JSON.stringify(buildArqueosPayload())) {
+        setValidationData(null);
+        validationPayloadKeyRef.current = '';
+        setStaleValidationNotice('El formulario cambio despues de revisar diferencias. Debes revisar diferencias nuevamente.');
+        return;
+      }
       await onSubmit({
         ...payload,
         id_validacion_cierre: currentValidation.id_validacion_cierre || null
       });
     } catch (error) {
-      if (!handleExpectedValidationError(error, true)) {
+      const code = error?.data?.code || error?.code;
+      if (code === 'VENTAS_CAJAS_CLOSE_VALIDATION_STALE') {
+        validationPayloadKeyRef.current = '';
+        setValidationData(null);
+        setStaleValidationNotice('La sesion cambio. Revisa las diferencias nuevamente.');
+        setStepIndex(STEP_ORDER.indexOf('RESUMEN'));
+      } else if (!handleExpectedValidationError(error, true)) {
         setValidationError(error?.message || 'No se pudo registrar el cierre de caja.');
       }
     }
