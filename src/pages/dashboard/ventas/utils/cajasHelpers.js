@@ -119,6 +119,8 @@ export const normalizeSesion = (row = {}) => ({
   id_caja: toNumber(row.id_caja, 0) || null,
   id_sucursal: toNumber(row.id_sucursal, 0) || null,
   id_usuario_responsable: toNumber(row.id_usuario_responsable, 0) || null,
+  id_usuario_apertura: toNumber(row.id_usuario_apertura, 0) || null,
+  id_usuario_cierre: toNumber(row.id_usuario_cierre, 0) || null,
   id_estado_sesion_caja: toNumber(row.id_estado_sesion_caja, 0) || null,
   fecha_apertura: row.fecha_apertura ?? null,
   fecha_cierre: row.fecha_cierre ?? null,
@@ -142,7 +144,13 @@ export const normalizeSesion = (row = {}) => ({
   resolucion_codigo: String(row.resolucion_codigo ?? '').trim().toUpperCase(),
   resolucion_nombre: String(row.resolucion_nombre ?? '').trim(),
   responsable_usuario: String(row.responsable_usuario ?? '').trim(),
-  responsable_nombre: String(row.responsable_nombre ?? '').trim()
+  responsable_nombre: String(row.responsable_nombre ?? '').trim(),
+  apertura_usuario: String(row.apertura_usuario ?? '').trim(),
+  apertura_nombre: String(row.apertura_nombre ?? '').trim(),
+  cierre_usuario: String(row.cierre_usuario ?? '').trim(),
+  cierre_nombre: String(row.cierre_nombre ?? '').trim(),
+  observacion_apertura: String(row.observacion_apertura ?? '').trim(),
+  observacion_cierre: String(row.observacion_cierre ?? '').trim()
 });
 
 export const normalizeCierreReporte = (row = {}) => ({
@@ -219,6 +227,9 @@ export const normalizeSesionDetalle = (payload = {}) => {
     rol_codigo: String(row.rol_codigo ?? '').trim().toUpperCase(),
     rol_participacion: String(row.rol_codigo ?? row.rol_participacion ?? '').trim().toUpperCase(),
     rol_nombre: String(row.rol_nombre ?? '').trim(),
+    roles_globales: Array.isArray(row.roles_globales)
+      ? row.roles_globales.map((role) => String(role ?? '').trim().toUpperCase()).filter(Boolean)
+      : [],
     nombre_usuario: String(row.nombre_usuario ?? '').trim(),
     nombre_completo: String(row.nombre_completo ?? '').trim(),
     activo: truthy(row.activo),
@@ -276,6 +287,7 @@ export const normalizeSesionDetalle = (payload = {}) => {
         : null,
       total_responsable: toNumber(resumen.total_responsable, 0),
       total_auxiliares: toNumber(resumen.total_auxiliares, 0),
+      total_otros_ejecutores: toNumber(resumen.total_otros_ejecutores, 0),
       monto_teorico: toNumber(resumen.monto_teorico ?? resumen.efectivo_teorico, 0),
       monto_declarado: toNumber(resumen.monto_declarado ?? resumen.monto_declarado_cierre, 0),
       responsabilidad_final_id_usuario: toNumber(resumen.responsabilidad_final_id_usuario, 0) || null

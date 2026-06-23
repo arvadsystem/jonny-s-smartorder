@@ -792,6 +792,8 @@ export default function CierresCajaView() {
         sucursales={sucursales}
         usuariosDisponibles={usuariosOperativos}
         loadingUsuarios={loadingUsuariosOperativos}
+        isSuperAdmin={isSuperAdmin}
+        currentUser={user}
         useAssignedCajaOnly={isRestrictedCajero}
         assignedCaja={miAsignacionCaja}
         loadingAssignedCaja={loadingMiAsignacionCaja}
@@ -821,6 +823,7 @@ export default function CierresCajaView() {
         key={closeOpen ? `cierre-${selectedSesion?.id_sesion_caja || 'none'}` : 'cierre-closed'}
         open={closeOpen}
         sesion={selectedSesion}
+        currentUser={user}
         detalle={selectedDetalle}
         resoluciones={catalogos.resoluciones_cierre}
         saving={saving}
