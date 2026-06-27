@@ -29,29 +29,29 @@ import {
 import { formatCurrency, roundMoney } from '../../../../modules/ventas/utils/ventasMoneyUtils';
 import ventasService from '../../../../services/ventasService';
 import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
+import { buildCajaSucursalStorageKey } from '../utils/ventasCajaSucursalStorage';
 
 export { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 
 const DEFAULT_CATALOG_KEY = 'RECETAS';
 const DEFAULT_DEPARTMENT_NAME = 'ALITAS';
 const DEFAULT_DEPARTMENT_ID = '5';
-const CAJA_SUCURSAL_STORAGE_KEY = 'jonny:ventas:caja:sucursal';
 
-const readPersistedCajaSucursal = () => {
+const readPersistedCajaSucursal = (storageKey) => {
   if (typeof window === 'undefined') return '';
   try {
-    return String(window.sessionStorage.getItem(CAJA_SUCURSAL_STORAGE_KEY) || '').trim();
+    return String(window.sessionStorage.getItem(storageKey) || '').trim();
   } catch {
     return '';
   }
 };
 
-const persistCajaSucursal = (value) => {
+const persistCajaSucursal = (storageKey, value) => {
   if (typeof window === 'undefined') return;
   try {
     const normalized = String(value || '').trim();
-    if (normalized) window.sessionStorage.setItem(CAJA_SUCURSAL_STORAGE_KEY, normalized);
-    else window.sessionStorage.removeItem(CAJA_SUCURSAL_STORAGE_KEY);
+    if (normalized) window.sessionStorage.setItem(storageKey, normalized);
+    else window.sessionStorage.removeItem(storageKey);
   } catch {
     // Session storage puede estar deshabilitado.
   }
@@ -350,9 +350,20 @@ export const useVentaComposer = ({
   suppressSubmitErrorToast = false,
   onRequireAutoAuxiliar,
   resetKey,
-  canApplyDiscount = false
+  canApplyDiscount = false,
+  userId = null
 }) => {
-  const [state, setState] = useState(() => buildInitialState({ isSuperAdmin, defaultSucursalId }));
+  const cajaSucursalStorageKey = useMemo(
+    () => buildCajaSucursalStorageKey(userId),
+    [userId]
+  );
+  const [state, setState] = useState(() => {
+    const initialState = buildInitialState({ isSuperAdmin, defaultSucursalId });
+    if (!isSuperAdmin) return initialState;
+    const persisted = readPersistedCajaSucursal(buildCajaSucursalStorageKey(userId));
+    return persisted ? { ...initialState, selectedSucursal: persisted } : initialState;
+  });
+  const cajaSucursalStorageKeyRef = useRef(cajaSucursalStorageKey);
   const [complementModal, setComplementModal] = useState({
     open: false,
     mode: 'ADD',
@@ -385,9 +396,44 @@ export const useVentaComposer = ({
   const deferredSearch = useDeferredValue(state.search);
 
   useEffect(() => {
+    if (cajaSucursalStorageKeyRef.current === cajaSucursalStorageKey) return;
+    cajaSucursalStorageKeyRef.current = cajaSucursalStorageKey;
+    setState(() => {
+      const nextState = buildInitialState({ isSuperAdmin, defaultSucursalId });
+      if (!isSuperAdmin) return nextState;
+      const persisted = readPersistedCajaSucursal(cajaSucursalStorageKey);
+      return persisted ? { ...nextState, selectedSucursal: persisted } : nextState;
+    });
+    setComplementModal({
+      open: false,
+      mode: 'ADD',
+      kind: null,
+      row: null,
+      cartKey: '',
+      selected: [],
+      options: {},
+      error: ''
+    });
+    setExtrasModal({
+      open: false,
+      cartKey: '',
+      row: null,
+      options: [],
+      selected: [],
+      loading: false,
+      error: ''
+    });
+  }, [cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin]);
+
+  useEffect(() => {
     if (resetKey === undefined) return;
-    setState(buildInitialState({ isSuperAdmin, defaultSucursalId }));
-  }, [defaultSucursalId, isSuperAdmin, resetKey]);
+    setState(() => {
+      const nextState = buildInitialState({ isSuperAdmin, defaultSucursalId });
+      if (!isSuperAdmin) return nextState;
+      const persisted = readPersistedCajaSucursal(cajaSucursalStorageKey);
+      return persisted ? { ...nextState, selectedSucursal: persisted } : nextState;
+    });
+  }, [cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin, resetKey]);
 
   const setPartialState = (partial) => {
     setState((current) => ({
@@ -443,6 +489,19 @@ export const useVentaComposer = ({
 
   const selectedSucursalId = toNormalizedId(state.selectedSucursal);
   const hasSelectedSucursal = Boolean(selectedSucursalId);
+  const selectedSucursalCacheKey = selectedSucursalId ? `${cajaSucursalStorageKey}:${selectedSucursalId}` : '';
+
+  useEffect(() => {
+    globalExtrasAbortRef.current?.abort();
+    globalExtrasCacheRef.current.clear();
+    setGlobalExtrasCatalog({
+      options: [],
+      loading: false,
+      error: '',
+      sucursalId: null,
+      status: 'idle'
+    });
+  }, [cajaSucursalStorageKey]);
 
   useEffect(() => {
     const shouldLoadExtras = catalogsEnabled && (state.activeCatalog === 'EXTRAS' || extrasModal.open);
@@ -459,7 +518,7 @@ export const useVentaComposer = ({
     }
     if (!shouldLoadExtras) {
       globalExtrasAbortRef.current?.abort();
-      const cached = globalExtrasCacheRef.current.get(selectedSucursalId);
+      const cached = globalExtrasCacheRef.current.get(selectedSucursalCacheKey);
       setGlobalExtrasCatalog({
         options: cached?.options || [],
         loading: false,
@@ -470,7 +529,7 @@ export const useVentaComposer = ({
       return;
     }
 
-    const cached = globalExtrasCacheRef.current.get(selectedSucursalId);
+    const cached = globalExtrasCacheRef.current.get(selectedSucursalCacheKey);
     if (cached?.status === 'success') {
       setGlobalExtrasCatalog({ ...cached, loading: false, sucursalId: selectedSucursalId });
       return;
@@ -504,7 +563,7 @@ export const useVentaComposer = ({
           sucursalId: selectedSucursalId,
           status: 'success'
         };
-        globalExtrasCacheRef.current.set(selectedSucursalId, entry);
+        globalExtrasCacheRef.current.set(selectedSucursalCacheKey, entry);
         setGlobalExtrasCatalog(entry);
       })
       .catch((error) => {
@@ -519,14 +578,14 @@ export const useVentaComposer = ({
           sucursalId: selectedSucursalId,
           status: 'error'
         };
-        globalExtrasCacheRef.current.set(selectedSucursalId, entry);
+        globalExtrasCacheRef.current.set(selectedSucursalCacheKey, entry);
         setGlobalExtrasCatalog(entry);
       });
 
     return () => {
       controller.abort();
     };
-  }, [catalogsEnabled, extrasModal.open, globalExtrasRetryToken, selectedSucursalId, state.activeCatalog]);
+  }, [catalogsEnabled, extrasModal.open, globalExtrasRetryToken, selectedSucursalCacheKey, selectedSucursalId, state.activeCatalog]);
 
   useEffect(() => {
     setExtrasModal((current) => {
@@ -640,16 +699,16 @@ export const useVentaComposer = ({
       const validIds = new Set(normalizedSucursales.map((row) => String(row.id_sucursal)));
       const sessionSelection = String(defaultSucursalId || '').trim();
       const currentSelection = String(current.selectedSucursal || '').trim();
-      const persistedSelection = readPersistedCajaSucursal();
-      const nextSelection = validIds.has(sessionSelection)
-        ? sessionSelection
-        : validIds.has(currentSelection)
+      const persistedSelection = readPersistedCajaSucursal(cajaSucursalStorageKey);
+      const nextSelection = validIds.has(currentSelection)
           ? currentSelection
           : validIds.has(persistedSelection)
             ? persistedSelection
-            : normalizedSucursales.length === 1
-              ? String(normalizedSucursales[0].id_sucursal)
-              : '';
+            : validIds.has(sessionSelection)
+              ? sessionSelection
+              : normalizedSucursales.length === 1
+                ? String(normalizedSucursales[0].id_sucursal)
+                : '';
       if (currentSelection === nextSelection) return current;
       return {
         ...current,
@@ -659,14 +718,18 @@ export const useVentaComposer = ({
         search: ''
       };
     });
-  }, [allowSucursalAutoSelection, defaultSucursalId, isSuperAdmin, normalizedSucursales, tiposDepartamento]);
+  }, [allowSucursalAutoSelection, cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin, normalizedSucursales, tiposDepartamento]);
 
   useEffect(() => {
     if (isSuperAdmin) return;
-    setState((current) => ({
-      ...current,
-      selectedSucursal: String(defaultSucursalId || '')
-    }));
+    setState((current) => {
+      const nextSucursal = String(defaultSucursalId || '');
+      if (String(current.selectedSucursal || '') === nextSucursal) return current;
+      return {
+        ...current,
+        selectedSucursal: nextSucursal
+      };
+    });
   }, [defaultSucursalId, isSuperAdmin]);
 
   const selectedSucursalLabel = useMemo(() => {
@@ -1419,7 +1482,7 @@ export const useVentaComposer = ({
     currentCatalogStatus: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.status : null,
     retryGlobalExtras: () => {
       if (!selectedSucursalId) return;
-      globalExtrasCacheRef.current.delete(selectedSucursalId);
+      globalExtrasCacheRef.current.delete(selectedSucursalCacheKey);
       setGlobalExtrasRetryToken((current) => current + 1);
     },
     discountCatalogRows,
@@ -1480,7 +1543,7 @@ export const useVentaComposer = ({
     setSucursalPickerOpen: (value) => setPartialState({ sucursalPickerOpen: value }),
     setSelectedSucursal: (value) => {
       const nextSucursal = String(value || '');
-      persistCajaSucursal(nextSucursal);
+      persistCajaSucursal(cajaSucursalStorageKey, nextSucursal);
       setState((current) => {
         const changed = String(current.selectedSucursal || '') !== nextSucursal;
         return {

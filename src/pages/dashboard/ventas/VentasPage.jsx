@@ -109,7 +109,8 @@ export default function VentasPage() {
   } = useVentas({
     activeTab: requestedVentasTab,
     initialSucursalId: user?.id_sucursal,
-    isSuperAdmin
+    isSuperAdmin,
+    userId: user?.id_usuario
   });
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -948,6 +949,7 @@ export default function VentasPage() {
         <CajaView
           sucursales={sucursales}
           isSuperAdmin={isSuperAdmin}
+          userId={user?.id_usuario}
           defaultSucursalId={Number(
             cajaBootstrapData?.id_sucursal || scopeInfo?.selectedSucursalId || (!isSuperAdmin ? userSucursalId : null)
           ) || null}
