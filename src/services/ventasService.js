@@ -162,8 +162,8 @@ const ventasService = {
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
   create: (payload, options = {}) => createVentaWithRecovery(payload, options),
   createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload, withIdempotencyKey()),
-  listPedidosPendientesPago: (params = {}) =>
-    apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET'),
+  listPedidosPendientesPago: (params = {}, options = {}) =>
+    apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET', null, options),
   registrarPagoPedido: (idPedido, payload) =>
     apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload, withIdempotencyKey()),
   guardarTelefonoCliente: (idCliente, payload) =>

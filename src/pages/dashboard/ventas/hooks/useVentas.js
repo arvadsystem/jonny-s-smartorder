@@ -1100,13 +1100,19 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       setError('');
 
       try {
-        const response = await ventasService.create(payload, serviceOptions);
+        const origin = String(serviceOptions?.origin || '').trim().toUpperCase();
+        const shouldRefreshAfterCreate = origin !== 'CAJA';
+        const requestOptions = { ...serviceOptions };
+        delete requestOptions.origin;
+        const response = await ventasService.create(payload, requestOptions);
         openToast(
           'VENTA CREADA',
           `${response?.numero_venta || response?.codigo_venta || 'La venta'} se registro correctamente.`,
           'success'
         );
-        void refreshVentas({ suppressErrors: true }).catch(() => undefined);
+        if (shouldRefreshAfterCreate) {
+          void refreshVentas({ suppressErrors: true }).catch(() => undefined);
+        }
         return response;
       } catch (error) {
         const message = extractApiMessage(error, 'No se pudo registrar la venta.');

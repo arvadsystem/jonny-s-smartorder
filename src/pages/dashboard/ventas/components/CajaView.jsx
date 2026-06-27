@@ -259,6 +259,8 @@ export default function CajaView({
     total: 0,
     monto: 0
   });
+  const pendientesSummaryRequestRef = useRef({ key: '', promise: null, requestId: 0 });
+  const pendientesSummaryAbortRef = useRef(null);
   const [cajaAsignacion, setCajaAsignacion] = useState(null);
   const [cajaSesionActiva, setCajaSesionActiva] = useState(null);
   const [cajaStatus, setCajaStatus] = useState({
@@ -851,25 +853,47 @@ export default function CajaView({
   };
 
   const loadPendientesSummary = useCallback(async () => {
-    if (!composer.selectedSucursalId) {
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId);
+    if (!selectedSucursalId) {
       setPendientesSummary({ loading: false, error: '', total: 0, monto: 0 });
       return;
     }
 
+    const requestKey = `sucursal:${selectedSucursalId}`;
+    const currentInFlight = pendientesSummaryRequestRef.current;
+    if (currentInFlight?.key === requestKey && currentInFlight.promise) {
+      return currentInFlight.promise;
+    }
+
+    pendientesSummaryAbortRef.current?.abort();
+    const controller = new AbortController();
+    pendientesSummaryAbortRef.current = controller;
+    const requestId = currentInFlight.requestId + 1;
     setPendientesSummary((current) => ({ ...current, loading: true, error: '' }));
-    try {
+    const requestPromise = (async () => {
       const response = await ventasService.listPedidosPendientesPago({
-        id_sucursal: composer.selectedSucursalId,
+        id_sucursal: selectedSucursalId,
         page: 1,
         page_size: 1
+      }, {
+        signal: controller.signal
       });
+      if (pendientesSummaryRequestRef.current.requestId !== requestId) return null;
       setPendientesSummary({
         loading: false,
         error: '',
         total: Number(response?.summary?.total_pedidos_pendientes ?? 0) || 0,
         monto: Number(response?.summary?.monto_total_pendiente ?? 0) || 0
       });
+      return response;
+    })();
+    pendientesSummaryRequestRef.current = { key: requestKey, promise: requestPromise, requestId };
+
+    try {
+      return await requestPromise;
     } catch (error) {
+      if (controller.signal.aborted) return null;
+      if (pendientesSummaryRequestRef.current.requestId !== requestId) return null;
       if (Number(error?.status || 0) >= 500) {
         console.error('[Ventas] Error cargando resumen de pedidos pendientes', error);
       } else if (import.meta.env.DEV) {
@@ -884,6 +908,15 @@ export default function CajaView({
         loading: false,
         error: resolvePendientesErrorMessage(error)
       }));
+      return null;
+    } finally {
+      const current = pendientesSummaryRequestRef.current;
+      if (current.key === requestKey && current.requestId === requestId) {
+        pendientesSummaryRequestRef.current = { key: '', promise: null, requestId };
+        if (pendientesSummaryAbortRef.current === controller) {
+          pendientesSummaryAbortRef.current = null;
+        }
+      }
     }
   }, [composer.selectedSucursalId]);
 
