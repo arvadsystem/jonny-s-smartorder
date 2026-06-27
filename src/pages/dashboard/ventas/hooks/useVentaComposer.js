@@ -1345,7 +1345,7 @@ export const useVentaComposer = ({
     try {
       const response = await onSubmit(
         buildPaidSalePayload({ contacto, contexto, cuentaDividida }),
-        { suppressErrorToast: suppressSubmitErrorToast }
+        { suppressErrorToast: suppressSubmitErrorToast, origin: 'CAJA' }
       );
 
       resetComposer({ preserveSucursal: true, preserveSession: true });

@@ -50,6 +50,16 @@ assert.match(useVentasSource, /force = false[\s\S]*!force && cachedData/, 'los c
 assert.match(cajaSource, /activeCatalog[\s\S]*selectedSucursalId[\s\S]*catalogStatuses/, 'la demanda debe reintentarse cuando se resuelve la sucursal');
 assert.match(useVentasSource, /sesiones_disponibles[\s\S]*setSucursales/, 'las sucursales seleccionables deben provenir de sesiones activas');
 assert.match(useVentasSource, /sucursales_disponibles[\s\S]*setSucursales/, 'el selector de Caja debe poder usar sucursales disponibles del bootstrap');
+assert.match(composerSource, /origin:\s*'CAJA'/, 'la venta creada desde Caja debe marcar su origen');
+assert.match(useVentasSource, /const shouldRefreshAfterCreate = origin !== 'CAJA'/, 'Caja no debe disparar refreshVentas general tras vender');
+assert.match(useVentasSource, /if \(shouldRefreshAfterCreate\)[\s\S]{0,140}refreshVentas/, 'solo origen no-Caja debe refrescar historial general');
+assert.doesNotMatch(useVentasSource, /origin:\s*'CAJA'[\s\S]{0,300}refreshVentas/, 'el flujo Caja no debe refrescar historial ni scopeInfo tras vender');
+assert.match(cajaSource, /pendientesSummaryRequestRef/, 'pendientes debe deduplicar solicitudes activas por sucursal');
+assert.match(cajaSource, /currentInFlight\?\.key === requestKey && currentInFlight\.promise/, 'pendientes debe reutilizar la solicitud activa de la misma sucursal');
+assert.match(cajaSource, /pendientesSummaryAbortRef\.current\?\.abort\(\)/, 'pendientes debe cancelar la solicitud activa anterior');
+assert.match(serviceSource, /listPedidosPendientesPago:\s*\(params = \{\}, options = \{\}\)[\s\S]*apiFetch\(`\/ventas\/pedidos-pendientes\$\{buildQuery\(params\)\}`,\s*'GET',\s*null,\s*options\)/, 'pendientes debe aceptar AbortController desde Caja');
+assert.match(cajaSource, /id_sucursal:\s*selectedSucursalId/, 'pendientes debe consultar la sucursal seleccionada actual');
+assert.doesNotMatch(cajaSource, /pedidos-pendientes\?id_sucursal=1|id_sucursal:\s*1/, 'Caja no debe forzar pendientes de sucursal 1');
 assert.match(composerSource, /shouldLoadExtras[\s\S]*activeCatalog === 'EXTRAS'/, 'Extras debe cargarse solo bajo demanda');
 assert.match(optionsSource, /key: 'EXTRAS'/, 'la pestaña Extras debe permanecer visible');
 assert.match(composerSource, /getExtrasPermitidos/, 'el catalogo de Extras debe cargarse por sucursal');
