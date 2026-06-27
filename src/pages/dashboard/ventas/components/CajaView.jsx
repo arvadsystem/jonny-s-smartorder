@@ -188,6 +188,7 @@ const resolveCajaAssignmentErrorMessage = (error) => {
 export default function CajaView({
   sucursales,
   isSuperAdmin,
+  userId,
   defaultSucursalId,
   productos,
   categorias,
@@ -217,7 +218,7 @@ export default function CajaView({
   onNotify
 }) {
   const { user } = useAuth();
-  const cajaUserKey = buildCajaUserKey(user);
+  const cajaUserKey = buildCajaUserKey({ ...user, id_usuario: userId ?? user?.id_usuario });
   const hasCajaUser = Boolean(user);
 
   const toSafeMessage = (error, fallback) => {
@@ -361,7 +362,8 @@ export default function CajaView({
     }),
     onSubmit,
     suppressSubmitErrorToast: true,
-    onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
+    onRequireAutoAuxiliar: openAutoAuxiliarForSucursal,
+    userId: userId ?? user?.id_usuario
   });
   composerRef.current = composer;
   const resolvedCajaSucursalId = toPositiveId(
@@ -413,7 +415,7 @@ export default function CajaView({
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
     if (!selectedSucursalId) return;
 
-    const key = `sucursal:${selectedSucursalId}`;
+    const key = `usuario:${cajaUserKey}:sucursal:${selectedSucursalId}`;
     if (catalogSucursalRequestRef.current === key) return;
     catalogSucursalRequestRef.current = key;
 
@@ -421,6 +423,7 @@ export default function CajaView({
   }, [
     composer.selectedSucursal,
     composer.selectedSucursalId,
+    cajaUserKey,
     isSuperAdmin,
     onCatalogSucursalChange
   ]);
@@ -859,9 +862,13 @@ export default function CajaView({
       return;
     }
 
-    const requestKey = `sucursal:${selectedSucursalId}`;
+    const requestKey = `usuario:${cajaUserKey}:sucursal:${selectedSucursalId}`;
     const currentInFlight = pendientesSummaryRequestRef.current;
-    if (currentInFlight?.key === requestKey && currentInFlight.promise) {
+    if (
+      currentInFlight?.key === requestKey
+      && currentInFlight.promise
+      && !currentInFlight.controller?.signal?.aborted
+    ) {
       return currentInFlight.promise;
     }
 
@@ -887,7 +894,7 @@ export default function CajaView({
       });
       return response;
     })();
-    pendientesSummaryRequestRef.current = { key: requestKey, promise: requestPromise, requestId };
+    pendientesSummaryRequestRef.current = { key: requestKey, promise: requestPromise, requestId, controller };
 
     try {
       return await requestPromise;
@@ -912,13 +919,13 @@ export default function CajaView({
     } finally {
       const current = pendientesSummaryRequestRef.current;
       if (current.key === requestKey && current.requestId === requestId) {
-        pendientesSummaryRequestRef.current = { key: '', promise: null, requestId };
+        pendientesSummaryRequestRef.current = { key: '', promise: null, requestId, controller: null };
         if (pendientesSummaryAbortRef.current === controller) {
           pendientesSummaryAbortRef.current = null;
         }
       }
     }
-  }, [composer.selectedSucursalId]);
+  }, [cajaUserKey, composer.selectedSucursalId]);
 
   useEffect(() => {
     void loadPendientesSummary();
