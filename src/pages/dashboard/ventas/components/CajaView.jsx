@@ -317,13 +317,13 @@ export default function CajaView({
     const normalizedSucursalId = toPositiveId(idSucursal);
     if (!normalizedSucursalId) return;
 
-    const cacheKey = `sucursal:${normalizedSucursalId}`;
+    const cacheKey = `usuario:${cajaUserKey}:sucursal:${normalizedSucursalId}`;
     setAutoModalError('');
     setAutoModalOpen(true);
 
     const cached = sesionesAbiertasCacheRef.current;
     if (!force && isTimedCacheFresh(cached, cacheKey, CAJA_SESIONES_ABIERTAS_CACHE_MS)) {
-      const rows = cached.rows || [];
+      const rows = (cached.rows || []).filter((row) => Number(row.id_sucursal) === Number(normalizedSucursalId));
       setSesionesAbiertas(rows);
       setSelectedSesion(rows.length > 0 ? String(rows[0].id_sesion_caja) : '');
       if (rows.length === 0) {
@@ -341,7 +341,8 @@ export default function CajaView({
       } else {
         const promise = cajasService
           .listSesionesAbiertasSafe({ id_sucursal: normalizedSucursalId })
-          .then((response) => normalizeOpenSessions(response));
+          .then((response) => normalizeOpenSessions(response)
+            .filter((row) => Number(row.id_sucursal) === Number(normalizedSucursalId)));
         sesionesAbiertasInFlightRef.current = { key: cacheKey, promise };
         rows = await promise;
       }
@@ -1175,7 +1176,7 @@ export default function CajaView({
 
   const confirmAutoAsignacion = async () => {
     const idSesionCaja = Number.parseInt(String(selectedSesion || ''), 10);
-    const idSucursal = Number.parseInt(String(composer.selectedSucursal || ''), 10);
+    const idSucursal = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
     if (!idSesionCaja || !idSucursal) return;
     setAutoModalAssigning(true);
     setAutoModalError('');
@@ -1221,7 +1222,12 @@ export default function CajaView({
       await onCatalogSucursalChange?.({ id_sucursal: idSucursal, force: true });
       onNotify?.('CAJA ACTIVA', 'Te registraste como auxiliar de caja para esta sesión.', 'success');
     } catch (error) {
-      setAutoModalError(toSafeMessage(error, 'No se pudo registrar la autoasignación temporal.'));
+      const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+      if (isSuperAdmin && code === 'VENTAS_CAJAS_USER_ALREADY_IN_OPEN_SESSION') {
+        setAutoModalError('No se pudo registrar esta sesión. Intenta recargar las sesiones de la sucursal seleccionada.');
+      } else {
+        setAutoModalError(toSafeMessage(error, 'No se pudo registrar la autoasignación temporal.'));
+      }
     } finally {
       setAutoModalAssigning(false);
     }

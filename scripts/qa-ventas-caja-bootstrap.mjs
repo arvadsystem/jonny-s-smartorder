@@ -77,6 +77,10 @@ assert.match(cajaSource, /!currentInFlight\.controller\?\.signal\?\.aborted/, 'p
 assert.match(cajaSource, /controller\s*\}/, 'pendientes debe conservar el AbortController de la solicitud activa');
 assert.match(useVentasSource, /cajaBootstrapAbortRef\.current\?\.abort\(\)[\s\S]*cajaBootstrapDataCacheRef\.current\.clear\(\)/, 'cambio de usuario debe cancelar solicitudes y limpiar caches de Caja');
 assert.match(cajaSource, /usuario:\$\{cajaUserKey\}:sucursal:\$\{selectedSucursalId\}/, 'bootstrap demandado desde Caja debe estar aislado por usuario');
+assert.match(cajaSource, /const cacheKey = `usuario:\$\{cajaUserKey\}:sucursal:\$\{normalizedSucursalId\}`/, 'sesiones abiertas para autoauxiliar deben cachearse por usuario y sucursal');
+assert.match(cajaSource, /listSesionesAbiertasSafe\(\{ id_sucursal: normalizedSucursalId \}\)[\s\S]{0,160}\.filter\(\(row\) => Number\(row\.id_sucursal\) === Number\(normalizedSucursalId\)\)/, 'autoauxiliar debe consultar y conservar solo sesiones de la sucursal seleccionada');
+assert.match(cajaSource, /VENTAS_CAJAS_USER_ALREADY_IN_OPEN_SESSION[\s\S]{0,220}recargar las sesiones de la sucursal seleccionada/, 'SUPER_ADMIN no debe mostrar el error de participacion en otra sesion');
+assert.match(useVentasSource, /cachedBootstrap\?\.status === 'success'[\s\S]{0,220}setBootstrapLoading\(false\)[\s\S]{0,120}setRecipesLoading\(false\)[\s\S]{0,120}setCatalogLoading\(false\)/, 'bootstrap desde cache debe cerrar loaders y evitar ciclos');
 assert.match(cajaSource, /id_sucursal:\s*selectedSucursalId/, 'pendientes debe consultar la sucursal seleccionada actual');
 assert.doesNotMatch(cajaSource, /pedidos-pendientes\?id_sucursal=1|id_sucursal:\s*1/, 'Caja no debe forzar pendientes de sucursal 1');
 assert.match(composerSource, /origin:\s*'CAJA'/, 'la venta creada desde Caja debe marcar su origen');
