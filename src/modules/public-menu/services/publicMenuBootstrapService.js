@@ -384,13 +384,13 @@ export const publicMenuBootstrapService = {
     const normalizedOrderType = assertValidOrderType(orderType);
 
     const cacheKey = buildCatalogCacheKey({ idSucursal, orderType: normalizedOrderType });
+    const activeRequest = catalogCache.get(cacheKey)?.inFlight;
+    if (activeRequest) return activeRequest;
+
     if (forceRefresh) catalogCache.delete(cacheKey);
 
     const cached = forceRefresh ? null : readValidCatalogCache(cacheKey);
     if (cached) return cached;
-
-    const inFlight = forceRefresh ? null : catalogCache.get(cacheKey)?.inFlight;
-    if (inFlight) return inFlight;
 
     const endpoint = withQueryParams('/api/public-menu/catalogo', {
       id_sucursal: idSucursal,
@@ -398,7 +398,7 @@ export const publicMenuBootstrapService = {
     });
 
     const requestPromise = (async () => {
-      const response = await apiFetch(endpoint, 'GET', null, { noCache: true });
+      const response = await apiFetch(endpoint, 'GET', null, { noCache: forceRefresh });
       const payload = response?.data || {};
       const items = Array.isArray(payload?.items) ? payload.items.map(normalizeCatalogItem) : [];
 
