@@ -56,6 +56,9 @@ const buildVentasTotalsCacheKey = (filters = {}) => JSON.stringify({
   pageSize: Number.parseInt(String(filters.pageSize ?? 6), 10) || 6
 });
 
+const buildCajaUserScopeKey = (userKey, idSucursal) =>
+  `usuario:${userKey}:sucursal:${idSucursal || 'auto'}`;
+
 const normalizeVentasSummaryPayload = (summary = {}) => ({
   ...createDefaultVentasSummary(),
   totalVentas: Number.parseInt(String(summary?.ventas ?? summary?.totalVentas ?? 0), 10) || 0,
@@ -110,6 +113,9 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   }
   const cajaCatalogLoadedRef = useRef(new Set());
   const cajaCatalogInFlightRef = useRef(new Map());
+  const cajaBootstrapRequestIdRef = useRef(0);
+  const cajaRecipeRequestIdRef = useRef(0);
+  const cajaCatalogRequestIdRef = useRef(0);
   const cajaBootstrapDataCacheRef = useRef(new Map());
   const cajaCatalogDataCacheRef = useRef(new Map());
   const recipeCatalogAbortRef = useRef(new Map());
@@ -155,6 +161,9 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     for (const controller of recipeCatalogAbortRef.current.values()) controller.abort();
     recipeCatalogAbortRef.current.clear();
     cajaCatalogInFlightRef.current.clear();
+    cajaBootstrapRequestIdRef.current += 1;
+    cajaRecipeRequestIdRef.current += 1;
+    cajaCatalogRequestIdRef.current += 1;
     cajaCatalogLoadedRef.current.clear();
     cajaBootstrapDataCacheRef.current.clear();
     cajaCatalogDataCacheRef.current.clear();
@@ -333,7 +342,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     setTiposDepartamento(normalizedTiposDepartamento);
     setRecetas(normalizedRecetas);
     const activeDepartmentId = parsePositiveId(data.departamento_activo?.id_tipo_departamento);
-    const recipeScopeKey = `${cajaUserKey}:${responseSucursalId}:${activeDepartmentId || 'ALL'}`;
+    const recipeScopeKey = `${buildCajaUserScopeKey(cajaUserKey, responseSucursalId)}:departamento:${activeDepartmentId || 'ALL'}`;
     const recipeEntry = {
       status: data.sesion_caja ? 'success' : 'idle',
       rows: normalizedRecetas,
@@ -385,7 +394,8 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       setCatalogErrors({});
     }
     if (idSucursal) activeCajaSucursalRef.current = idSucursal;
-    const cacheKey = `bootstrap:${cajaUserKey}:${idSucursal || 'auto'}`;
+    const scopeKey = buildCajaUserScopeKey(cajaUserKey, idSucursal);
+    const cacheKey = `bootstrap:${scopeKey}`;
     if (force) cajaBootstrapDataCacheRef.current.delete(cacheKey);
     const cachedBootstrap = cajaBootstrapDataCacheRef.current.get(cacheKey);
     if (!force && cachedBootstrap?.status === 'success') {
@@ -395,11 +405,24 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       });
     }
     const currentInFlight = cajaCatalogInFlightRef.current.get(cacheKey);
-    if (currentInFlight) return currentInFlight;
+    if (!force && currentInFlight?.promise && !currentInFlight.controller?.signal?.aborted) {
+      return currentInFlight.promise;
+    }
 
     cajaBootstrapAbortRef.current?.abort();
     const controller = new AbortController();
     cajaBootstrapAbortRef.current = controller;
+    const requestId = cajaBootstrapRequestIdRef.current + 1;
+    cajaBootstrapRequestIdRef.current = requestId;
+    const requestUserKey = cajaUserKey;
+    const requestSucursalId = idSucursal;
+    const isCurrentBootstrapRequest = () => (
+      cajaBootstrapRequestIdRef.current === requestId
+      && activeCajaUserKeyRef.current === requestUserKey
+      && cajaBootstrapAbortRef.current === controller
+      && !controller.signal.aborted
+      && (requestSucursalId ? activeCajaSucursalRef.current === requestSucursalId : true)
+    );
     setBootstrapLoading(true);
     setRecipesLoading(true);
     setCatalogStatuses((current) => ({ ...current, recetas: 'loading' }));
@@ -409,20 +432,20 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       idSucursal ? { id_sucursal: idSucursal } : {},
       { signal: controller.signal }
     ).then((response) => {
-      if (controller.signal.aborted) return null;
+      if (!isCurrentBootstrapRequest()) return null;
       const data = response?.data || {};
       const result = hydrateCajaBootstrapData(data, { requestedSucursalId: idSucursal, meta: response?.meta || {} });
       if (!result) return null;
       cajaCatalogLoadedRef.current.add(cacheKey);
       const responseSucursalId = parsePositiveId(data.id_sucursal);
-      if (responseSucursalId) cajaCatalogLoadedRef.current.add(`bootstrap:${cajaUserKey}:${responseSucursalId}`);
+      if (responseSucursalId) cajaCatalogLoadedRef.current.add(`bootstrap:${buildCajaUserScopeKey(cajaUserKey, responseSucursalId)}`);
       cajaBootstrapDataCacheRef.current.set(cacheKey, {
         status: 'success',
         data,
         meta: response?.meta || {}
       });
       if (responseSucursalId) {
-        cajaBootstrapDataCacheRef.current.set(`bootstrap:${cajaUserKey}:${responseSucursalId}`, {
+        cajaBootstrapDataCacheRef.current.set(`bootstrap:${buildCajaUserScopeKey(cajaUserKey, responseSucursalId)}`, {
           status: 'success',
           data,
           meta: response?.meta || {}
@@ -431,9 +454,10 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       return result;
     }).catch((error) => {
       if (controller.signal.aborted) {
-        setCatalogStatuses((current) => ({ ...current, recetas: 'idle' }));
+        if (isCurrentBootstrapRequest()) setCatalogStatuses((current) => ({ ...current, recetas: 'idle' }));
         return null;
       }
+      if (!isCurrentBootstrapRequest()) return null;
       const message = extractApiMessage(error, 'No se pudo cargar el catalogo inicial de Caja.');
       setCatalogErrors((current) => ({
         ...current,
@@ -443,15 +467,24 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       openToast('ERROR CATALOGO', message, 'danger');
       throw error;
     }).finally(() => {
-      cajaCatalogInFlightRef.current.delete(cacheKey);
-      if (cajaBootstrapAbortRef.current === controller) {
+      const current = cajaCatalogInFlightRef.current.get(cacheKey);
+      if (current?.controller === controller && current.requestId === requestId) {
+        cajaCatalogInFlightRef.current.delete(cacheKey);
+      }
+      if (cajaBootstrapAbortRef.current === controller && cajaBootstrapRequestIdRef.current === requestId) {
         cajaBootstrapAbortRef.current = null;
         setBootstrapLoading(false);
         setRecipesLoading(false);
         setCatalogLoading(false);
       }
     });
-    cajaCatalogInFlightRef.current.set(cacheKey, promise);
+    cajaCatalogInFlightRef.current.set(cacheKey, {
+      promise,
+      controller,
+      requestId,
+      userKey: requestUserKey,
+      sucursalId: requestSucursalId
+    });
     return promise;
   }, [cajaUserKey, hydrateCajaBootstrapData, openToast]);
 
@@ -464,7 +497,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     const idTipoDepartamento = parsePositiveId(idTipoDepartamentoRaw);
     if (!idSucursal) return null;
 
-    const scopeKey = `${cajaUserKey}:${idSucursal}:${idTipoDepartamento || 'ALL'}`;
+    const scopeKey = `${buildCajaUserScopeKey(cajaUserKey, idSucursal)}:departamento:${idTipoDepartamento || 'ALL'}`;
     activeRecipeScopeRef.current = scopeKey;
     setRecipeCatalogState((current) => ({ ...current, activeKey: scopeKey }));
     const cached = recipeCatalogCacheRef.current.get(scopeKey);
@@ -477,12 +510,23 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
 
     const requestKey = `RECETAS:${scopeKey}`;
     const currentInFlight = cajaCatalogInFlightRef.current.get(requestKey);
-    if (!force && currentInFlight) return currentInFlight;
+    if (!force && currentInFlight?.promise && !currentInFlight.controller?.signal?.aborted) {
+      return currentInFlight.promise;
+    }
 
     recipeCatalogAbortRef.current.get(requestKey)?.abort();
     const controller = new AbortController();
     recipeCatalogAbortRef.current.set(requestKey, controller);
-    const isCurrentRequest = () => recipeCatalogAbortRef.current.get(requestKey) === controller;
+    const requestId = cajaRecipeRequestIdRef.current + 1;
+    cajaRecipeRequestIdRef.current = requestId;
+    const requestUserKey = cajaUserKey;
+    const isCurrentRequest = () => (
+      cajaRecipeRequestIdRef.current === requestId
+      && activeCajaUserKeyRef.current === requestUserKey
+      && activeCajaSucursalRef.current === idSucursal
+      && recipeCatalogAbortRef.current.get(requestKey) === controller
+      && !controller.signal.aborted
+    );
     setRecetas([]);
     setRecipesLoading(true);
     setCatalogStatuses((current) => ({ ...current, recetas: 'loading' }));
@@ -550,12 +594,21 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       return null;
     }).finally(() => {
       if (recipeCatalogAbortRef.current.get(requestKey) === controller) {
-        cajaCatalogInFlightRef.current.delete(requestKey);
+        const current = cajaCatalogInFlightRef.current.get(requestKey);
+        if (current?.controller === controller && current.requestId === requestId) {
+          cajaCatalogInFlightRef.current.delete(requestKey);
+        }
         recipeCatalogAbortRef.current.delete(requestKey);
         if (activeRecipeScopeRef.current === scopeKey) setRecipesLoading(false);
       }
     });
-    cajaCatalogInFlightRef.current.set(requestKey, promise);
+    cajaCatalogInFlightRef.current.set(requestKey, {
+      promise,
+      controller,
+      requestId,
+      userKey: requestUserKey,
+      sucursalId: idSucursal
+    });
     return promise;
   }, [cajaUserKey]);
 
@@ -565,7 +618,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     if (!idSucursal) return null;
     if (catalogKey === 'RECETAS') return null;
     if (!['PRODUCTOS', 'DESCUENTOS'].includes(catalogKey)) return null;
-    const cacheKey = `${catalogKey}:${cajaUserKey}:${idSucursal}`;
+    const cacheKey = `${catalogKey}:${buildCajaUserScopeKey(cajaUserKey, idSucursal)}`;
     const cachedData = cajaCatalogDataCacheRef.current.get(cacheKey);
     if (!force && cachedData?.status === 'success') {
       if (catalogKey === 'PRODUCTOS') {
@@ -583,16 +636,24 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     }
     if (!force && cajaCatalogLoadedRef.current.has(cacheKey)) return null;
     const currentInFlight = cajaCatalogInFlightRef.current.get(cacheKey);
-    if (!force && currentInFlight) return currentInFlight;
+    if (!force && currentInFlight?.promise && !currentInFlight.controller?.signal?.aborted) {
+      return currentInFlight.promise;
+    }
 
     cajaCatalogAbortRef.current.get(cacheKey)?.abort();
     cajaCatalogLoadedRef.current.delete(cacheKey);
 
     const controller = new AbortController();
     cajaCatalogAbortRef.current.set(cacheKey, controller);
+    const requestId = cajaCatalogRequestIdRef.current + 1;
+    cajaCatalogRequestIdRef.current = requestId;
+    const requestUserKey = cajaUserKey;
     const isCurrentRequest = () => (
-      activeCajaSucursalRef.current === idSucursal
+      cajaCatalogRequestIdRef.current === requestId
+      && activeCajaUserKeyRef.current === requestUserKey
+      && activeCajaSucursalRef.current === idSucursal
       && cajaCatalogAbortRef.current.get(cacheKey) === controller
+      && !controller.signal.aborted
     );
     const setLoadingState = catalogKey === 'PRODUCTOS' ? setProductsLoading : setDiscountsLoading;
     setLoadingState(true);
@@ -605,7 +666,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
           ventasService.getCategoriasCatalog({ signal: controller.signal }),
           ventasService.getProductosCatalog({ id_sucursal: idSucursal }, { signal: controller.signal })
         ]);
-        if (controller.signal.aborted) return null;
+        if (!isCurrentRequest()) return null;
         const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
           .map(normalizeCategoriaRecord)
           .filter((row) => row.estado);
@@ -648,7 +709,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         let discountProductos = null;
         let discountRecetas = null;
         if (scopes.has('PRODUCTO')) {
-          const productCacheKey = `PRODUCTOS:${cajaUserKey}:${idSucursal}`;
+          const productCacheKey = `PRODUCTOS:${buildCajaUserScopeKey(cajaUserKey, idSucursal)}`;
           const productCache = cajaCatalogDataCacheRef.current.get(productCacheKey);
           if (productCache?.status === 'success') {
             discountCategorias = productCache.categorias || [];
@@ -677,7 +738,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
           setProductos(discountProductos || []);
         }
         if (scopes.has('RECETA')) {
-          const recipeScopeKey = `${cajaUserKey}:${idSucursal}:ALL`;
+          const recipeScopeKey = `${buildCajaUserScopeKey(cajaUserKey, idSucursal)}:departamento:ALL`;
           const recipeCache = recipeCatalogCacheRef.current.get(recipeScopeKey);
           if (recipeCache?.status === 'success') {
             discountRecetas = recipeCache.rows || [];
@@ -718,6 +779,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         }
         return null;
       }
+      if (!isCurrentRequest()) return null;
       const key = catalogKey.toLowerCase();
       setCatalogErrors((current) => ({
         ...current,
@@ -727,12 +789,21 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       return null;
     }).finally(() => {
       if (cajaCatalogAbortRef.current.get(cacheKey) === controller) {
-        cajaCatalogInFlightRef.current.delete(cacheKey);
+        const current = cajaCatalogInFlightRef.current.get(cacheKey);
+        if (current?.controller === controller && current.requestId === requestId) {
+          cajaCatalogInFlightRef.current.delete(cacheKey);
+        }
         cajaCatalogAbortRef.current.delete(cacheKey);
         if (activeCajaSucursalRef.current === idSucursal) setLoadingState(false);
       }
     });
-    cajaCatalogInFlightRef.current.set(cacheKey, promise);
+    cajaCatalogInFlightRef.current.set(cacheKey, {
+      promise,
+      controller,
+      requestId,
+      userKey: requestUserKey,
+      sucursalId: idSucursal
+    });
     return promise;
   }, [cajaUserKey]);
 

@@ -283,12 +283,34 @@ export default function CajaView({
   const cajaAsignacionInFlightRef = useRef(null);
   const sesionesAbiertasCacheRef = useRef({ key: '', at: 0, rows: [] });
   const sesionesAbiertasInFlightRef = useRef(null);
+  const cajaUserKeyRef = useRef(cajaUserKey);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
 
   const catalogSucursalRequestRef = useRef('');
+  const catalogSucursalRequestIdRef = useRef(0);
   const bootstrapSesionCaja = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
   const hasCajaSession = Boolean(cajaSesionActiva?.id_sesion_caja || bootstrapSesionCaja?.id_sesion_caja);
+  const lockedSucursalId = toPositiveId(cajaSesionActiva?.id_sucursal || cajaAsignacion?.id_sucursal || defaultSucursalId);
+
+  useEffect(() => {
+    if (cajaUserKeyRef.current === cajaUserKey) return;
+    cajaUserKeyRef.current = cajaUserKey;
+    cajaAsignacionRequestRef.current += 1;
+    cajaAsignacionCacheRef.current = { key: '', at: 0, status: 'idle' };
+    cajaAsignacionInFlightRef.current = null;
+    sesionesAbiertasCacheRef.current = { key: '', at: 0, rows: [] };
+    sesionesAbiertasInFlightRef.current = null;
+    pendientesSummaryAbortRef.current?.abort();
+    pendientesSummaryAbortRef.current = null;
+    pendientesSummaryRequestRef.current = { key: '', promise: null, requestId: pendientesSummaryRequestRef.current.requestId + 1, controller: null };
+    catalogSucursalRequestRef.current = '';
+    catalogSucursalRequestIdRef.current += 1;
+    setPendientesSummary({ loading: false, error: '', total: 0, monto: 0 });
+    setCajaAsignacion(null);
+    setCajaSesionActiva(null);
+    setCajaStatus({ loading: false, error: '', assignmentMissing: false });
+  }, [cajaUserKey]);
 
   const openAutoAuxiliarForSucursal = async ({ idSucursal, force = false }) => {
     if (!isSuperAdmin) return;
@@ -353,7 +375,7 @@ export default function CajaView({
     canApplyDiscount,
     sucursales,
     isSuperAdmin,
-    defaultSucursalId,
+    defaultSucursalId: isSuperAdmin ? defaultSucursalId : lockedSucursalId,
     allowSucursalAutoSelection: !catalogLoadingStates.bootstrapLoading,
     catalogsEnabled: hasCajaSession,
     onDepartmentDemand: ({ idSucursal, idTipoDepartamento }) => onRecipesDepartmentDemand?.({
@@ -418,8 +440,10 @@ export default function CajaView({
     const key = `usuario:${cajaUserKey}:sucursal:${selectedSucursalId}`;
     if (catalogSucursalRequestRef.current === key) return;
     catalogSucursalRequestRef.current = key;
+    const requestId = catalogSucursalRequestIdRef.current + 1;
+    catalogSucursalRequestIdRef.current = requestId;
 
-    void onCatalogSucursalChange?.({ id_sucursal: selectedSucursalId });
+    void onCatalogSucursalChange?.({ id_sucursal: selectedSucursalId, requestId });
   }, [
     composer.selectedSucursal,
     composer.selectedSucursalId,
@@ -747,9 +771,6 @@ export default function CajaView({
 
     if (isSuperAdmin || catalogLoadingStates.bootstrapLoading) return undefined;
 
-    const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
-    if (bootstrapSucursalId && bootstrapSucursalId === toPositiveId(defaultSucursalId)) return undefined;
-
     setCajaAsignacion(null);
     setCajaSesionActiva(null);
     syncComposerSession(null);
@@ -760,13 +781,12 @@ export default function CajaView({
     return () => {
       cajaAsignacionRequestRef.current += 1;
     };
-  }, [cajaBootstrapData?.id_sucursal, cajaUserKey, catalogLoadingStates.bootstrapLoading, defaultSucursalId, hasCajaUser, isSuperAdmin, loadCajaAsignada, syncComposerSession]);
+  }, [cajaUserKey, catalogLoadingStates.bootstrapLoading, hasCajaUser, isSuperAdmin, loadCajaAsignada, syncComposerSession]);
 
   useEffect(() => {
     if (!hasCajaUser || !isSuperAdmin || catalogLoadingStates.bootstrapLoading) return undefined;
 
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
-    if (cajaBootstrapData) return undefined;
     const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
     if (selectedSucursalId && bootstrapSucursalId === selectedSucursalId) return undefined;
     cajaAsignacionRequestRef.current += 1;
@@ -876,6 +896,17 @@ export default function CajaView({
     const controller = new AbortController();
     pendientesSummaryAbortRef.current = controller;
     const requestId = currentInFlight.requestId + 1;
+    const requestUserKey = cajaUserKey;
+    const requestSucursalId = selectedSucursalId;
+    const isCurrentPendingRequest = () => {
+      const current = pendientesSummaryRequestRef.current;
+      return current.key === requestKey
+        && current.requestId === requestId
+        && current.controller === controller
+        && requestUserKey === cajaUserKey
+        && requestSucursalId === toPositiveId(composerRef.current?.selectedSucursalId)
+        && !controller.signal.aborted;
+    };
     setPendientesSummary((current) => ({ ...current, loading: true, error: '' }));
     const requestPromise = (async () => {
       const response = await ventasService.listPedidosPendientesPago({
@@ -885,7 +916,7 @@ export default function CajaView({
       }, {
         signal: controller.signal
       });
-      if (pendientesSummaryRequestRef.current.requestId !== requestId) return null;
+      if (!isCurrentPendingRequest()) return null;
       setPendientesSummary({
         loading: false,
         error: '',
@@ -900,7 +931,7 @@ export default function CajaView({
       return await requestPromise;
     } catch (error) {
       if (controller.signal.aborted) return null;
-      if (pendientesSummaryRequestRef.current.requestId !== requestId) return null;
+      if (!isCurrentPendingRequest()) return null;
       if (Number(error?.status || 0) >= 500) {
         console.error('[Ventas] Error cargando resumen de pedidos pendientes', error);
       } else if (import.meta.env.DEV) {
@@ -918,7 +949,7 @@ export default function CajaView({
       return null;
     } finally {
       const current = pendientesSummaryRequestRef.current;
-      if (current.key === requestKey && current.requestId === requestId) {
+      if (current.key === requestKey && current.requestId === requestId && current.controller === controller) {
         pendientesSummaryRequestRef.current = { key: '', promise: null, requestId, controller: null };
         if (pendientesSummaryAbortRef.current === controller) {
           pendientesSummaryAbortRef.current = null;
