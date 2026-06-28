@@ -175,6 +175,7 @@ export default function CierresCajaView() {
   const [miAsignacionCajaMissing, setMiAsignacionCajaMissing] = useState(false);
   const [miAsignacionCajaError, setMiAsignacionCajaError] = useState('');
   const [cajeroOpenSaving, setCajeroOpenSaving] = useState(false);
+  const [retryingCloseEmail, setRetryingCloseEmail] = useState(false);
   const usuariosRequestIdRef = useRef(0);
   const cajasRequestIdRef = useRef(0);
   const miAsignacionRequestIdRef = useRef(0);
@@ -356,6 +357,31 @@ export default function CierresCajaView() {
     await refreshCurrentScope();
     await ensureDetalle(selectedSesion || selectedDetalle?.sesion, { contexto: 'DETALLE' });
     return response;
+  };
+
+  const handleRetryCloseEmail = async () => {
+    const idCierreCaja = selectedDetalle?.cierre?.id_cierre_caja;
+    if (!idCierreCaja || !isSuperAdmin) return null;
+    setRetryingCloseEmail(true);
+    try {
+      const response = await cajasService.retryCloseEmail(idCierreCaja);
+      openToast(
+        'Correo de cierre',
+        response?.message || 'El estado del correo de cierre fue actualizado.',
+        'success'
+      );
+      await ensureDetalle(selectedSesion || selectedDetalle?.sesion, { contexto: 'DETALLE' });
+      return response;
+    } catch (errorResponse) {
+      openToast(
+        'Correo de cierre',
+        String(errorResponse?.message || errorResponse?.data?.message || 'No se pudo reintentar el correo de cierre.'),
+        'danger'
+      );
+      return null;
+    } finally {
+      setRetryingCloseEmail(false);
+    }
   };
 
   const loadMiAsignacionCaja = useCallback(async () => {
@@ -823,6 +849,8 @@ export default function CierresCajaView() {
         canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
         canResolveDifference={canResolveDifference}
         saving={saving}
+        canRetryCloseEmail={isSuperAdmin}
+        retryingCloseEmail={retryingCloseEmail}
         onClose={() => {
           setDetailOpen(false);
           setSelectedSesion(null);
@@ -831,6 +859,7 @@ export default function CierresCajaView() {
         onOpenArqueo={openArqueo}
         onOpenCerrar={openCerrar}
         onResolveDifference={handleResolveDifference}
+        onRetryCloseEmail={handleRetryCloseEmail}
       />
 
       <CierreCajaAbrirModal

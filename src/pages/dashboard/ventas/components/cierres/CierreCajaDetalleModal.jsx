@@ -79,6 +79,25 @@ const AmountCard = ({ label, value, tone = 'neutral', icon = 'bi-cash-stack', fa
   </article>
 );
 
+const resolveCloseEmailStatusLabel = (estado) => {
+  const code = String(estado || '').trim().toUpperCase();
+  if (code === 'PENDIENTE') return 'Pendiente';
+  if (code === 'PROCESANDO') return 'Procesando';
+  if (code === 'ENVIADO') return 'Enviado';
+  if (code === 'REINTENTO') return 'Reintento programado';
+  if (code === 'FALLIDO') return 'Fallido';
+  return 'No disponible';
+};
+
+const resolveCloseEmailStatusClass = (estado) => {
+  const code = String(estado || '').trim().toUpperCase();
+  if (code === 'ENVIADO') return 'bg-success border-success text-white';
+  if (code === 'FALLIDO') return 'bg-danger border-danger text-white';
+  if (code === 'PROCESANDO') return 'bg-info border-info text-dark';
+  if (code === 'REINTENTO') return 'bg-warning border-warning text-dark';
+  return 'bg-light border-secondary text-secondary';
+};
+
 const DetailMobileCards = ({ rows = [], emptyMessage = 'No hay registros.' }) => {
   const normalizedRows = Array.isArray(rows) ? rows : [];
   return (
@@ -117,10 +136,13 @@ export default function CierreCajaDetalleModal({
   canViewCajaTheoreticalAmounts = true,
   canResolveDifference = false,
   saving = false,
+  canRetryCloseEmail = false,
+  retryingCloseEmail = false,
   onClose,
   onOpenArqueo,
   onOpenCerrar,
-  onResolveDifference
+  onResolveDifference,
+  onRetryCloseEmail
 }) {
   const [activeTab, setActiveTab] = useState('RESUMEN');
   const [movimientoFiltro, setMovimientoFiltro] = useState('TODOS');
@@ -170,6 +192,12 @@ export default function CierreCajaDetalleModal({
     sesion?.diferencia_cierre
   ) ?? null;
   const cierreObservacion = cierre?.observacion || cierre?.observacion_cierre || resumen?.observacion_cierre || '';
+  const closeEmailNotification = cierre?.notificacion_correo || null;
+  const closeEmailStatus = closeEmailNotification?.estado || cierre?.correo_estado || '';
+  const canRetrySelectedCloseEmail =
+    canRetryCloseEmail &&
+    closeEmailNotification?.estado === 'FALLIDO' &&
+    typeof onRetryCloseEmail === 'function';
   const aperturaContingencia = String(sesion?.observacion_apertura || '').toUpperCase().includes('CONTINGENCIA');
   const cierreAdministrativo = Boolean(
     sesion?.id_usuario_cierre &&
@@ -767,6 +795,17 @@ export default function CierreCajaDetalleModal({
                 <i className="bi bi-shield-check" />
               </button>
             ) : null}
+            {canRetrySelectedCloseEmail ? (
+              <button
+                type="button"
+                className="ventas-modal__ghost-btn"
+                title="Reintentar correo de cierre"
+                onClick={onRetryCloseEmail}
+                disabled={saving || retryingCloseEmail}
+              >
+                <i className="bi bi-envelope-arrow-up" />
+              </button>
+            ) : null}
             <button type="button" className="ventas-modal__close-btn" onClick={onClose} aria-label="Cerrar">
               <i className="bi bi-x-lg" />
             </button>
@@ -786,6 +825,11 @@ export default function CierreCajaDetalleModal({
                   <div className="cierres-caja-detail__badges">
                     <span className={`ventas-page__table-pill ${statusBadge.className}`}>{statusBadge.label}</span>
                     <span className={`ventas-page__table-pill ${closeBadge.className}`}>{closeBadge.label}</span>
+                    {closeEmailStatus ? (
+                      <span className={`ventas-page__table-pill ${resolveCloseEmailStatusClass(closeEmailStatus)}`}>
+                        Correo: {resolveCloseEmailStatusLabel(closeEmailStatus)}
+                      </span>
+                    ) : null}
                     {cierre?.resolucion_codigo && !['CAJA_CUADRA', 'PENDIENTE_REVISION'].includes(cierre.resolucion_codigo) ? (
                       <span className="ventas-page__table-pill bg-white border-secondary text-secondary">
                         {cierre.resolucion_nombre}
@@ -802,6 +846,14 @@ export default function CierreCajaDetalleModal({
                     <DetailField label="Apertura" value={`L. ${formatCajaCurrency(sesion?.monto_apertura)}`} />
                     <DetailField label="Cierre" value={formatCajaDateTimeHN(sesion?.fecha_cierre || cierre?.fecha_cierre)} />
                     <DetailField label="Estado" value={statusBadge.label} />
+                    {closeEmailNotification ? (
+                      <>
+                        <DetailField label="Correo cierre" value={resolveCloseEmailStatusLabel(closeEmailStatus)} />
+                        <DetailField label="Destino correo" value={closeEmailNotification.email_destino || '-'} />
+                        <DetailField label="Intentos correo" value={String(closeEmailNotification.intentos ?? 0)} />
+                        <DetailField label="Envio correo" value={formatCajaDateTimeHN(closeEmailNotification.fecha_envio)} />
+                      </>
+                    ) : null}
                     {canViewCajaTheoreticalAmounts ? (
                       <DetailField
                         label="Diferencia"
@@ -813,6 +865,11 @@ export default function CierreCajaDetalleModal({
                     <div className="alert alert-warning mb-0 mt-2">
                       {aperturaContingencia ? 'Apertura administrativa por contingencia registrada. ' : ''}
                       {cierreAdministrativo ? 'Cierre administrativo por super admin registrado.' : ''}
+                    </div>
+                  ) : null}
+                  {closeEmailNotification?.ultimo_error ? (
+                    <div className="alert alert-danger mb-0 mt-2">
+                      {closeEmailNotification.ultimo_error}
                     </div>
                   ) : null}
                 </div>

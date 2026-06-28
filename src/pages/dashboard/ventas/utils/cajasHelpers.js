@@ -221,6 +221,22 @@ const normalizeCierreRecuento = (row = {}) => ({
   metodos: (Array.isArray(row.metodos) ? row.metodos : []).map(normalizeCierreRecuentoMetodo)
 });
 
+const normalizeCierreNotificacionCorreo = (row = {}) => {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    id_notificacion: toNumber(row.id_notificacion, 0) || null,
+    id_cierre_caja: toNumber(row.id_cierre_caja, 0) || null,
+    estado: String(row.estado ?? '').trim().toUpperCase(),
+    intentos: toNumber(row.intentos, 0),
+    proximo_intento: row.proximo_intento ?? null,
+    bloqueado_hasta: row.bloqueado_hasta ?? null,
+    ultimo_error: String(row.ultimo_error ?? '').trim(),
+    email_destino: String(row.email_destino ?? '').trim(),
+    message_id: String(row.message_id ?? '').trim(),
+    fecha_envio: row.fecha_envio ?? null
+  };
+};
+
 export const normalizeSesionDetalle = (payload = {}) => {
   const participantes = Array.isArray(payload.participantes) ? payload.participantes : [];
   const cobrosPorUsuario = Array.isArray(payload.cobros_por_usuario) ? payload.cobros_por_usuario : [];
@@ -347,7 +363,9 @@ export const normalizeSesionDetalle = (payload = {}) => {
           monto_declarado_cierre: toNumber(payload.cierre.monto_declarado_cierre, 0),
           diferencia: toNumber(payload.cierre.diferencia, 0),
           resolucion_codigo: String(payload.cierre.resolucion_codigo ?? '').trim().toUpperCase(),
-          resolucion_nombre: String(payload.cierre.resolucion_nombre ?? '').trim()
+          resolucion_nombre: String(payload.cierre.resolucion_nombre ?? '').trim(),
+          correo_estado: String(payload.cierre.correo_estado ?? payload.cierre.notificacion_correo?.estado ?? '').trim().toUpperCase(),
+          notificacion_correo: normalizeCierreNotificacionCorreo(payload.cierre.notificacion_correo)
         }
       : null
   };

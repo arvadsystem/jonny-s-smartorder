@@ -128,6 +128,9 @@ const cajasService = {
   resolveCloseDifference: (idCierreCaja, payload) =>
     apiFetch(`/ventas/cajas/cierres/${idCierreCaja}/resolucion`, 'PATCH', payload),
 
+  retryCloseEmail: (idCierreCaja) =>
+    apiFetch(`/ventas/cajas/cierres/${idCierreCaja}/reintentar-correo`, 'POST'),
+
   createArqueo: (idSesionCaja, payload) =>
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/arqueos`, 'POST', payload),
 
