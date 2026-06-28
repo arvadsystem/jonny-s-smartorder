@@ -15,6 +15,7 @@ import VentasToast from './components/VentasToast';
 import { useVentas } from './hooks/useVentas';
 import { normalizeVentaDetail } from './utils/ventasHelpers';
 import ventasService from '../../../services/ventasService';
+import printerDeviceDetectionService from '../../../services/printerDeviceDetectionService';
 import {
   openPrintWindow,
   printComandaCocinaInWindow,
@@ -233,6 +234,49 @@ export default function VentasPage() {
     return response;
   };
 
+  const runPrinterDetectionIfNeeded = async ({
+    idSucursal,
+    idCaja,
+    idSesionCaja,
+    origen = 'PRIMERA_VENTA',
+    notifyOnChange = false
+  } = {}) => {
+    try {
+      const result = await printerDeviceDetectionService.detectPrintersForCaja({
+        idSucursal,
+        idCaja,
+        idSesionCaja,
+        origen
+      });
+      if (notifyOnChange && !result?.skipped && result?.message) {
+        const title = result.status === 'REQUIERE_CONFIGURACION_ADMIN'
+          ? 'IMPRESORAS'
+          : result.status === 'NO_DETECTADO'
+            ? 'IMPRESORAS'
+            : 'IMPRESORAS';
+        const variant = result.status === 'CONFIGURADO' || result.status === 'YA_CONFIGURADO'
+          ? 'success'
+          : 'warning';
+        openToast(title, result.message, variant);
+      }
+      return result;
+    } catch (error) {
+      console.warn('[Ventas] No se pudo ejecutar la deteccion operativa de impresoras.', {
+        status: error?.status,
+        code: error?.code,
+        message: error?.message
+      });
+      if (notifyOnChange) {
+        openToast(
+          'IMPRESORAS',
+          'No se pudo validar la impresora automática. Puedes continuar, pero revisa que QZ Tray esté abierto.',
+          'warning'
+        );
+      }
+      return null;
+    }
+  };
+
   const printFacturaAfterSuccessfulPayment = async ({
     response,
     payload = null,
@@ -267,10 +311,29 @@ export default function VentasPage() {
       String(ventaDetail?.id_caja ?? response?.id_caja ?? payload?.id_caja ?? ''),
       10
     );
+    const resolvedSesionCajaId = Number.parseInt(
+      String(ventaDetail?.id_sesion_caja ?? response?.id_sesion_caja ?? payload?.id_sesion_caja ?? ''),
+      10
+    );
+    const detectionResult = Number.isInteger(resolvedSucursalId)
+      && resolvedSucursalId > 0
+      && Number.isInteger(resolvedCajaId)
+      && resolvedCajaId > 0
+      && Number.isInteger(resolvedSesionCajaId)
+      && resolvedSesionCajaId > 0
+      ? await runPrinterDetectionIfNeeded({
+        idSucursal: resolvedSucursalId,
+        idCaja: resolvedCajaId,
+        idSesionCaja: resolvedSesionCajaId,
+        origen: 'PRIMERA_VENTA',
+        notifyOnChange: false
+      })
+      : null;
     const runtimePrinterConfig = Number.isInteger(resolvedSucursalId) && resolvedSucursalId > 0
       ? await getRuntimePrinterConfig({
         idSucursal: resolvedSucursalId,
-        idCaja: Number.isInteger(resolvedCajaId) && resolvedCajaId > 0 ? resolvedCajaId : null
+        idCaja: Number.isInteger(resolvedCajaId) && resolvedCajaId > 0 ? resolvedCajaId : null,
+        forceRefresh: Boolean(detectionResult && !detectionResult.skipped)
       }).catch(() => null)
       : null;
     const facturaPrinterConfig = resolvePrinterByType(runtimePrinterConfig, 'FACTURA');
