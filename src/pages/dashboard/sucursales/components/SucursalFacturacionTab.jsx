@@ -5,9 +5,9 @@ import SucursalImpresorasConfigDrawer from './SucursalImpresorasConfigDrawer';
 import SucursalFacturacionPreviewModal from './SucursalFacturacionPreviewModal';
 
 const TICKET_FLAG_DEFAULTS = {
-  mostrar_datos_fiscales: true,
-  mostrar_cai_ticket: true,
-  mostrar_numero_fiscal_ticket: true,
+  mostrar_datos_fiscales: false,
+  mostrar_cai_ticket: false,
+  mostrar_numero_fiscal_ticket: false,
   mostrar_codigo_interno_ticket: true,
   aplicar_impuestos: false,
   mostrar_impuestos_ticket: false,
