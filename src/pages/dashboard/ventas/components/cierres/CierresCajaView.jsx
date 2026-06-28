@@ -3,6 +3,7 @@ import { useAuth } from '../../../../../hooks/useAuth';
 import { usePermisos } from '../../../../../context/PermisosContext';
 import sucursalesService from '../../../../../services/sucursalesService';
 import cajasService from '../../../../../services/cajasService';
+import printerDeviceDetectionService from '../../../../../services/printerDeviceDetectionService';
 import { normalizeRoles, PERMISSIONS } from '../../../../../utils/permissions';
 import VentasToast from '../VentasToast';
 import { useCierresCaja } from '../../hooks/useCierresCaja';
@@ -579,6 +580,40 @@ export default function CierresCajaView() {
   };
 
   const handleSubmitOpenSession = async (payload) => {
+    const triggerPrinterDetection = async (sessionLike) => {
+      const idSesionCaja = toPositiveId(sessionLike?.id_sesion_caja);
+      const idCaja = toPositiveId(sessionLike?.id_caja || payload?.id_caja || miAsignacionCaja?.id_caja);
+      const idSucursal = toPositiveId(
+        sessionLike?.id_sucursal
+        || payload?.id_sucursal
+        || miAsignacionCaja?.id_sucursal
+        || selectedSucursalId
+        || userSucursalId
+      );
+      if (!idSesionCaja || !idCaja || !idSucursal) return;
+      try {
+        const detection = await printerDeviceDetectionService.detectPrintersForCaja({
+          idSucursal,
+          idCaja,
+          idSesionCaja,
+          origen: 'APERTURA_CAJA'
+        });
+        if (detection?.message && !detection?.skipped) {
+          openToast(
+            'IMPRESORAS',
+            detection.message,
+            detection.status === 'CONFIGURADO' || detection.status === 'YA_CONFIGURADO' ? 'success' : 'warning'
+          );
+        }
+      } catch {
+        openToast(
+          'IMPRESORAS',
+          'No se pudo validar la impresora automática. Puedes continuar, pero revisa que QZ Tray esté abierto.',
+          'warning'
+        );
+      }
+    };
+
     if (isRestrictedCajero) {
       setCajeroOpenSaving(true);
       try {
@@ -592,6 +627,7 @@ export default function CierresCajaView() {
           'success'
         );
         await refreshCurrentScope();
+        await triggerPrinterDetection(response);
         setOpenCajaOpen(false);
       } catch (errorResponse) {
         openToast('ERROR', resolveMiCajaError(errorResponse, 'No se pudo abrir la sesión de caja.'), 'danger');
@@ -602,8 +638,9 @@ export default function CierresCajaView() {
     }
 
     try {
-      await openSesion(payload);
+      const response = await openSesion(payload);
       await refreshCurrentScope();
+      await triggerPrinterDetection(response);
       setOpenCajaOpen(false);
     } catch {
       // El hook muestra toast; evitamos uncaught promise en el modal.

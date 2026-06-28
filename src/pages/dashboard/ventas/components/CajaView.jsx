@@ -11,6 +11,7 @@ import VentaExtrasModal from './VentaExtrasModal';
 import VentaFinalizarOperacionModal from './VentaFinalizarOperacionModal';
 import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import ventasService from '../../../../services/ventasService';
+import printerDeviceDetectionService from '../../../../services/printerDeviceDetectionService';
 import { useAuth } from '../../../../hooks/useAuth';
 import AppSelect from '../../../../components/common/AppSelect';
 import { parseCajaUtcTimestamp } from '../utils/cajasHelpers';
@@ -288,6 +289,7 @@ export default function CajaView({
   const cajaUserKeyRef = useRef(cajaUserKey);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
+  const lastDetectionSessionRef = useRef('');
 
   const catalogSucursalRequestRef = useRef('');
   const catalogSucursalRequestIdRef = useRef(0);
@@ -1121,6 +1123,43 @@ export default function CajaView({
     }
   };
 
+  const triggerCajaPrinterDetection = useCallback(async ({
+    session,
+    origen,
+    notifyOnResult = false
+  } = {}) => {
+    const sessionId = toPositiveId(session?.id_sesion_caja);
+    const cajaId = toPositiveId(session?.id_caja);
+    const sucursalId = toPositiveId(session?.id_sucursal || composer.selectedSucursalId || composer.selectedSucursal);
+    if (!sessionId || !cajaId || !sucursalId) return null;
+
+    try {
+      const result = await printerDeviceDetectionService.detectPrintersForCaja({
+        idSucursal: sucursalId,
+        idCaja: cajaId,
+        idSesionCaja: sessionId,
+        origen
+      });
+      if (notifyOnResult && result?.message && !result?.skipped) {
+        onNotify?.(
+          'IMPRESORAS',
+          result.message,
+          result.status === 'CONFIGURADO' || result.status === 'YA_CONFIGURADO' ? 'success' : 'warning'
+        );
+      }
+      return result;
+    } catch {
+      if (notifyOnResult) {
+        onNotify?.(
+          'IMPRESORAS',
+          'No se pudo validar la impresora automática. Puedes continuar, pero revisa que QZ Tray esté abierto.',
+          'warning'
+        );
+      }
+      return null;
+    }
+  }, [composer.selectedSucursal, composer.selectedSucursalId, onNotify]);
+
   const handleCancelDecision = () => {
     markCajaDecisionDismissed(cajaAsignacion, cajaUserKey);
     setDecisionOpen(false);
@@ -1163,6 +1202,11 @@ export default function CajaView({
       setAbrirSesionOpen(false);
       setCajaStatus({ loading: false, error: '', assignmentMissing: false });
       await onCatalogSucursalChange?.({ id_sucursal: session?.id_sucursal, force: true });
+      await triggerCajaPrinterDetection({
+        session,
+        origen: 'APERTURA_CAJA',
+        notifyOnResult: true
+      });
       onNotify?.('SESIÓN ABIERTA', 'Sesión de caja abierta correctamente.', 'success');
     } catch (error) {
       if (Number(error?.status || 0) >= 500) {
@@ -1218,6 +1262,33 @@ export default function CajaView({
     setRegistrarPagoOpen(true);
   };
 
+  useEffect(() => {
+    const session = cajaSesionActiva || bootstrapSesionCaja;
+    const sessionId = toPositiveId(session?.id_sesion_caja);
+    const cajaId = toPositiveId(session?.id_caja);
+    const sucursalId = toPositiveId(session?.id_sucursal || composer.selectedSucursalId || composer.selectedSucursal);
+    const detectionKey = sessionId && cajaId && sucursalId
+      ? `${sucursalId}:${cajaId}:${sessionId}`
+      : '';
+    if (!detectionKey || lastDetectionSessionRef.current === detectionKey) return;
+    lastDetectionSessionRef.current = detectionKey;
+    void triggerCajaPrinterDetection({
+      session: {
+        id_sesion_caja: sessionId,
+        id_caja: cajaId,
+        id_sucursal: sucursalId
+      },
+      origen: 'CARGA_CAJA',
+      notifyOnResult: false
+    });
+  }, [
+    bootstrapSesionCaja,
+    cajaSesionActiva,
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    triggerCajaPrinterDetection
+  ]);
+
   const closeAutoModal = () => {
     if (autoModalAssigning) return;
     setAutoModalOpen(false);
@@ -1269,6 +1340,11 @@ export default function CajaView({
       clearCajaDecisionDismissed(assignment, cajaUserKey);
       setAutoModalOpen(false);
       await onCatalogSucursalChange?.({ id_sucursal: idSucursal, force: true });
+      await triggerCajaPrinterDetection({
+        session,
+        origen: 'CARGA_CAJA',
+        notifyOnResult: false
+      });
       onNotify?.('CAJA ACTIVA', 'Te registraste como auxiliar de caja para esta sesión.', 'success');
     } catch (error) {
       const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();

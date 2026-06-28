@@ -155,6 +155,7 @@ const ventasService = {
   getComandaById: (id) => apiFetch(`/ventas/${id}/comanda`, 'GET'),
   getPedidoComanda: (id) => apiFetch(`/ventas/pedidos/${id}/comanda`, 'GET'),
   getPrintRuntimeConfig: (params = {}) => apiFetch(`/ventas/impresoras-config${buildQuery(params)}`, 'GET'),
+  detectPrinterDevice: (payload) => apiFetch('/ventas/impresoras/dispositivo-deteccion', 'POST', payload),
   getQzCertificate: () => apiFetch('/ventas/qz/certificate', 'GET'),
   signQzRequest: (request) => apiFetch('/ventas/qz/sign', 'POST', { request }),
   registerPrintEvent: (id, payload) => apiFetch(`/ventas/${id}/impresiones`, 'POST', payload),
