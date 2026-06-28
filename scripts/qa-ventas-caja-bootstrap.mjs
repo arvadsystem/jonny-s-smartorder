@@ -5,6 +5,7 @@ import { validateComandaForPrint } from '../src/pages/dashboard/ventas/utils/bui
 
 const useVentasSource = readFileSync(new URL('../src/pages/dashboard/ventas/hooks/useVentas.js', import.meta.url), 'utf8');
 const serviceSource = readFileSync(new URL('../src/services/ventasService.js', import.meta.url), 'utf8');
+const cajasServiceSource = readFileSync(new URL('../src/services/cajasService.js', import.meta.url), 'utf8');
 const cajaSource = readFileSync(new URL('../src/pages/dashboard/ventas/components/CajaView.jsx', import.meta.url), 'utf8');
 const finalizarModalSource = readFileSync(new URL('../src/pages/dashboard/ventas/components/VentaFinalizarOperacionModal.jsx', import.meta.url), 'utf8');
 const composerSource = readFileSync(new URL('../src/pages/dashboard/ventas/hooks/useVentaComposer.js', import.meta.url), 'utf8');
@@ -78,7 +79,13 @@ assert.match(cajaSource, /controller\s*\}/, 'pendientes debe conservar el AbortC
 assert.match(useVentasSource, /cajaBootstrapAbortRef\.current\?\.abort\(\)[\s\S]*cajaBootstrapDataCacheRef\.current\.clear\(\)/, 'cambio de usuario debe cancelar solicitudes y limpiar caches de Caja');
 assert.match(cajaSource, /usuario:\$\{cajaUserKey\}:sucursal:\$\{selectedSucursalId\}/, 'bootstrap demandado desde Caja debe estar aislado por usuario');
 assert.match(cajaSource, /const cacheKey = `usuario:\$\{cajaUserKey\}:sucursal:\$\{normalizedSucursalId\}`/, 'sesiones abiertas para autoauxiliar deben cachearse por usuario y sucursal');
-assert.match(cajaSource, /listSesionesAbiertasSafe\(\{ id_sucursal: normalizedSucursalId \}\)[\s\S]{0,160}\.filter\(\(row\) => Number\(row\.id_sucursal\) === Number\(normalizedSucursalId\)\)/, 'autoauxiliar debe consultar y conservar solo sesiones de la sucursal seleccionada');
+assert.match(cajaSource, /sesionesAbiertasAbortRef\.current\?\.abort\(\)/, 'autoauxiliar debe abortar la carga anterior al cambiar de sucursal');
+assert.match(cajaSource, /const controller = new AbortController\(\)/, 'autoauxiliar debe usar AbortController propio');
+assert.match(cajaSource, /sesionesAbiertasRequestIdRef\.current \+ 1/, 'autoauxiliar debe usar requestId monotonico');
+assert.match(cajaSource, /cajaUserKeyRef\.current === requestUserKey[\s\S]{0,160}selectedSucursalId\(\) === requestSucursalId/, 'autoauxiliar debe validar usuario y sucursal antes de aplicar respuesta');
+assert.match(cajaSource, /!activeInFlight\.controller\?\.signal\?\.aborted/, 'autoauxiliar no debe reutilizar promesas abortadas');
+assert.match(cajaSource, /current\?\.key === cacheKey[\s\S]{0,160}current\.requestId === requestId[\s\S]{0,160}current\.controller === controller/, 'finally de autoauxiliar no debe limpiar una solicitud nueva');
+assert.match(cajaSource, /listSesionesAbiertasSafe\([\s\S]{0,140}\{ id_sucursal: normalizedSucursalId \}[\s\S]{0,140}\{ signal: controller\.signal \}[\s\S]{0,220}\.filter\(\(row\) => Number\(row\.id_sucursal\) === Number\(normalizedSucursalId\)\)/, 'autoauxiliar debe consultar y conservar solo sesiones de la sucursal seleccionada');
 assert.match(cajaSource, /VENTAS_CAJAS_USER_ALREADY_IN_OPEN_SESSION[\s\S]{0,220}recargar las sesiones de la sucursal seleccionada/, 'SUPER_ADMIN no debe mostrar el error de participacion en otra sesion');
 assert.match(useVentasSource, /cachedBootstrap\?\.status === 'success'[\s\S]{0,220}setBootstrapLoading\(false\)[\s\S]{0,120}setRecipesLoading\(false\)[\s\S]{0,120}setCatalogLoading\(false\)/, 'bootstrap desde cache debe cerrar loaders y evitar ciclos');
 assert.match(cajaSource, /id_sucursal:\s*selectedSucursalId/, 'pendientes debe consultar la sucursal seleccionada actual');
@@ -99,6 +106,7 @@ assert.match(cajaSource, /pendientesSummaryRequestRef/, 'pendientes debe dedupli
 assert.match(cajaSource, /currentInFlight\?\.key === requestKey[\s\S]{0,120}currentInFlight\.promise[\s\S]{0,120}!currentInFlight\.controller\?\.signal\?\.aborted/, 'pendientes debe reutilizar solo la solicitud activa vigente de la misma sucursal');
 assert.match(cajaSource, /pendientesSummaryAbortRef\.current\?\.abort\(\)/, 'pendientes debe cancelar la solicitud activa anterior');
 assert.match(serviceSource, /listPedidosPendientesPago:\s*\(params = \{\}, options = \{\}\)[\s\S]*apiFetch\(`\/ventas\/pedidos-pendientes\$\{buildQuery\(params\)\}`,\s*'GET',\s*null,\s*options\)/, 'pendientes debe aceptar AbortController desde Caja');
+assert.match(cajasServiceSource, /listSesionesAbiertasSafe:\s*\(params = \{\}, config = \{\}\)[\s\S]*getSafeOpenSessions\(params,\s*config\)/, 'sesiones abiertas debe aceptar AbortController desde Caja');
 assert.match(composerSource, /shouldLoadExtras[\s\S]*activeCatalog === 'EXTRAS'/, 'Extras debe cargarse solo bajo demanda');
 assert.match(optionsSource, /key: 'EXTRAS'/, 'la pestaña Extras debe permanecer visible');
 assert.match(composerSource, /getExtrasPermitidos/, 'el catalogo de Extras debe cargarse por sucursal');

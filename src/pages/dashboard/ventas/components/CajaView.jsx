@@ -283,6 +283,8 @@ export default function CajaView({
   const cajaAsignacionInFlightRef = useRef(null);
   const sesionesAbiertasCacheRef = useRef({ key: '', at: 0, rows: [] });
   const sesionesAbiertasInFlightRef = useRef(null);
+  const sesionesAbiertasAbortRef = useRef(null);
+  const sesionesAbiertasRequestIdRef = useRef(0);
   const cajaUserKeyRef = useRef(cajaUserKey);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
@@ -300,6 +302,9 @@ export default function CajaView({
     cajaAsignacionCacheRef.current = { key: '', at: 0, status: 'idle' };
     cajaAsignacionInFlightRef.current = null;
     sesionesAbiertasCacheRef.current = { key: '', at: 0, rows: [] };
+    sesionesAbiertasAbortRef.current?.abort();
+    sesionesAbiertasAbortRef.current = null;
+    sesionesAbiertasRequestIdRef.current += 1;
     sesionesAbiertasInFlightRef.current = null;
     pendientesSummaryAbortRef.current?.abort();
     pendientesSummaryAbortRef.current = null;
@@ -318,6 +323,7 @@ export default function CajaView({
     if (!normalizedSucursalId) return;
 
     const cacheKey = `usuario:${cajaUserKey}:sucursal:${normalizedSucursalId}`;
+    const selectedSucursalId = () => toPositiveId(composerRef.current?.selectedSucursalId || composerRef.current?.selectedSucursal);
     setAutoModalError('');
     setAutoModalOpen(true);
 
@@ -332,38 +338,81 @@ export default function CajaView({
       return;
     }
 
-    setAutoModalLoading(true);
-    try {
-      let rows;
-      const inFlight = sesionesAbiertasInFlightRef.current;
-      if (inFlight?.key === cacheKey) {
-        rows = await inFlight.promise;
-      } else {
-        const promise = cajasService
-          .listSesionesAbiertasSafe({ id_sucursal: normalizedSucursalId })
-          .then((response) => normalizeOpenSessions(response)
-            .filter((row) => Number(row.id_sucursal) === Number(normalizedSucursalId)));
-        sesionesAbiertasInFlightRef.current = { key: cacheKey, promise };
-        rows = await promise;
-      }
-
-      sesionesAbiertasCacheRef.current = { key: cacheKey, at: Date.now(), rows };
-
-      setSesionesAbiertas(rows);
-      setSelectedSesion(rows.length > 0 ? String(rows[0].id_sesion_caja) : '');
-      if (rows.length === 0) {
-        setAutoModalError('No hay cajas activas con sesión abierta para la sucursal seleccionada.');
-      }
-    } catch (error) {
-      setSesionesAbiertas([]);
-      setSelectedSesion('');
-      setAutoModalError(toSafeMessage(error, 'No se pudieron cargar sesiones abiertas.'));
-    } finally {
-      if (sesionesAbiertasInFlightRef.current?.key === cacheKey) {
-        sesionesAbiertasInFlightRef.current = null;
-      }
-      setAutoModalLoading(false);
+    const activeInFlight = sesionesAbiertasInFlightRef.current;
+    if (
+      !force &&
+      activeInFlight?.key === cacheKey &&
+      activeInFlight.promise &&
+      !activeInFlight.controller?.signal?.aborted
+    ) {
+      return activeInFlight.promise;
     }
+
+    sesionesAbiertasAbortRef.current?.abort();
+    const controller = new AbortController();
+    sesionesAbiertasAbortRef.current = controller;
+    const requestId = sesionesAbiertasRequestIdRef.current + 1;
+    sesionesAbiertasRequestIdRef.current = requestId;
+    const requestUserKey = cajaUserKey;
+    const requestSucursalId = normalizedSucursalId;
+    const isCurrentAutoAuxRequest = () => {
+      const current = sesionesAbiertasInFlightRef.current;
+      return current?.key === cacheKey &&
+        current.requestId === requestId &&
+        current.controller === controller &&
+        current.userKey === requestUserKey &&
+        current.sucursalId === requestSucursalId &&
+        cajaUserKeyRef.current === requestUserKey &&
+        selectedSucursalId() === requestSucursalId &&
+        !controller.signal.aborted;
+    };
+
+    setAutoModalLoading(true);
+    const promise = cajasService
+      .listSesionesAbiertasSafe(
+        { id_sucursal: normalizedSucursalId },
+        { signal: controller.signal }
+      )
+      .then((response) => {
+        const rows = normalizeOpenSessions(response)
+          .filter((row) => Number(row.id_sucursal) === Number(normalizedSucursalId));
+        if (!isCurrentAutoAuxRequest()) return null;
+
+        sesionesAbiertasCacheRef.current = { key: cacheKey, at: Date.now(), rows };
+        setSesionesAbiertas(rows);
+        setSelectedSesion(rows.length > 0 ? String(rows[0].id_sesion_caja) : '');
+        if (rows.length === 0) {
+          setAutoModalError('No hay cajas activas con sesión abierta para la sucursal seleccionada.');
+        }
+        return rows;
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || !isCurrentAutoAuxRequest()) return null;
+        setSesionesAbiertas([]);
+        setSelectedSesion('');
+        setAutoModalError(toSafeMessage(error, 'No se pudieron cargar sesiones abiertas.'));
+        return null;
+      })
+      .finally(() => {
+        const current = sesionesAbiertasInFlightRef.current;
+        if (current?.key === cacheKey && current.requestId === requestId && current.controller === controller) {
+          sesionesAbiertasInFlightRef.current = null;
+          if (sesionesAbiertasAbortRef.current === controller) {
+            sesionesAbiertasAbortRef.current = null;
+          }
+          setAutoModalLoading(false);
+        }
+      });
+
+    sesionesAbiertasInFlightRef.current = {
+      key: cacheKey,
+      promise,
+      controller,
+      requestId,
+      userKey: requestUserKey,
+      sucursalId: requestSucursalId
+    };
+    return promise;
   };
 
   const composer = useVentaComposer({

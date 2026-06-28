@@ -15,13 +15,13 @@ const buildQuery = (params = {}) => {
 
 const normalizeRows = (rows) => (Array.isArray(rows) ? rows : []);
 
-const getSafeOpenSessions = async (params = {}) => {
+const getSafeOpenSessions = async (params = {}, config = {}) => {
   const idSucursal = Number.parseInt(String(params?.id_sucursal ?? ''), 10);
   if (!Number.isInteger(idSucursal) || idSucursal <= 0) return [];
 
   const attempts = [
-    () => apiFetch(`/ventas/cajas/sesiones-abiertas${buildQuery({ id_sucursal: idSucursal })}`, 'GET'),
-    () => apiFetch(`/ventas/cajas/sesiones${buildQuery({ id_sucursal: idSucursal })}`, 'GET')
+    () => apiFetch(`/ventas/cajas/sesiones-abiertas${buildQuery({ id_sucursal: idSucursal })}`, 'GET', null, config),
+    () => apiFetch(`/ventas/cajas/sesiones${buildQuery({ id_sucursal: idSucursal })}`, 'GET', null, config)
   ];
 
   for (const attempt of attempts) {
@@ -94,7 +94,7 @@ const cajasService = {
 
   listSesiones: (params = {}) => apiFetch(`/ventas/cajas/sesiones${buildQuery(params)}`, 'GET'),
   listSesionesAbiertas: (params = {}) => apiFetch(`/ventas/cajas/sesiones-abiertas${buildQuery(params)}`, 'GET'),
-  listSesionesAbiertasSafe: (params = {}) => getSafeOpenSessions(params),
+  listSesionesAbiertasSafe: (params = {}, config = {}) => getSafeOpenSessions(params, config),
 
   getSesionById: (idSesionCaja, params = {}) =>
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}${buildQuery(params)}`, 'GET'),
