@@ -10,6 +10,7 @@ import {
 const DEFAULT_BUSINESS_NAME = "JONNY'S WINGS";
 const CONSUMIDOR_FINAL = 'Consumidor final';
 const DEFAULT_FOOTER = 'Gracias por su compra';
+const INTERNAL_FISCAL_MODE = 'NO_INTEGRADO';
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -19,6 +20,12 @@ const toNumber = (value) => {
 const cleanText = (value) => {
   const normalized = String(value ?? '').trim();
   return normalized ? normalized : null;
+};
+
+const normalizeFiscalText = (value) => {
+  const normalized = cleanText(value);
+  if (!normalized || normalized === '0') return null;
+  return normalized;
 };
 
 const sanitizeWidth = (paperWidth) => (Number(paperWidth) === 58 ? 58 : 80);
@@ -114,6 +121,10 @@ const buildFacturacionView = (venta, fallbackName) => {
   const source = fromFacturacion || fromSnapshot || {};
   const emisor = source?.emisor && typeof source.emisor === 'object' ? source.emisor : {};
   const ticket = source?.ticket && typeof source.ticket === 'object' ? source.ticket : {};
+  const fiscalSource = source?.fiscal && typeof source.fiscal === 'object' ? source.fiscal : {};
+  const fiscalCai = normalizeFiscalText(fiscalSource?.cai) || normalizeFiscalText(venta?.cai);
+  const fiscalNumero = normalizeFiscalText(fiscalSource?.numero_factura_fiscal) || normalizeFiscalText(venta?.numero_factura_fiscal);
+  const fiscalEnabled = Boolean(fiscalSource?.habilitado) && Boolean(fiscalCai || fiscalNumero || Number(fiscalSource?.id_rango_cai ?? venta?.id_rango_cai ?? 0) > 0);
 
   const nombreEmisor =
     cleanText(emisor?.nombre_emisor) ||
@@ -156,9 +167,9 @@ const buildFacturacionView = (venta, fallbackName) => {
         ticket?.mostrar_correo !== undefined
           ? Boolean(ticket?.mostrar_correo)
           : false,
-      mostrar_datos_fiscales: flag(ticket?.mostrar_datos_fiscales, true),
-      mostrar_cai_ticket: flag(ticket?.mostrar_cai_ticket, true),
-      mostrar_numero_fiscal_ticket: flag(ticket?.mostrar_numero_fiscal_ticket, true),
+      mostrar_datos_fiscales: fiscalEnabled && flag(ticket?.mostrar_datos_fiscales, false),
+      mostrar_cai_ticket: fiscalEnabled && flag(ticket?.mostrar_cai_ticket, false),
+      mostrar_numero_fiscal_ticket: fiscalEnabled && flag(ticket?.mostrar_numero_fiscal_ticket, false),
       mostrar_codigo_interno_ticket: flag(ticket?.mostrar_codigo_interno_ticket, true),
       mostrar_impuestos_ticket: flag(ticket?.mostrar_impuestos_ticket, false),
       mostrar_importe_exento: flag(ticket?.mostrar_importe_exento, false),
@@ -176,9 +187,13 @@ const buildFacturacionView = (venta, fallbackName) => {
         cleanText(ticket?.texto_pie_ticket) || cleanText(venta?.texto_pie_ticket) || DEFAULT_FOOTER
     },
     fiscal: {
-      cai: '0',
-      numero_factura_fiscal: '0',
-      modo_fiscal: 'NO_INTEGRADO'
+      habilitado: fiscalEnabled,
+      cai: fiscalCai,
+      numero_factura_fiscal: fiscalNumero,
+      modo_fiscal: fiscalEnabled
+        ? String(fiscalSource?.modo_fiscal || venta?.modo_fiscal || 'CAI_PREPARADO').trim().toUpperCase()
+        : INTERNAL_FISCAL_MODE,
+      id_rango_cai: fiscalEnabled ? Number(fiscalSource?.id_rango_cai ?? venta?.id_rango_cai ?? 0) || null : null
     }
   };
 };
@@ -195,10 +210,16 @@ export default function VentaTicketPrint({
   const items = Array.isArray(venta?.items) ? venta.items : [];
   const cuentaDivisiones = Array.isArray(venta?.cuenta_dividida?.divisiones) ? venta.cuenta_dividida.divisiones : [];
   const totals = resolveTotals(venta);
-  const showFiscalBlock = facturacion.ticket.mostrar_datos_fiscales && (
-    facturacion.ticket.mostrar_cai_ticket ||
-    facturacion.ticket.mostrar_numero_fiscal_ticket ||
+  const showFiscalBlock = (
     facturacion.ticket.mostrar_codigo_interno_ticket
+    || (
+      facturacion.fiscal.habilitado
+      && facturacion.ticket.mostrar_datos_fiscales
+      && (
+        (facturacion.ticket.mostrar_cai_ticket && facturacion.fiscal.cai)
+        || (facturacion.ticket.mostrar_numero_fiscal_ticket && facturacion.fiscal.numero_factura_fiscal)
+      )
+    )
   );
   const showTaxes = facturacion.ticket.mostrar_impuestos_ticket;
 
@@ -237,7 +258,7 @@ export default function VentaTicketPrint({
         <div className="venta-ticket-print__divider" />
 
         <dl className="venta-ticket-print__meta">
-          {facturacion.ticket.mostrar_datos_fiscales && facturacion.ticket.mostrar_rtn ? <div><dt>RTN emisor:</dt><dd>{facturacion.emisor.rtn_emisor || '--'}</dd></div> : null}
+          {facturacion.ticket.mostrar_rtn ? <div><dt>RTN emisor:</dt><dd>{facturacion.emisor.rtn_emisor || '--'}</dd></div> : null}
           {facturacion.ticket.mostrar_direccion ? <div><dt>Direccion:</dt><dd>{facturacion.emisor.direccion_emisor || '--'}</dd></div> : null}
           {facturacion.ticket.mostrar_telefono ? <div><dt>Contacto:</dt><dd>{facturacion.emisor.telefono_emisor || '--'}</dd></div> : null}
           {facturacion.ticket.mostrar_correo ? <div><dt>Correo:</dt><dd>{facturacion.emisor.correo_emisor || '--'}</dd></div> : null}
@@ -247,8 +268,8 @@ export default function VentaTicketPrint({
           <>
             <div className="venta-ticket-print__divider" />
             <dl className="venta-ticket-print__meta">
-              {facturacion.ticket.mostrar_cai_ticket ? <div><dt>CAI:</dt><dd>{facturacion.fiscal.cai}</dd></div> : null}
-              {facturacion.ticket.mostrar_numero_fiscal_ticket ? <div><dt>No. fiscal:</dt><dd>{facturacion.fiscal.numero_factura_fiscal}</dd></div> : null}
+              {facturacion.ticket.mostrar_datos_fiscales && facturacion.ticket.mostrar_cai_ticket && facturacion.fiscal.cai ? <div><dt>CAI:</dt><dd>{facturacion.fiscal.cai}</dd></div> : null}
+              {facturacion.ticket.mostrar_datos_fiscales && facturacion.ticket.mostrar_numero_fiscal_ticket && facturacion.fiscal.numero_factura_fiscal ? <div><dt>No. fiscal:</dt><dd>{facturacion.fiscal.numero_factura_fiscal}</dd></div> : null}
               {facturacion.ticket.mostrar_codigo_interno_ticket ? <div><dt>Codigo interno:</dt><dd>{venta?.codigo_venta || venta?.numero_venta || '--'}</dd></div> : null}
             </dl>
           </>
