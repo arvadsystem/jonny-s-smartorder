@@ -950,9 +950,7 @@ export default function VentasPage() {
           sucursales={sucursales}
           isSuperAdmin={isSuperAdmin}
           userId={user?.id_usuario}
-          defaultSucursalId={Number(
-            cajaBootstrapData?.id_sucursal || scopeInfo?.selectedSucursalId || (!isSuperAdmin ? userSucursalId : null)
-          ) || null}
+          defaultSucursalId={!isSuperAdmin && Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
           productos={productos}
           categorias={categorias}
           tiposDepartamento={tiposDepartamento}

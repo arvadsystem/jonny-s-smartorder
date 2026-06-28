@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization */
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 import {
@@ -56,6 +57,8 @@ const persistCajaSucursal = (storageKey, value) => {
     // Session storage puede estar deshabilitado.
   }
 };
+
+const clearPersistedCajaSucursal = (storageKey) => persistCajaSucursal(storageKey, '');
 
 const isQuantityManagedVentaLineKind = (kind) => ['PRODUCTO', 'ITEM'].includes(String(kind || '').toUpperCase());
 
@@ -392,6 +395,7 @@ export const useVentaComposer = ({
   });
   const globalExtrasCacheRef = useRef(new Map());
   const globalExtrasAbortRef = useRef(null);
+  const globalExtrasRequestIdRef = useRef(0);
   const [globalExtrasRetryToken, setGlobalExtrasRetryToken] = useState(0);
   const deferredSearch = useDeferredValue(state.search);
 
@@ -538,6 +542,17 @@ export const useVentaComposer = ({
     globalExtrasAbortRef.current?.abort();
     const controller = new AbortController();
     globalExtrasAbortRef.current = controller;
+    const requestId = globalExtrasRequestIdRef.current + 1;
+    globalExtrasRequestIdRef.current = requestId;
+    const requestUserKey = cajaSucursalStorageKey;
+    const requestSucursalId = selectedSucursalId;
+    const isCurrentGlobalExtrasRequest = () => (
+      globalExtrasRequestIdRef.current === requestId
+      && globalExtrasAbortRef.current === controller
+      && requestUserKey === cajaSucursalStorageKey
+      && requestSucursalId === selectedSucursalId
+      && !controller.signal.aborted
+    );
     setGlobalExtrasCatalog((current) => ({
       options: current.sucursalId === selectedSucursalId ? current.options : [],
       loading: true,
@@ -551,7 +566,7 @@ export const useVentaComposer = ({
       { signal: controller.signal }
     )
       .then((response) => {
-        if (controller.signal.aborted) return;
+        if (!isCurrentGlobalExtrasRequest()) return;
         const options = (Array.isArray(response) ? response : [])
           .filter((entry) => entry?.estado !== false)
           .map(normalizeGlobalExtraOption)
@@ -567,10 +582,13 @@ export const useVentaComposer = ({
         setGlobalExtrasCatalog(entry);
       })
       .catch((error) => {
-        if (controller.signal.aborted) {
-          setGlobalExtrasCatalog({ options: [], loading: false, error: '', sucursalId: selectedSucursalId, status: 'idle' });
+        if (controller.signal.aborted || globalExtrasRequestIdRef.current !== requestId) {
+          if (globalExtrasAbortRef.current === controller && globalExtrasRequestIdRef.current === requestId) {
+            setGlobalExtrasCatalog({ options: [], loading: false, error: '', sucursalId: selectedSucursalId, status: 'idle' });
+          }
           return;
         }
+        if (!isCurrentGlobalExtrasRequest()) return;
         const entry = {
           options: [],
           loading: false,
@@ -585,7 +603,7 @@ export const useVentaComposer = ({
     return () => {
       controller.abort();
     };
-  }, [catalogsEnabled, extrasModal.open, globalExtrasRetryToken, selectedSucursalCacheKey, selectedSucursalId, state.activeCatalog]);
+  }, [cajaSucursalStorageKey, catalogsEnabled, extrasModal.open, globalExtrasRetryToken, selectedSucursalCacheKey, selectedSucursalId, state.activeCatalog]);
 
   useEffect(() => {
     setExtrasModal((current) => {
@@ -700,15 +718,26 @@ export const useVentaComposer = ({
       const sessionSelection = String(defaultSucursalId || '').trim();
       const currentSelection = String(current.selectedSucursal || '').trim();
       const persistedSelection = readPersistedCajaSucursal(cajaSucursalStorageKey);
+      if (currentSelection && !validIds.has(currentSelection)) {
+        clearPersistedCajaSucursal(cajaSucursalStorageKey);
+        return {
+          ...current,
+          selectedSucursal: '',
+          activeCatalog: DEFAULT_CATALOG_KEY,
+          activeCategory: resolveDefaultDepartmentId(tiposDepartamento),
+          search: ''
+        };
+      }
+      if (persistedSelection && !validIds.has(persistedSelection)) {
+        clearPersistedCajaSucursal(cajaSucursalStorageKey);
+      }
       const nextSelection = validIds.has(currentSelection)
           ? currentSelection
           : validIds.has(persistedSelection)
             ? persistedSelection
             : validIds.has(sessionSelection)
               ? sessionSelection
-              : normalizedSucursales.length === 1
-                ? String(normalizedSucursales[0].id_sucursal)
-                : '';
+              : '';
       if (currentSelection === nextSelection) return current;
       return {
         ...current,
