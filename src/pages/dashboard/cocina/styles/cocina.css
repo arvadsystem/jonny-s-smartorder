@@ -359,7 +359,7 @@
 /* ── Board (tablero kanban) ──────────────────────────────────────────── */
 .kds-board {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(320px, 3fr);
+  grid-template-columns: minmax(0, 3fr) minmax(320px, 7fr);
   gap: 0.7rem;
   padding: 0.7rem;
   flex: 1;
@@ -1654,7 +1654,7 @@
 /* ── Responsive ──────────────────────────────────────────────────────── */
 @media (max-width: 1199.98px) {
   .kds-board {
-    grid-template-columns: minmax(0, 7fr) minmax(300px, 3fr);
+    grid-template-columns: minmax(0, 3fr) minmax(300px, 7fr);
     gap: 0.6rem;
     padding: 0.6rem;
   }
@@ -1960,7 +1960,7 @@
   }
 
   .cocina-page--operator-mode .kds-board {
-    grid-template-columns: minmax(0, 7fr) minmax(300px, 3fr);
+    grid-template-columns: minmax(0, 3fr) minmax(300px, 7fr);
     gap: 0.75rem;
     overflow: hidden;
   }
@@ -1996,7 +1996,7 @@
 }
 
 .cocina-page--tv-mode .kds-board {
-  grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 3fr);
   gap: 0.8rem;
   padding: 0.8rem;
   overflow: hidden;
@@ -2116,7 +2116,7 @@
 
 @media (min-width: 1600px) and (min-height: 850px) {
   .cocina-page--tv-mode .kds-board {
-    grid-template-columns: minmax(0, 3fr) minmax(320px, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 3fr);
     gap: 1rem;
     padding: 1rem;
   }
@@ -2136,7 +2136,7 @@
 
 /* AM: TV polish - observer-only KDS profile */
 .cocina-page--tv-mode .kds-board {
-  grid-template-columns: minmax(0, 72fr) minmax(320px, 28fr);
+  grid-template-columns: minmax(0, 28fr) minmax(320px, 72fr);
   gap: 1rem;
   padding: 1rem;
 }
