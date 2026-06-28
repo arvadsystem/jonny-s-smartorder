@@ -1398,11 +1398,11 @@ const CatalogScreen = () => {
         {!loading && !isCatalogLanding && !filteredProducts.length ? (
           <StateBlock
             variant="empty"
-            title={selectedCategory === 'all' ? 'Sin productos disponibles' : 'Sin resultados'}
+            title={selectedCategory === 'all' ? 'Sin elementos disponibles' : 'Sin resultados'}
             description={
               selectedCategory === 'all'
-                ? 'No hay productos disponibles para ordenar en este momento.'
-                : 'No encontramos productos disponibles en esta categoria.'
+                ? 'No hay elementos del menu disponibles para ordenar en este momento.'
+                : 'No encontramos elementos disponibles en esta categoria.'
             }
             actionLabel="Ver todo"
             onAction={() => {

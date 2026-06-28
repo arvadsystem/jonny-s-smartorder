@@ -43,7 +43,6 @@ const shouldRenderDescription = ({ name, description, categoryName }) => {
 };
 
 const computeBadgeData = (product) => {
-  const category = String(product?.categoria?.nombre || '').toLowerCase();
   const idBase = Number(product?.id_detalle_menu || 0);
   const rating = toFiniteNumber(product?.rating_promedio) ?? (4.5 + ((idBase % 5) * 0.1));
   const prepTime = toFiniteNumber(product?.tiempo_preparacion_minutos) ?? (18 + (idBase % 6) * 2);
@@ -75,7 +74,7 @@ const ProductCard = ({
   const imageUrl = String(product?.imagen_url || '').trim();
   const [imageFailed, setImageFailed] = useState(false);
   const badges = useMemo(() => computeBadgeData(product), [product]);
-  const productName = String(product?.nombre || 'Producto').trim();
+  const productName = String(product?.nombre || 'Elemento del menu').trim();
   const productDescription = String(product?.descripcion || '').trim();
   const shouldShowDescription = shouldRenderDescription({
     name: productName,
@@ -163,7 +162,7 @@ const ProductCard = ({
             className="btn btn-dark pm-product-card__cta"
             onClick={() => onAdd?.(product)}
             disabled={!canAddToCart}
-            aria-label={`Agregar ${product?.nombre || 'producto'}`}
+            aria-label={`Agregar ${product?.nombre || 'elemento del menu'}`}
           >
             {isSoldOut ? (
               'Agotado'
