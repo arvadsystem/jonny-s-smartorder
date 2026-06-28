@@ -399,6 +399,11 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     if (force) cajaBootstrapDataCacheRef.current.delete(cacheKey);
     const cachedBootstrap = cajaBootstrapDataCacheRef.current.get(cacheKey);
     if (!force && cachedBootstrap?.status === 'success') {
+      cajaBootstrapAbortRef.current?.abort();
+      cajaBootstrapAbortRef.current = null;
+      setBootstrapLoading(false);
+      setRecipesLoading(false);
+      setCatalogLoading(false);
       return hydrateCajaBootstrapData(cachedBootstrap.data, {
         requestedSucursalId: idSucursal,
         meta: cachedBootstrap.meta || {}
