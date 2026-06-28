@@ -25,6 +25,8 @@ export default function SucursalFacturacionPreviewModal({
     && Boolean(fiscal?.habilitado)
     && opciones.mostrar_numero_fiscal_ticket
     && fiscal?.numero_factura_fiscal;
+  const showInternalCode = opciones.mostrar_codigo_interno_ticket !== false;
+  const showFiscalBlock = Boolean(showCai || showNumeroFiscal || showInternalCode);
   const showTaxes = Boolean(opciones.mostrar_impuestos_ticket);
 
   return createPortal(
@@ -74,11 +76,11 @@ export default function SucursalFacturacionPreviewModal({
                 <span>{documento.tipo || 'TICKET'}</span>
                 <span>{documento.numero_ejemplo || 'VTA-00001'}</span>
               </div>
-              {showFiscal ? (
+              {showFiscalBlock ? (
                 <div className="small text-muted mb-2">
                   {showCai ? <div>CAI: {fiscal.cai}</div> : null}
                   {showNumeroFiscal ? <div>Numero fiscal: {fiscal.numero_factura_fiscal}</div> : null}
-                  {opciones.mostrar_codigo_interno_ticket ? <div>Codigo interno: {documento.numero_ejemplo || 'VTA-00001'}</div> : null}
+                  {showInternalCode ? <div>Codigo interno: {documento.numero_ejemplo || 'VTA-00001'}</div> : null}
                 </div>
               ) : null}
               {item ? (
