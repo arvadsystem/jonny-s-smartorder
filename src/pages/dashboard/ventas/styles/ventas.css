@@ -1606,10 +1606,20 @@
   color: #9a5319;
 }
 
-.ventas-create-modal__qty-control span {
+.ventas-create-modal__qty-control span,
+.ventas-create-modal__qty-control input {
   min-width: 20px;
   text-align: center;
   font-weight: 800;
+}
+
+.ventas-create-modal__qty-control input {
+  width: 44px;
+  height: 32px;
+  border: 1px solid rgba(154, 83, 25, 0.18);
+  border-radius: 8px;
+  color: #4f3422;
+  background: #fff;
 }
 
 .ventas-create-modal__remove-btn {
@@ -3936,9 +3946,16 @@
   border-radius: 8px;
 }
 
-.ventas-cart__item-row .ventas-create-modal__qty-control span {
+.ventas-cart__item-row .ventas-create-modal__qty-control span,
+.ventas-cart__item-row .ventas-create-modal__qty-control input {
   min-width: 16px;
   font-size: 0.85rem;
+}
+
+.ventas-cart__extras-summary {
+  display: grid;
+  gap: 2px;
+  color: #6b5c50;
 }
 
 .ventas-cart__item-row .ventas-create-modal__line-total {
@@ -5835,8 +5852,14 @@
   border-radius: 8px;
 }
 
-.ventas-cart-panel .ventas-create-modal__qty-control span {
+.ventas-cart-panel .ventas-create-modal__qty-control span,
+.ventas-cart-panel .ventas-create-modal__qty-control input {
   min-width: 18px;
+}
+
+.ventas-cart-panel .ventas-create-modal__qty-control input {
+  width: 36px;
+  height: 24px;
 }
 
 .ventas-cart-panel .ventas-create-modal__line-total {

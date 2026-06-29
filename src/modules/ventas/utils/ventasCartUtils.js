@@ -1,5 +1,32 @@
 import { roundMoney } from './ventasMoneyUtils.js';
 
+export const VENTA_LINE_MIN_QUANTITY = 1;
+export const VENTA_LINE_MAX_QUANTITY = 999;
+export const VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD = 10;
+
+export const parseVentaLineQuantity = (value) => {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= VENTA_LINE_MIN_QUANTITY && value <= VENTA_LINE_MAX_QUANTITY
+      ? value
+      : null;
+  }
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!/^[1-9]\d*$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed >= VENTA_LINE_MIN_QUANTITY && parsed <= VENTA_LINE_MAX_QUANTITY
+    ? parsed
+    : null;
+};
+
+export const clampVentaLineQuantity = (value) => {
+  const parsed = typeof value === 'number' && Number.isFinite(value)
+    ? Math.trunc(value)
+    : Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed)) return VENTA_LINE_MIN_QUANTITY;
+  return Math.min(VENTA_LINE_MAX_QUANTITY, Math.max(VENTA_LINE_MIN_QUANTITY, parsed));
+};
+
 export const normalizeComplementIds = (value) =>
   [...new Set(
     (Array.isArray(value) ? value : [])
@@ -54,6 +81,9 @@ export const buildExtrasSignature = (value) => {
 export const getExtrasSubtotal = (value) =>
   roundMoney(normalizeExtras(value).reduce((sum, entry) => sum + Number(entry.precio || 0) * Number(entry.cantidad || 0), 0));
 
+export const getLineExtrasSubtotal = (line) =>
+  roundMoney(getExtrasSubtotal(line?.extras) * clampVentaLineQuantity(line?.cantidad ?? 1));
+
 export const getExtrasCount = (value) =>
   normalizeExtras(value).reduce((sum, entry) => sum + Number(entry.cantidad || 0), 0);
 
@@ -76,6 +106,51 @@ export const buildCartKey = (kind, entityId, complementos = [], extras = [], lin
     return `${normalizedKind}:line:${lineId}`;
   }
   return `${normalizedKind}:${entityId}:${buildComplementSignature(complementos)}:${buildExtrasSignature(extras)}`;
+};
+
+const normalizeSignatureText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
+export const buildVentaLineConfigSignature = (line) => {
+  const kind = String(line?.kind || '').toUpperCase();
+  const entityId = Number(line?.entityId ?? line?.id_producto ?? line?.id_receta ?? line?.id_extra ?? 0) || 0;
+  const complementSignature = buildComplementSignature(line?.complementos);
+  const extrasSignature = buildExtrasSignature(line?.extras);
+  const observation = normalizeSignatureText(line?.observacion);
+  const lineDiscount = String(line?.id_descuento_catalogo_linea || '').trim() || 'none';
+  return [kind, entityId, complementSignature, extrasSignature, observation, lineDiscount].join('|');
+};
+
+export const mergeEquivalentVentaLines = (cart) => {
+  const merged = [];
+  const indexBySignature = new Map();
+  let mergeCount = 0;
+
+  for (const line of Array.isArray(cart) ? cart : []) {
+    const cantidad = clampVentaLineQuantity(line?.cantidad ?? 1);
+    const normalizedLine = { ...line, cantidad };
+    const signature = buildVentaLineConfigSignature(normalizedLine);
+    const existingIndex = indexBySignature.get(signature);
+    if (existingIndex === undefined) {
+      indexBySignature.set(signature, merged.length);
+      merged.push(normalizedLine);
+      continue;
+    }
+
+    const existing = merged[existingIndex];
+    merged[existingIndex] = {
+      ...existing,
+      cantidad: clampVentaLineQuantity(Number(existing.cantidad || 0) + cantidad)
+    };
+    mergeCount += 1;
+  }
+
+  return { cart: merged, merged: mergeCount > 0, mergeCount };
 };
 
 export const findLineIndex = (cart, cartKey) =>

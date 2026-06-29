@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState } from 'react';
 
 const normalizeSelected = (value) =>
@@ -77,7 +78,9 @@ export default function VentaExtrasModal({
   const getSelectedQuantity = (idExtra) =>
     Number(current.find((entry) => entry.id_extra === idExtra)?.cantidad || 0);
 
+  const lineQuantity = Math.max(1, Number(row?.cantidad || 1));
   const subtotal = current.reduce((sum, entry) => sum + Number(entry.precio || 0) * Number(entry.cantidad || 0), 0);
+  const lineSubtotal = subtotal * lineQuantity;
   const optionById = new Map(optionRows.map((option) => [option.id_extra, option]));
   const hasUnavailableSelection = current.some((entry) => optionById.get(entry.id_extra)?.disponible !== true);
   const money = typeof formatCurrency === 'function'
@@ -99,8 +102,10 @@ export default function VentaExtrasModal({
               <i className="bi bi-plus-square" />
             </span>
             <div>
-              <h3 id="ventas-extras-title">Extras</h3>
-              <p>{row.nombre_item || 'Item'}</p>
+              <h3 id="ventas-extras-title">
+                {lineQuantity > 1 ? `Editar configuracion de ${lineQuantity} ordenes` : 'Extras'}
+              </h3>
+              <p>{lineQuantity > 1 ? 'Los cambios se aplicaran a todas las unidades de esta linea.' : (row.nombre_item || 'Item')}</p>
             </div>
           </div>
           <button type="button" className="ventas-modal__close-btn" onClick={onCancel} aria-label="Cerrar">
@@ -133,6 +138,9 @@ export default function VentaExtrasModal({
                   <div>
                     <strong>{option.nombre}</strong>
                     <span>{money(option.precio)}</span>
+                    {qty > 0 && lineQuantity > 1 ? (
+                      <small>{qty} por orden - {qty * lineQuantity} en total</small>
+                    ) : null}
                     {unavailable ? (
                       <small>No disponible: {option.motivo_no_disponible || 'Este extra no esta disponible.'}</small>
                     ) : null}
@@ -160,13 +168,16 @@ export default function VentaExtrasModal({
         </div>
 
         <footer className="ventas-detail-modal__footer ventas-complementos-modal__footer ventas-extras-modal__footer">
-          <strong>Extras seleccionados: {money(subtotal)}</strong>
+          <strong>
+            Extras seleccionados: {money(lineSubtotal)}
+            {lineQuantity > 1 ? ` (${money(subtotal)} por orden)` : ''}
+          </strong>
           <div className="ventas-detail-modal__footer-actions ventas-complementos-modal__footer-actions">
             <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
               Cancelar
             </button>
             <button type="button" className="btn btn-warning" data-testid="ventas-extras-confirmar" onClick={() => onConfirm?.(current)} disabled={hasUnavailableSelection}>
-              Confirmar
+              {lineQuantity > 1 ? `Aplicar a las ${lineQuantity} ordenes` : 'Confirmar'}
             </button>
           </div>
         </footer>

@@ -1,23 +1,24 @@
 import {
   normalizeValidComplementIds,
   normalizeExtras,
+  parseVentaLineQuantity,
   toNormalizedId
 } from './ventasCartUtils.js';
 
 export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) =>
   (Array.isArray(cart) ? cart : []).map((line) => {
-    const isSimpleProduct = line.kind === 'PRODUCTO';
+    const cantidad = parseVentaLineQuantity(line.cantidad);
+    if (!cantidad) {
+      throw new Error('Cada linea debe incluir cantidad entera entre 1 y 999.');
+    }
     const payload = {
       cart_key: line.cartKey,
       line_id: line.lineId || null,
       id_producto: line.id_producto,
       id_receta: line.id_receta,
       id_extra: line.kind === 'ITEM' ? line.id_extra : null,
-      cantidad: isSimpleProduct ? Number(line.cantidad) : 1
+      cantidad
     };
-    if (line.kind === 'ITEM') {
-      payload.cantidad = Number(line.cantidad);
-    }
     const lineDiscountId = Number(line.id_descuento_catalogo_linea || 0);
     if (canApplyDiscount && lineDiscountId > 0) {
       payload.id_descuento_catalogo = lineDiscountId;

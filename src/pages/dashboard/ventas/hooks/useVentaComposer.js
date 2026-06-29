@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization */
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization, react-hooks/exhaustive-deps */
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 import {
@@ -7,12 +7,15 @@ import {
   filterBySearch,
   findLineIndex,
   getExtrasCount,
+  getLineExtrasSubtotal,
   getExtrasSubtotal,
   getResultsLabel,
   isCustomizableVentaLineKind,
+  mergeEquivalentVentaLines,
   normalizeComplementIds,
   normalizeValidComplementIds,
   normalizeExtras,
+  parseVentaLineQuantity,
   toNormalizedId
 } from '../../../../modules/ventas/utils/ventasCartUtils';
 import {
@@ -60,7 +63,7 @@ const persistCajaSucursal = (storageKey, value) => {
 
 const clearPersistedCajaSucursal = (storageKey) => persistCajaSucursal(storageKey, '');
 
-const isQuantityManagedVentaLineKind = (kind) => ['PRODUCTO', 'ITEM'].includes(String(kind || '').toUpperCase());
+const isQuantityManagedVentaLineKind = (kind) => ['PRODUCTO', 'ITEM', 'RECETA'].includes(String(kind || '').toUpperCase());
 
 const resolveStandaloneExtraAvailableUnits = (entry) => {
   const stock = Number(entry?.stock_disponible);
@@ -117,6 +120,7 @@ const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = 
   cashReceived: '',
   referenciaPago: '',
   cart: [],
+  cartNotice: '',
   submitError: '',
   incompleteComplementCartKey: ''
 });
@@ -126,41 +130,10 @@ const resolveCatalogImageUrl = (row) => {
   return rawUrl ? resolveInventarioImageUrl(rawUrl) : null;
 };
 
-const inferSauceUnitsBaseFromText = (...sources) => {
-  const text = sources
-    .filter(Boolean)
-    .join(' ')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-  if (!text) return 1;
-  if (!/(alitas?|tenders?)/i.test(text)) return 1;
-  const match =
-    text.match(/\b(\d{1,3})\s*(?:alitas?|tenders?)\b/i) ||
-    text.match(/\b(\d{1,3})\s*(?:uds?|unidades?|pzas?|piezas?)\b/i) ||
-    text.match(/\((\d{1,3})\s*(?:uds?|unidades?|pzas?|piezas?)\)/i);
-  const units = Number(match?.[1] || 0);
-  return Number.isFinite(units) && units > 0 ? Math.max(1, Math.floor(units)) : 1;
-};
-
-const getQuantityAwareComplementLimit = (line, limit) => {
-  const baseLimit = Math.max(0, Number(limit || 0));
-  const quantity = Math.max(1, Number(line?.cantidad || 1));
-  if (baseLimit <= 0 || quantity <= 1) return baseLimit;
-
-  const wingUnitsBase = inferSauceUnitsBaseFromText(line?.nombre_item, line?.descripcion_item);
-  const fallbackBaseLimit = wingUnitsBase > 1 ? Math.ceil(wingUnitsBase / 6) : 0;
-  if (fallbackBaseLimit > 0 && fallbackBaseLimit === baseLimit) {
-    return Math.ceil((wingUnitsBase * quantity) / 6);
-  }
-
-  return baseLimit * quantity;
-};
-
 const getLineComplementRequirement = (line) => {
   const selectedCount = normalizeComplementIds(line?.complementos).length;
-  const required = getQuantityAwareComplementLimit(line, line?.minimo_complementos);
-  const rawMax = getQuantityAwareComplementLimit(line, line?.maximo_complementos);
+  const required = Math.max(0, Number(line?.minimo_complementos || 0));
+  const rawMax = Math.max(0, Number(line?.maximo_complementos || 0));
   const max = rawMax > 0 ? Math.max(required, rawMax) : 0;
   return {
     required,
@@ -210,14 +183,13 @@ const getLineComplementSelectionIssue = (line) => {
     };
   }
   if (requirement.max > 0 && requirement.selectedCount > requirement.max) {
-    const quantity = Math.max(1, Number(line.cantidad || 1));
     return {
       type: 'too_many',
       line,
       cartKey: line.cartKey,
       name,
       ...requirement,
-      message: `La cantidad de complementos de ${name} (cantidad ${quantity}) supera el maximo permitido. Seleccionados ${requirement.selectedCount}/${requirement.max}.`
+      message: `La cantidad de complementos de ${name} supera el maximo permitido. Seleccionados ${requirement.selectedCount}/${requirement.max}.`
     };
   }
   return null;
@@ -868,7 +840,7 @@ export const useVentaComposer = ({
     [state.cart]
   );
   const extrasSubtotal = useMemo(
-    () => roundMoney(state.cart.reduce((total, line) => total + getExtrasSubtotal(line.extras), 0)),
+    () => roundMoney(state.cart.reduce((total, line) => total + getLineExtrasSubtotal(line), 0)),
     [state.cart]
   );
   const subtotal = roundMoney(baseSubtotal + extrasSubtotal);
@@ -1059,7 +1031,7 @@ export const useVentaComposer = ({
 
         nextCart[index] = {
           ...currentLine,
-          cantidad: Number(currentLine.cantidad ?? 0) + 1,
+          cantidad: nextQty,
           id_descuento_catalogo_linea: currentLine.id_descuento_catalogo_linea || (autoDiscount ? String(autoDiscount.id_descuento_catalogo) : '')
         };
         return {
@@ -1083,12 +1055,14 @@ export const useVentaComposer = ({
         ...catalogLine,
         id_descuento_catalogo_linea: autoDiscount ? String(autoDiscount.id_descuento_catalogo) : ''
       });
+      const mergedResult = mergeEquivalentVentaLines(nextCart);
 
       return {
         ...current,
-        cart: nextCart,
+        cart: mergedResult.cart,
         incompleteComplementCartKey: '',
-        submitError: ''
+        submitError: '',
+        cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
       };
     });
   };
@@ -1153,22 +1127,24 @@ export const useVentaComposer = ({
       rebuilt.extras = normalizeExtras(editedLine.extras);
       setState((current) => {
         const cartKey = editedLine.lineId ? (editedLine.cartKey || rebuilt.cartKey) : rebuilt.cartKey;
+        const nextCart = current.cart.map((line) =>
+          line.cartKey === complementModal.cartKey
+            ? {
+              ...line,
+              lineId,
+              cartKey,
+              complementos: rebuilt.complementos,
+              complementos_incompletos_autorizados: rebuilt.complementos_incompletos_autorizados
+            }
+            : line
+        );
+        const mergedResult = mergeEquivalentVentaLines(nextCart);
         return {
           ...current,
-          cart: current.cart.map((line) =>
-            line.cartKey === complementModal.cartKey
-              ? {
-                ...line,
-                lineId,
-                cartKey,
-                cantidad: 1,
-                complementos: rebuilt.complementos,
-                complementos_incompletos_autorizados: rebuilt.complementos_incompletos_autorizados
-              }
-              : line
-          ),
+          cart: mergedResult.cart,
           incompleteComplementCartKey: '',
-          submitError: ''
+          submitError: '',
+          cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
         };
       });
     } else {
@@ -1224,10 +1200,12 @@ export const useVentaComposer = ({
           const adjustedExtras = normalizeExtras(candidate.extras);
           const isCustomLine = isCustomizableVentaLineKind(candidate.kind);
           const lineId = isCustomLine ? String(candidate.lineId || createCartLineId()) : null;
+          const rawQuantity = Number(candidate.cantidad ?? 0);
+          const quantity = rawQuantity <= 0 ? 0 : (parseVentaLineQuantity(candidate.cantidad) || 1);
           return {
             ...candidate,
             lineId,
-            cantidad: isCustomLine ? 1 : candidate.cantidad,
+            cantidad: quantity,
             extras: adjustedExtras,
             cartKey: isCustomLine
               ? (candidate.lineId ? candidate.cartKey : buildCartKey(candidate.kind, candidate.entityId, candidate.complementos, adjustedExtras, lineId))
@@ -1235,12 +1213,14 @@ export const useVentaComposer = ({
           };
         })
         .filter((line) => Number(line.cantidad ?? 0) > 0);
+      const mergedResult = mergeEquivalentVentaLines(nextCart);
 
       return {
         ...current,
-        cart: nextCart,
+        cart: mergedResult.cart,
         incompleteComplementCartKey: '',
-        submitError: ''
+        submitError: '',
+        cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
       };
     });
   };
@@ -1298,21 +1278,23 @@ export const useVentaComposer = ({
       const nextCartKey = currentLine.lineId
         ? currentLine.cartKey
         : buildCartKey(currentLine.kind, currentLine.entityId, currentLine.complementos, nextExtras, lineId);
+      const nextCart = current.cart.map((line) =>
+        line.cartKey === extrasModal.cartKey
+          ? {
+            ...line,
+            lineId,
+            extras: nextExtras,
+            cartKey: nextCartKey
+          }
+          : line
+      );
+      const mergedResult = mergeEquivalentVentaLines(nextCart);
       return {
         ...current,
-        cart: current.cart.map((line) =>
-          line.cartKey === extrasModal.cartKey
-            ? {
-              ...line,
-              lineId,
-              cantidad: 1,
-              extras: nextExtras,
-              cartKey: nextCartKey
-            }
-            : line
-        ),
+        cart: mergedResult.cart,
         incompleteComplementCartKey: '',
-        submitError: ''
+        submitError: '',
+        cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
       };
     });
     setExtrasModal({
@@ -1503,6 +1485,7 @@ export const useVentaComposer = ({
     cashReceived: state.cashReceived,
     referenciaPago: state.referenciaPago,
     cart: state.cart,
+    cartNotice: state.cartNotice,
     submitError: state.submitError,
     incompleteComplementCartKey: state.incompleteComplementCartKey,
     currentCatalogRows,
@@ -1654,27 +1637,35 @@ export const useVentaComposer = ({
       }),
     setLineDiscount: (cartKey, discountId) => {
       if (!canApplyDiscount) {
-        setState((current) => ({
-          ...current,
-          selectedDiscountId: '',
-          cart: current.cart.map((line) =>
+        setState((current) => {
+          const mergedResult = mergeEquivalentVentaLines(current.cart.map((line) =>
             line.cartKey === cartKey
               ? { ...line, id_descuento_catalogo_linea: '' }
               : line
-          ),
-          submitError: ''
-        }));
+          ));
+          return {
+            ...current,
+            selectedDiscountId: '',
+            cart: mergedResult.cart,
+            submitError: '',
+            cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
+          };
+        });
         return;
       }
-      setState((current) => ({
-        ...current,
-        cart: current.cart.map((line) =>
+      setState((current) => {
+        const mergedResult = mergeEquivalentVentaLines(current.cart.map((line) =>
           line.cartKey === cartKey
             ? { ...line, id_descuento_catalogo_linea: discountId || '' }
             : line
-        ),
-        submitError: ''
-      }));
+        ));
+        return {
+          ...current,
+          cart: mergedResult.cart,
+          submitError: '',
+          cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
+        };
+      });
     },
     setCashReceived: (value) => setPartialState({ cashReceived: value }),
     setReferenciaPago: (value) => setPartialState({ referenciaPago: value }),
@@ -1687,6 +1678,7 @@ export const useVentaComposer = ({
     closeExtrasModal,
     confirmExtrasModal,
     getExtrasSubtotal,
+    getLineExtrasSubtotal,
     getExtrasCount,
     updateLine,
     removeLine,
