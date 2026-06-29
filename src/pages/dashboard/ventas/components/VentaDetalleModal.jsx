@@ -262,7 +262,7 @@ export default function VentaDetalleModal({
                                   ) : '--'}
                                 </td>
                               ) : null}
-                              <td>{formatCurrency(item.total_linea || item.sub_total)}</td>
+                              <td>{formatCurrency(item.total_linea ?? item.sub_total)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -291,7 +291,7 @@ export default function VentaDetalleModal({
                             {!isStandaloneExtraItem(item) && Array.isArray(item.extras) && item.extras.length > 0 ? (
                               <div><dt>Extras</dt><dd>{item.extras.map(formatExtraLabel).join(', ')}</dd></div>
                             ) : null}
-                            <div><dt>Subtotal</dt><dd>{formatCurrency(item.total_linea || item.sub_total)}</dd></div>
+                            <div><dt>Subtotal</dt><dd>{formatCurrency(item.total_linea ?? item.sub_total)}</dd></div>
                           </dl>
                         </article>
                       ))}
