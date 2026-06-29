@@ -123,7 +123,10 @@ const addExtrasToLine = async (page, kind, index, quantity) => {
     .first()
     .click();
 
-  const modal = page.getByRole('dialog', { name: /Extras/i });
+  const modal = page.getByRole('dialog', { name: /Extras|Editar configuracion de \d+ ordenes/i })
+    .or(page.locator('.ventas-extras-modal, .ventas-detail-modal').filter({
+      has: page.getByTestId('ventas-extras-confirmar')
+    }));
   await expect(modal).toBeVisible();
   let extraOptions = modal.getByTestId('ventas-extra-option').filter({
     has: page.locator('[data-testid="ventas-extra-increment"]:not(:disabled)')

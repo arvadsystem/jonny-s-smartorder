@@ -19,6 +19,27 @@ export const parseVentaLineQuantity = (value) => {
     : null;
 };
 
+export const buildVentaQuantityCommitResult = (value, currentQuantity, { manual = false } = {}) => {
+  const previousQuantity = clampVentaLineQuantity(currentQuantity ?? 1);
+  const parsed = parseVentaLineQuantity(value);
+  if (!parsed) {
+    return {
+      ok: false,
+      quantity: previousQuantity,
+      draft: String(previousQuantity),
+      shouldConfirm: false,
+      message: 'La cantidad debe ser un entero entre 1 y 999.'
+    };
+  }
+  return {
+    ok: true,
+    quantity: parsed,
+    draft: String(parsed),
+    shouldConfirm: Boolean(manual && parsed >= VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD && parsed !== previousQuantity),
+    message: ''
+  };
+};
+
 export const clampVentaLineQuantity = (value) => {
   const parsed = typeof value === 'number' && Number.isFinite(value)
     ? Math.trunc(value)
@@ -123,31 +144,63 @@ export const buildVentaLineConfigSignature = (line) => {
   const extrasSignature = buildExtrasSignature(line?.extras);
   const observation = normalizeSignatureText(line?.observacion);
   const lineDiscount = String(line?.id_descuento_catalogo_linea || '').trim() || 'none';
-  return [kind, entityId, complementSignature, extrasSignature, observation, lineDiscount].join('|');
+  const precioUnitario = roundMoney(line?.precio_unitario ?? line?.precio ?? 0);
+  const incompleteAuthorization = line?.complementos_incompletos_autorizados ? 'incomplete-ok' : 'complete-required';
+  const requiresComplements = line?.complementos_requiere ? 'requires-complements' : 'no-complements';
+  const minComplements = Number(line?.minimo_complementos || 0) || 0;
+  const maxComplements = Number(line?.maximo_complementos || 0) || 0;
+  const complementType = String(line?.tipo_complemento || '').trim().toUpperCase() || 'none';
+  return [
+    kind,
+    entityId,
+    precioUnitario,
+    complementSignature,
+    extrasSignature,
+    observation,
+    lineDiscount,
+    incompleteAuthorization,
+    requiresComplements,
+    minComplements,
+    maxComplements,
+    complementType
+  ].join('|');
 };
 
 export const mergeEquivalentVentaLines = (cart) => {
   const merged = [];
-  const indexBySignature = new Map();
+  const indexesBySignature = new Map();
   let mergeCount = 0;
 
   for (const line of Array.isArray(cart) ? cart : []) {
-    const cantidad = clampVentaLineQuantity(line?.cantidad ?? 1);
-    const normalizedLine = { ...line, cantidad };
+    let remaining = Number(line?.cantidad || 0);
+    if (!Number.isSafeInteger(remaining) || remaining <= 0) continue;
+    const normalizedLine = { ...line };
     const signature = buildVentaLineConfigSignature(normalizedLine);
-    const existingIndex = indexBySignature.get(signature);
-    if (existingIndex === undefined) {
-      indexBySignature.set(signature, merged.length);
-      merged.push(normalizedLine);
-      continue;
+
+    if (!indexesBySignature.has(signature)) indexesBySignature.set(signature, []);
+    const indexes = indexesBySignature.get(signature);
+
+    for (const existingIndex of indexes) {
+      if (remaining <= 0) break;
+      const existing = merged[existingIndex];
+      const currentQty = Number(existing.cantidad || 0);
+      const capacity = VENTA_LINE_MAX_QUANTITY - currentQty;
+      if (capacity <= 0) continue;
+      const moveQty = Math.min(capacity, remaining);
+      merged[existingIndex] = {
+        ...existing,
+        cantidad: currentQty + moveQty
+      };
+      remaining -= moveQty;
+      mergeCount += 1;
     }
 
-    const existing = merged[existingIndex];
-    merged[existingIndex] = {
-      ...existing,
-      cantidad: clampVentaLineQuantity(Number(existing.cantidad || 0) + cantidad)
-    };
-    mergeCount += 1;
+    while (remaining > 0) {
+      const quantity = Math.min(VENTA_LINE_MAX_QUANTITY, remaining);
+      indexes.push(merged.length);
+      merged.push({ ...normalizedLine, cantidad: quantity });
+      remaining -= quantity;
+    }
   }
 
   return { cart: merged, merged: mergeCount > 0, mergeCount };

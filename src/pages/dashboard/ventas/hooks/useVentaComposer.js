@@ -1168,7 +1168,7 @@ export const useVentaComposer = ({
     return true;
   };
 
-  const updateLine = (cartKey, updater) => {
+  const updateLine = (cartKey, updater, options = {}) => {
     setState((current) => {
       const nextCart = current.cart
         .map((line) => {
@@ -1213,6 +1213,14 @@ export const useVentaComposer = ({
           };
         })
         .filter((line) => Number(line.cantidad ?? 0) > 0);
+      if (options?.merge === false) {
+        return {
+          ...current,
+          cart: nextCart,
+          incompleteComplementCartKey: '',
+          submitError: ''
+        };
+      }
       const mergedResult = mergeEquivalentVentaLines(nextCart);
 
       return {

@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD,
   VENTA_LINE_MAX_QUANTITY,
+  buildVentaQuantityCommitResult,
   clampVentaLineQuantity,
-  normalizeExtras,
-  parseVentaLineQuantity
+  normalizeExtras
 } from '../../../../modules/ventas/utils/ventasCartUtils';
 
 const buildComplementSummaryLabel = (line, composer) => {
@@ -35,6 +35,7 @@ export default function VentaComposerSummary({
 }) {
   const [expandedNotes, setExpandedNotes] = useState({});
   const [quantityDrafts, setQuantityDrafts] = useState({});
+  const [quantityValidationMessage, setQuantityValidationMessage] = useState('');
   const [pendingQuantityConfirm, setPendingQuantityConfirm] = useState(null);
   const isStandaloneExtraLine = (line) => String(line?.kind || '').toUpperCase() === 'ITEM';
   const pendingCount = Number(pendingPaymentsSummary?.total ?? 0) || 0;
@@ -61,18 +62,29 @@ export default function VentaComposerSummary({
   const extrasSubtotal = Number(composer.extrasSubtotal || 0);
   const baseSubtotal = Number(composer.baseSubtotal ?? Math.max(Number(composer.subtotal || 0) - extrasSubtotal, 0));
   const shouldShowExtrasBreakdown = extrasSubtotal > 0;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- drafts mirror cart identity/quantity after merges, removals and cartKey changes.
+    setQuantityDrafts(() => Object.fromEntries(
+      (Array.isArray(composer.cart) ? composer.cart : []).map((line) => [
+        String(line.cartKey),
+        String(line.cantidad || 1)
+      ])
+    ));
+  }, [composer.cart]);
   const commitQuantity = (line, rawValue, { manual = false } = {}) => {
-    const parsed = parseVentaLineQuantity(rawValue);
-    if (!parsed) {
-      setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(line.cantidad || 1) }));
+    const result = buildVentaQuantityCommitResult(rawValue, line.cantidad, { manual });
+    if (!result.ok) {
+      setQuantityDrafts((current) => ({ ...current, [line.cartKey]: result.draft }));
+      setQuantityValidationMessage(result.message);
       return;
     }
-    if (manual && parsed >= VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD && parsed !== Number(line.cantidad || 1)) {
-      setPendingQuantityConfirm({ line, cantidad: parsed });
+    setQuantityValidationMessage('');
+    if (result.shouldConfirm) {
+      setPendingQuantityConfirm({ line, cantidad: result.quantity });
       return;
     }
-    composer.updateLine(line.cartKey, (current) => ({ ...current, cantidad: parsed }));
-    setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(parsed) }));
+    composer.updateLine(line.cartKey, (current) => ({ ...current, cantidad: result.quantity }));
+    setQuantityDrafts((current) => ({ ...current, [line.cartKey]: result.draft }));
   };
   const describeLineConfig = (line) => {
     const parts = [line?.nombre_item || 'Item'];
@@ -180,9 +192,13 @@ export default function VentaComposerSummary({
                       ) : null}
                       {hasKitchenNote ? <span className="ventas-cart__note-badge">Con observacion</span> : null}
                     </div>
-                    {isQuantityManaged ? (
+                    {isSimpleProduct || isStandaloneExtra ? (
                       <small className="ventas-cart__stock">
                         Disponible: {Number(isStandaloneExtra ? (line.available_units ?? 0) : (line.stock_disponible ?? 0))}
+                      </small>
+                    ) : isRecipe ? (
+                      <small className="ventas-cart__stock">
+                        {line.complementos_requiere ? buildComplementSummaryLabel(line, composer) : 'Preparacion en cocina'}
                       </small>
                     ) : (
                       <small className="ventas-cart__stock">
@@ -196,12 +212,15 @@ export default function VentaComposerSummary({
                           <button
                             type="button"
                             aria-label={`Disminuir cantidad de ${line.nombre_item}`}
-                            onClick={() =>
+                            onClick={() => {
+                              const nextQuantity = Number(line.cantidad ?? 0) - 1;
+                              setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(Math.max(nextQuantity, 0)) }));
+                              setQuantityValidationMessage('');
                               composer.updateLine(line.cartKey, (current) => ({
                                 ...current,
                                 cantidad: Number(current.cantidad ?? 0) - 1
-                              }))
-                            }
+                              }));
+                            }}
                           >
                             <i className="bi bi-dash" />
                           </button>
@@ -212,8 +231,8 @@ export default function VentaComposerSummary({
                             aria-label={`Cantidad de ${line.nombre_item}`}
                             value={quantityDrafts[line.cartKey] ?? String(line.cantidad || 1)}
                             onChange={(event) => {
-                              const value = event.target.value.replace(/[^\d]/g, '').slice(0, 3);
-                              setQuantityDrafts((current) => ({ ...current, [line.cartKey]: value }));
+                              setQuantityDrafts((current) => ({ ...current, [line.cartKey]: event.target.value }));
+                              setQuantityValidationMessage('');
                             }}
                             onBlur={(event) => commitQuantity(line, event.target.value, { manual: true })}
                             onKeyDown={(event) => {
@@ -227,12 +246,15 @@ export default function VentaComposerSummary({
                             type="button"
                             aria-label={`Aumentar cantidad de ${line.nombre_item}`}
                             disabled={!canIncrease}
-                            onClick={() =>
+                            onClick={() => {
+                              const nextQuantity = Number(line.cantidad ?? 0) + 1;
+                              setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(nextQuantity) }));
+                              setQuantityValidationMessage('');
                               composer.updateLine(line.cartKey, (current) => ({
                                 ...current,
                                 cantidad: Number(current.cantidad ?? 0) + 1
-                              }))
-                            }
+                              }));
+                            }}
                           >
                             <i className="bi bi-plus-lg" />
                           </button>
@@ -309,8 +331,9 @@ export default function VentaComposerSummary({
                               composer.updateLine(line.cartKey, (current) => ({
                                 ...current,
                                 observacion: event.target.value
-                              }))
+                              }), { merge: false })
                             }
+                            onBlur={() => composer.updateLine(line.cartKey, (current) => ({ ...current }))}
                             placeholder={Number(line.cantidad || 1) > 1 ? `Observacion para las ${line.cantidad} ordenes` : 'Detalle para cocina'}
                           />
                         ) : null}
@@ -376,6 +399,7 @@ export default function VentaComposerSummary({
         </div>
 
         {composer.submitError ? <div className="ventas-create-modal__error">{composer.submitError}</div> : null}
+        {quantityValidationMessage ? <div className="ventas-create-modal__error">{quantityValidationMessage}</div> : null}
         {composer.cartNotice ? <div className="ventas-create-modal__hint">{composer.cartNotice}</div> : null}
 
         <button
@@ -417,7 +441,7 @@ export default function VentaComposerSummary({
                 <p key={extra.id_extra}>Extra {extra.nombre} total: {extra.cantidad * pendingQuantityConfirm.cantidad}</p>
               ))}
               <p>
-                <strong>Total estimado:</strong>{' '}
+                <strong>Subtotal estimado antes de descuentos:</strong>{' '}
                 {composer.formatCurrency(
                   (Number(pendingQuantityConfirm.line.precio_unitario || 0) + composer.getExtrasSubtotal(pendingQuantityConfirm.line.extras)) *
                   pendingQuantityConfirm.cantidad
@@ -426,7 +450,15 @@ export default function VentaComposerSummary({
             </div>
             <footer className="ventas-detail-modal__footer">
               <div className="ventas-detail-modal__footer-actions">
-                <button type="button" className="btn btn-outline-secondary" onClick={() => setPendingQuantityConfirm(null)}>
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() => {
+                    const { line } = pendingQuantityConfirm;
+                    setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(line.cantidad || 1) }));
+                    setPendingQuantityConfirm(null);
+                  }}
+                >
                   Cancelar
                 </button>
                 <button
@@ -436,6 +468,7 @@ export default function VentaComposerSummary({
                     const { line, cantidad } = pendingQuantityConfirm;
                     composer.updateLine(line.cartKey, (current) => ({ ...current, cantidad }));
                     setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(cantidad) }));
+                    setQuantityValidationMessage('');
                     setPendingQuantityConfirm(null);
                   }}
                 >
