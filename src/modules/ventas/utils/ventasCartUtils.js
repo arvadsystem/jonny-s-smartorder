@@ -96,7 +96,16 @@ export const normalizeExtras = (value) =>
 export const buildExtrasSignature = (value) => {
   const extras = normalizeExtras(value);
   if (extras.length === 0) return 'noextras';
-  return extras.map((entry) => `${entry.id_extra}x${entry.cantidad}`).join('-');
+  return extras.map((entry) => [
+    `${entry.id_extra}x${entry.cantidad}`,
+    `p${roundMoney(entry.precio)}`,
+    `i${entry.id_insumo || 0}`,
+    `im${entry.id_insumo_maestro || 0}`,
+    `cb${Number(entry.cantidad_consumo_base || 0)}`,
+    `ub${entry.id_unidad_base || 0}`,
+    `inv${entry.inventario_configurado ? 1 : 0}`,
+    `disp${entry.disponible ? 1 : 0}`
+  ].join(':')).join('-');
 };
 
 export const getExtrasSubtotal = (value) =>

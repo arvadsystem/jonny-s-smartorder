@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  buildExtrasSignature,
   buildVentaLineConfigSignature,
   buildVentaQuantityCommitResult,
   getLineExtrasSubtotal,
@@ -108,6 +109,23 @@ describe('ventas bulk recipe quantity utilities', () => {
 
     for (const variant of variants) {
       assert.notEqual(buildVentaLineConfigSignature(base), buildVentaLineConfigSignature(variant));
+    }
+  });
+
+  it('distingue firmas de extras por precio y configuracion de inventario', () => {
+    const base = [{ id_extra: 8, nombre: 'Queso', precio: 10, cantidad: 1, id_insumo: 300, cantidad_consumo_base: 0.5, id_unidad_base: 1 }];
+    const variants = [
+      [{ ...base[0], precio: 11 }],
+      [{ ...base[0], id_insumo: 301 }],
+      [{ ...base[0], id_insumo_maestro: 900 }],
+      [{ ...base[0], cantidad_consumo_base: 0.75 }],
+      [{ ...base[0], id_unidad_base: 2 }],
+      [{ ...base[0], inventario_configurado: false }],
+      [{ ...base[0], disponible: false }]
+    ];
+
+    for (const variant of variants) {
+      assert.notEqual(buildExtrasSignature(base), buildExtrasSignature(variant));
     }
   });
 
