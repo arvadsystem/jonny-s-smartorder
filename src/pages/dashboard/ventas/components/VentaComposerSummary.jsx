@@ -423,8 +423,13 @@ export default function VentaComposerSummary({
         </button>
       </footer>
       {pendingQuantityConfirm ? (
-        <div className="ventas-modal-backdrop" role="presentation">
-          <section className="ventas-modal" role="alertdialog" aria-modal="true" aria-labelledby="ventas-bulk-qty-title">
+        <div className="ventas-modal-backdrop ventas-bulk-quantity-modal-backdrop" role="presentation">
+          <section
+            className="ventas-modal ventas-bulk-quantity-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="ventas-bulk-qty-title"
+          >
             <header className="ventas-modal__header">
               <div className="ventas-modal__title-wrap">
                 <span className="ventas-modal__icon"><i className="bi bi-exclamation-triangle" /></span>
@@ -434,25 +439,37 @@ export default function VentaComposerSummary({
                 </div>
               </div>
             </header>
-            <div className="ventas-modal__body">
-              {describeLineConfig(pendingQuantityConfirm.line).map((entry) => <p key={entry}>{entry}</p>)}
-              <p><strong>Cantidad:</strong> {pendingQuantityConfirm.cantidad}</p>
-              {normalizeExtras(pendingQuantityConfirm.line.extras).map((extra) => (
-                <p key={extra.id_extra}>Extra {extra.nombre} total: {extra.cantidad * pendingQuantityConfirm.cantidad}</p>
-              ))}
-              <p>
-                <strong>Subtotal estimado antes de descuentos:</strong>{' '}
-                {composer.formatCurrency(
-                  (Number(pendingQuantityConfirm.line.precio_unitario || 0) + composer.getExtrasSubtotal(pendingQuantityConfirm.line.extras)) *
-                  pendingQuantityConfirm.cantidad
-                )}
-              </p>
+            <div className="ventas-modal__body ventas-bulk-quantity-modal__body">
+              <div className="ventas-bulk-quantity-modal__summary">
+                {describeLineConfig(pendingQuantityConfirm.line).map((entry) => (
+                  <p className="ventas-bulk-quantity-modal__line" key={entry}>{entry}</p>
+                ))}
+                <p className="ventas-bulk-quantity-modal__line">
+                  <strong>Cantidad:</strong>
+                  <span>{pendingQuantityConfirm.cantidad}</span>
+                </p>
+                {normalizeExtras(pendingQuantityConfirm.line.extras).map((extra) => (
+                  <p className="ventas-bulk-quantity-modal__line" key={extra.id_extra}>
+                    <strong>Extra {extra.nombre} total:</strong>
+                    <span>{extra.cantidad * pendingQuantityConfirm.cantidad}</span>
+                  </p>
+                ))}
+                <p className="ventas-bulk-quantity-modal__total">
+                  <strong>Subtotal estimado antes de descuentos:</strong>{' '}
+                  <span>
+                    {composer.formatCurrency(
+                      (Number(pendingQuantityConfirm.line.precio_unitario || 0) + composer.getExtrasSubtotal(pendingQuantityConfirm.line.extras)) *
+                      pendingQuantityConfirm.cantidad
+                    )}
+                  </span>
+                </p>
+              </div>
             </div>
-            <footer className="ventas-detail-modal__footer">
-              <div className="ventas-detail-modal__footer-actions">
+            <footer className="ventas-detail-modal__footer ventas-bulk-quantity-modal__footer">
+              <div className="ventas-detail-modal__footer-actions ventas-bulk-quantity-modal__actions">
                 <button
                   type="button"
-                  className="btn btn-outline-secondary"
+                  className="btn btn-outline-secondary ventas-bulk-quantity-modal__button"
                   onClick={() => {
                     const { line } = pendingQuantityConfirm;
                     setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(line.cantidad || 1) }));
@@ -463,7 +480,7 @@ export default function VentaComposerSummary({
                 </button>
                 <button
                   type="button"
-                  className="btn btn-warning"
+                  className="btn btn-warning ventas-bulk-quantity-modal__button ventas-bulk-quantity-modal__button--primary"
                   onClick={() => {
                     const { line, cantidad } = pendingQuantityConfirm;
                     composer.updateLine(line.cartKey, (current) => ({ ...current, cantidad }));
