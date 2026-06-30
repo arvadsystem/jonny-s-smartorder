@@ -7651,6 +7651,116 @@
   border-radius: 12px;
 }
 
+.ventas-comanda-cocina-modal {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: clamp(22px, 5vw, 30px);
+  gap: 16px;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal__close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: #fff7f2;
+  color: rgba(154, 38, 38, 0.54);
+}
+
+.ventas-comanda-cocina-modal .ventas-modal__close-btn:hover:not(:disabled),
+.ventas-comanda-cocina-modal .ventas-modal__close-btn:focus-visible {
+  background: #fff1f2;
+  color: #b42318;
+}
+
+.ventas-comanda-cocina-modal .ventas-finalizar-error-modal__copy {
+  width: 100%;
+  max-width: 320px;
+}
+
+.ventas-comanda-cocina-modal .ventas-finalizar-error-modal__copy h5 {
+  font-size: clamp(1rem, 3.8vw, 1.16rem);
+  line-height: 1.25;
+}
+
+.ventas-comanda-cocina-modal .ventas-finalizar-error-modal__detail {
+  line-height: 1.35;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal-footer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0 4px;
+  border-top: 1px solid rgba(157, 150, 112, 0.14);
+  background: transparent;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal-footer .btn {
+  min-width: 136px;
+  min-height: 46px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  line-height: 1.2;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal-footer .btn-primary {
+  background: #bd2d31;
+  border-color: #bd2d31;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal-footer .btn-primary:hover,
+.ventas-comanda-cocina-modal .ventas-modal-footer .btn-primary:focus {
+  background: #a92529;
+  border-color: #a92529;
+}
+
+@media (max-width: 480px) {
+  .ventas-comanda-cocina-backdrop {
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .ventas-comanda-cocina-modal {
+    width: min(100%, calc(100vw - 24px));
+    max-height: calc(100dvh - 32px);
+    padding: 24px 20px 20px;
+    border-radius: 18px;
+    gap: 14px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-finalizar-error-modal__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 15px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-finalizar-error-modal__copy {
+    max-width: 100%;
+    gap: 8px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-modal-footer {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding-top: 14px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-modal-footer .btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    padding: 12px 16px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-modal-footer .btn-primary {
+    order: -1;
+  }
+}
+
 .ventas-cliente-quick-backdrop {
   z-index: 70;
   align-items: center;
