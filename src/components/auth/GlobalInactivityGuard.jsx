@@ -5,9 +5,15 @@ import { useAuth } from '../../hooks/useAuth';
 import authService from '../../services/authService';
 import '../layout/inactivity-timeout-modal.css';
 
-const INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000;
+const DEFAULT_INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000;
+const CLIENT_INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;
 const WARNING_BEFORE_MS = 2 * 60 * 1000;
-const PROTECTED_PREFIXES = Object.freeze(['/dashboard', '/cambiar-password', '/cliente']);
+const PROTECTED_PREFIXES = Object.freeze([
+  '/dashboard',
+  '/cambiar-password',
+  '/cliente',
+  '/menu-publico'
+]);
 const INACTIVITY_EXCLUDED_ROLE_CODES = new Set([
   'COCINA',
   'MESERO',
@@ -40,26 +46,46 @@ const hasInactivityExemptRole = (user) => {
     .some((roleCode) => INACTIVITY_EXCLUDED_ROLE_CODES.has(roleCode));
 };
 
+const isClientUser = (user) => {
+  if (!user || typeof user !== 'object') return false;
+
+  const roleCandidates = [
+    ...(Array.isArray(user.roles) ? user.roles : []),
+    user.tipo_usuario
+  ];
+
+  return roleCandidates.map(normalizeRoleName).some((roleCode) => roleCode === 'CLIENTE');
+};
+
 const GlobalInactivityGuard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
   const [isKeepingAlive, setKeepingAlive] = useState(false);
+  const isClient = isClientUser(user);
+  const timeoutMs = isClient ? CLIENT_INACTIVITY_TIMEOUT_MS : DEFAULT_INACTIVITY_TIMEOUT_MS;
 
   const enabled = Boolean(user) && isProtectedPath(location.pathname) && !hasInactivityExemptRole(user);
 
   const closeSessionLocally = useCallback(() => {
-    // HU162: cierre por inactividad solo en cliente (sin request backend)
     window.dispatchEvent(new CustomEvent('auth:logout'));
     navigate('/login', { replace: true });
   }, [navigate]);
 
+  const handleTimeout = useCallback(() => {
+    if (isClient) {
+      void authService.logout().catch(() => null);
+    }
+    closeSessionLocally();
+  }, [closeSessionLocally, isClient]);
+
   const inactivity = useInactivityTimer({
     enabled,
-    timeoutMs: INACTIVITY_TIMEOUT_MS,
+    timeoutMs,
     warningMs: WARNING_BEFORE_MS,
-    onTimeout: closeSessionLocally
+    onTimeout: handleTimeout
   });
+  const { forceReset, isWarningVisible } = inactivity;
 
   const handleKeepAlive = useCallback(async () => {
     if (isKeepingAlive) return;
@@ -76,13 +102,13 @@ const GlobalInactivityGuard = () => {
   }, [closeSessionLocally, inactivity, isKeepingAlive]);
 
   useEffect(() => {
-    if (!enabled || inactivity.isWarningVisible) return;
+    if (!enabled || isWarningVisible) return;
     // Tratar navegacion interna autenticada como actividad.
-    inactivity.forceReset();
+    forceReset();
   }, [
     enabled,
-    inactivity.forceReset,
-    inactivity.isWarningVisible,
+    forceReset,
+    isWarningVisible,
     location.pathname,
     location.search,
     location.hash

@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import { useRef } from 'react';
+import { notifyPublicMenuCatalogChanged } from '../../../../modules/public-menu/utils/publicMenuCatalogRefresh';
 import { buildPublicMenuUrlByBranch } from '../utils/publicMenuBranchUrl';
 
 // Hook centralizado de estado/validacion para publicacion admin por sucursal.
@@ -485,6 +486,7 @@ const useMenuPublicacionAdmin = () => {
         idMenu: selectedCatalogMenuId || null,
         items: validation.payload
       });
+      notifyPublicMenuCatalogChanged();
 
       setSuccess(response?.message || 'Publicacion guardada correctamente.');
 

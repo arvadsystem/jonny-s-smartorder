@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import recetasAdminService from '../../../../services/recetasAdminService';
 import { inventarioService } from '../../../../services/inventarioService';
+import { notifyPublicMenuCatalogChanged } from '../../../../modules/public-menu/utils/publicMenuCatalogRefresh';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import { normalizePositiveIdList } from '../utils/warehouseAssignmentUtils';
 import {
@@ -926,6 +927,7 @@ const useRecetasAdmin = () => {
         }
         showSaveResult('success', response?.message || 'Receta creada correctamente.');
       }
+      notifyPublicMenuCatalogChanged();
 
       setForm({
         ...emptyForm,
@@ -1027,6 +1029,7 @@ const useRecetasAdmin = () => {
         estado: estadoObjetivo
       });
 
+      notifyPublicMenuCatalogChanged();
       setSuccess('Estado de receta actualizado correctamente.');
       await cargarRecetas();
     } catch (e) {

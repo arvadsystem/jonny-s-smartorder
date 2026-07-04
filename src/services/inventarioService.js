@@ -1,4 +1,11 @@
 import { apiFetch } from './api';
+import { notifyPublicMenuCatalogChanged } from '../modules/public-menu/utils/publicMenuCatalogRefresh';
+
+const invalidatePublicCatalogAfter = async (request) => {
+  const response = await request;
+  notifyPublicMenuCatalogChanged();
+  return response;
+};
 
 // NEW: helper para agregar `?incluir_inactivos=1` de forma retrocompatible.
 // WHY: permitir listados admin con inactivos sin cambiar endpoints ni contratos existentes.
@@ -463,31 +470,33 @@ export const inventarioService = {
 
   // ===== PRODUCTOS =====
   getProductos: (options) => apiFetch(withProductosListFilters('/productos', options), 'GET'),
-  crearProducto: (data) => apiFetch('/productos', 'POST', data),
+  crearProducto: (data) => invalidatePublicCatalogAfter(apiFetch('/productos', 'POST', data)),
   actualizarProductoCampo: (id, campo, valor) =>
-    apiFetch('/productos', 'PUT', {
+    invalidatePublicCatalogAfter(apiFetch('/productos', 'PUT', {
       campo,
       valor,
       id_campo: 'id_producto',
       id_valor: id
-    }),
+    })),
   obtenerAsignacionesProducto: (idProducto) => apiFetch(`/productos/${idProducto}/asignaciones`, 'GET'),
   obtenerAlmacenesDisponiblesProducto: (idProducto) => apiFetch(`/productos/${idProducto}/almacenes-disponibles`, 'GET'),
   reemplazarAsignacionesProducto: (idProducto, idAlmacenes) =>
-    apiFetch(`/productos/${idProducto}/asignaciones`, 'PUT', {
+    invalidatePublicCatalogAfter(apiFetch(`/productos/${idProducto}/asignaciones`, 'PUT', {
       id_almacenes: Array.isArray(idAlmacenes) ? idAlmacenes : []
-    }),
+    })),
   asignarProductoASucursal: (idProducto, idAlmacen) =>
-    apiFetch(`/productos/${idProducto}/asignaciones`, 'POST', {
+    invalidatePublicCatalogAfter(apiFetch(`/productos/${idProducto}/asignaciones`, 'POST', {
       id_almacen: idAlmacen
-    }),
+    })),
   inactivarAsignacionProducto: (idProducto, idAlmacen) =>
-    apiFetch(`/productos/${idProducto}/asignaciones/${idAlmacen}/inactivar`, 'PATCH'),
+    invalidatePublicCatalogAfter(
+      apiFetch(`/productos/${idProducto}/asignaciones/${idAlmacen}/inactivar`, 'PATCH')
+    ),
   eliminarProducto: (id) =>
-    apiFetch('/productos', 'DELETE', {
+    invalidatePublicCatalogAfter(apiFetch('/productos', 'DELETE', {
       columna_id: 'id_producto',
       valor_id: id
-    }),
+    })),
 
   // NEW: upload JSON/base64 para registrar imagenes en tabla `archivos`.
   // WHY: Productos e Insumos comparten la misma infraestructura de imagen principal sin multipart.
