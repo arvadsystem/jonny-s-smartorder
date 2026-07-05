@@ -435,7 +435,11 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
 
     const promise = ventasService.getCajaBootstrap(
       idSucursal ? { id_sucursal: idSucursal } : {},
-      { signal: controller.signal }
+      {
+        signal: controller.signal,
+        coalesceUserKey: cajaUserKey,
+        force
+      }
     ).then((response) => {
       if (!isCurrentBootstrapRequest()) return null;
       const data = response?.data || {};
