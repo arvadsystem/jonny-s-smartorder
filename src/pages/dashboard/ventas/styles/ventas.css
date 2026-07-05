@@ -796,6 +796,112 @@
   background: linear-gradient(180deg, #fff, #faf7f2);
 }
 
+.ventas-bulk-quantity-modal-backdrop {
+  padding: clamp(16px, 4vw, 32px);
+}
+
+.ventas-bulk-quantity-modal {
+  width: min(520px, calc(100vw - 32px));
+  height: auto;
+  max-height: min(680px, calc(100dvh - 48px));
+  border-radius: 20px;
+}
+
+.ventas-bulk-quantity-modal .ventas-modal__header {
+  padding: clamp(16px, 3vw, 22px);
+}
+
+.ventas-bulk-quantity-modal .ventas-modal__title-wrap {
+  min-width: 0;
+  gap: 14px;
+}
+
+.ventas-bulk-quantity-modal .ventas-modal__title-wrap>div {
+  min-width: 0;
+}
+
+.ventas-bulk-quantity-modal .ventas-modal__title-wrap h3 {
+  font-size: clamp(1.25rem, 4vw, 1.7rem);
+  line-height: 1.15;
+}
+
+.ventas-bulk-quantity-modal .ventas-modal__title-wrap p {
+  max-width: 100%;
+  line-height: 1.35;
+}
+
+.ventas-bulk-quantity-modal .ventas-modal__icon {
+  flex: 0 0 auto;
+}
+
+.ventas-bulk-quantity-modal__body {
+  padding: clamp(18px, 3vw, 26px);
+}
+
+.ventas-bulk-quantity-modal__summary {
+  display: grid;
+  gap: 14px;
+}
+
+.ventas-bulk-quantity-modal__line,
+.ventas-bulk-quantity-modal__total {
+  margin: 0;
+  color: rgba(31, 20, 15, 0.94);
+  font-size: 0.98rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ventas-bulk-quantity-modal__line strong,
+.ventas-bulk-quantity-modal__total strong {
+  color: rgba(31, 20, 15, 0.98);
+}
+
+.ventas-bulk-quantity-modal__line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ventas-bulk-quantity-modal__total {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(157, 150, 112, 0.2);
+}
+
+.ventas-bulk-quantity-modal__total span {
+  font-weight: 800;
+  color: #47240d;
+}
+
+.ventas-bulk-quantity-modal__footer {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding: 14px clamp(18px, 3vw, 26px) clamp(16px, 3vw, 24px);
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid rgba(157, 150, 112, 0.16);
+}
+
+.ventas-bulk-quantity-modal__actions {
+  width: 100%;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.ventas-bulk-quantity-modal__button {
+  min-height: 42px;
+  min-width: 128px;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-weight: 750;
+}
+
+.ventas-bulk-quantity-modal__button--primary {
+  color: #231406;
+}
+
 .ventas-caja-autoaux-modal {
   width: min(560px, calc(100vw - 28px));
   max-height: min(86vh, 520px);
@@ -3421,6 +3527,56 @@
 
   .ventas-modal__title-wrap h3 {
     font-size: 1.35rem;
+  }
+
+  .ventas-bulk-quantity-modal-backdrop {
+    padding: 16px 12px calc(84px + env(safe-area-inset-bottom));
+  }
+
+  .ventas-bulk-quantity-modal {
+    width: min(100%, calc(100vw - 24px));
+    height: auto;
+    max-height: calc(100dvh - 112px);
+    border-radius: 18px;
+  }
+
+  .ventas-bulk-quantity-modal .ventas-modal__header {
+    padding: 16px;
+  }
+
+  .ventas-bulk-quantity-modal .ventas-modal__title-wrap {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .ventas-bulk-quantity-modal .ventas-modal__icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+
+  .ventas-bulk-quantity-modal .ventas-modal__title-wrap h3 {
+    font-size: 1.35rem;
+  }
+
+  .ventas-bulk-quantity-modal__body {
+    padding: 18px 16px;
+  }
+
+  .ventas-bulk-quantity-modal__footer {
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .ventas-bulk-quantity-modal__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .ventas-bulk-quantity-modal__button {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
   }
 
   .ventas-caja-autoaux-modal {
@@ -7651,6 +7807,217 @@
   border-radius: 12px;
 }
 
+.ventas-finalizar-phone-modal {
+  width: min(460px, calc(100vw - 40px));
+  padding: 26px 24px 24px;
+  gap: 16px;
+}
+
+.ventas-finalizar-phone-modal__actions {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0 0;
+  border-top: 1px solid rgba(157, 150, 112, 0.16);
+  background: transparent;
+}
+
+.ventas-finalizar-phone-modal__actions .btn {
+  min-width: 150px;
+  min-height: 46px;
+  padding: 11px 18px;
+  border-radius: 12px;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.ventas-finalizar-phone-modal__actions .btn-primary {
+  min-width: 184px;
+}
+
+.ventas-finalizar-phone-success-modal {
+  width: min(420px, calc(100vw - 40px));
+  padding: 26px 24px 24px;
+  gap: 16px;
+}
+
+.ventas-finalizar-phone-success-modal__icon {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.ventas-finalizar-phone-success-modal__button {
+  min-width: 150px;
+  min-height: 46px;
+  padding: 11px 22px;
+  border-radius: 12px;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.ventas-finalizar-phone-success-modal__button:hover,
+.ventas-finalizar-phone-success-modal__button:focus {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.ventas-comanda-cocina-modal {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: clamp(22px, 5vw, 30px);
+  gap: 16px;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal__close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: #fff7f2;
+  color: rgba(154, 38, 38, 0.54);
+}
+
+.ventas-comanda-cocina-modal .ventas-modal__close-btn:hover:not(:disabled),
+.ventas-comanda-cocina-modal .ventas-modal__close-btn:focus-visible {
+  background: #fff1f2;
+  color: #b42318;
+}
+
+.ventas-comanda-cocina-modal .ventas-finalizar-error-modal__copy {
+  width: 100%;
+  max-width: 320px;
+}
+
+.ventas-comanda-cocina-modal .ventas-finalizar-error-modal__copy h5 {
+  font-size: clamp(1rem, 3.8vw, 1.16rem);
+  line-height: 1.25;
+}
+
+.ventas-comanda-cocina-modal .ventas-finalizar-error-modal__detail {
+  line-height: 1.35;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal-footer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0 4px;
+  border-top: 1px solid rgba(157, 150, 112, 0.14);
+  background: transparent;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal-footer .btn {
+  min-width: 136px;
+  min-height: 46px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  line-height: 1.2;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal-footer .btn-primary {
+  background: #bd2d31;
+  border-color: #bd2d31;
+}
+
+.ventas-comanda-cocina-modal .ventas-modal-footer .btn-primary:hover,
+.ventas-comanda-cocina-modal .ventas-modal-footer .btn-primary:focus {
+  background: #a92529;
+  border-color: #a92529;
+}
+
+@media (max-width: 480px) {
+  .ventas-finalizar-error-backdrop {
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .ventas-finalizar-phone-modal {
+    width: min(100%, calc(100vw - 24px));
+    max-height: calc(100dvh - 32px);
+    padding: 24px 20px 20px;
+    border-radius: 18px;
+    gap: 14px;
+  }
+
+  .ventas-finalizar-phone-modal__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding-top: 14px;
+  }
+
+  .ventas-finalizar-phone-modal__actions .btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    padding: 12px 16px;
+  }
+
+  .ventas-finalizar-phone-modal__actions .btn-primary {
+    order: -1;
+    min-width: 0;
+  }
+
+  .ventas-finalizar-phone-success-modal {
+    width: min(100%, calc(100vw - 24px));
+    max-height: calc(100dvh - 32px);
+    padding: 24px 20px 20px;
+    border-radius: 18px;
+  }
+
+  .ventas-finalizar-phone-success-modal__button {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    padding: 12px 16px;
+  }
+
+  .ventas-comanda-cocina-backdrop {
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .ventas-comanda-cocina-modal {
+    width: min(100%, calc(100vw - 24px));
+    max-height: calc(100dvh - 32px);
+    padding: 24px 20px 20px;
+    border-radius: 18px;
+    gap: 14px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-finalizar-error-modal__icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 15px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-finalizar-error-modal__copy {
+    max-width: 100%;
+    gap: 8px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-modal-footer {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding-top: 14px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-modal-footer .btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    padding: 12px 16px;
+  }
+
+  .ventas-comanda-cocina-modal .ventas-modal-footer .btn-primary {
+    order: -1;
+  }
+}
+
 .ventas-cliente-quick-backdrop {
   z-index: 70;
   align-items: center;
@@ -7905,6 +8272,17 @@
     background: rgba(255, 253, 249, 0.98);
     border-top: 1px solid rgba(157, 150, 112, 0.18);
     box-shadow: 0 -12px 26px rgba(82, 44, 34, 0.08);
+  }
+
+  .ventas-detail-modal__footer.ventas-bulk-quantity-modal__footer {
+    position: static;
+    margin: 0;
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+    box-shadow: none;
+  }
+
+  .ventas-detail-modal__footer-actions.ventas-bulk-quantity-modal__actions {
+    width: 100%;
   }
 
   .ventas-finalizar-modal__total {

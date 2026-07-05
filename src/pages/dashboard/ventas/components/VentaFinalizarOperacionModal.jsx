@@ -127,6 +127,11 @@ export default function VentaFinalizarOperacionModal({
     saving: false,
     error: ''
   });
+  const [phoneSaveSuccessDialog, setPhoneSaveSuccessDialog] = useState({
+    open: false,
+    pendingAction: '',
+    telefono: ''
+  });
   const [paidSubmitting, setPaidSubmitting] = useState(false);
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
   const paidSubmittingRef = useRef(false);
@@ -260,6 +265,7 @@ export default function VentaFinalizarOperacionModal({
     setContact(CONTACT_INITIAL);
     setDelivery(DELIVERY_INITIAL);
     setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
+    setPhoneSaveSuccessDialog({ open: false, pendingAction: '', telefono: '' });
   }, [open]);
 
   useEffect(() => {
@@ -323,6 +329,12 @@ export default function VentaFinalizarOperacionModal({
     continuePhoneSaveAction(pendingAction);
   };
 
+  const handlePhoneSaveSuccessContinue = () => {
+    const pendingAction = phoneSaveSuccessDialog.pendingAction;
+    setPhoneSaveSuccessDialog({ open: false, pendingAction: '', telefono: '' });
+    continuePhoneSaveAction(pendingAction);
+  };
+
   const handlePhoneSaveConfirm = async () => {
     const pendingAction = phoneSaveDialog.pendingAction;
     const telefono = phoneSaveDialog.telefono;
@@ -331,7 +343,7 @@ export default function VentaFinalizarOperacionModal({
       await ventasService.guardarTelefonoCliente(selectedClienteId, { telefono });
       await onClientesRefresh?.({ search: String(selectedClienteId), limit: 20 });
       setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
-      continuePhoneSaveAction(pendingAction);
+      setPhoneSaveSuccessDialog({ open: true, pendingAction, telefono });
     } catch (error) {
       const status = Number(error?.status ?? error?.data?.status ?? 0);
       const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
@@ -914,7 +926,7 @@ export default function VentaFinalizarOperacionModal({
       {phoneSaveDialog.open ? (
         <div className="ventas-finalizar-error-backdrop" role="presentation">
           <section
-            className="ventas-modal-card ventas-finalizar-error-modal"
+            className="ventas-modal-card ventas-finalizar-error-modal ventas-finalizar-phone-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="ventas-finalizar-phone-title"
@@ -934,7 +946,7 @@ export default function VentaFinalizarOperacionModal({
                 </p>
               ) : null}
             </div>
-            <div className="ventas-modal-footer">
+            <div className="ventas-modal-footer ventas-finalizar-phone-modal__actions">
               <button type="button" className="btn btn-outline-secondary" onClick={handlePhoneSaveCancel} disabled={phoneSaveDialog.saving}>
                 Cancelar
               </button>
@@ -945,6 +957,34 @@ export default function VentaFinalizarOperacionModal({
                 {phoneSaveDialog.saving ? 'Guardando...' : 'Guardar y continuar'}
               </button>
             </div>
+          </section>
+        </div>
+      ) : null}
+      {phoneSaveSuccessDialog.open ? (
+        <div className="ventas-finalizar-error-backdrop" role="presentation">
+          <section
+            className="ventas-modal-card ventas-finalizar-error-modal ventas-finalizar-phone-success-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ventas-finalizar-phone-success-title"
+          >
+            <div className="ventas-finalizar-error-modal__icon ventas-finalizar-phone-success-modal__icon" aria-hidden="true">
+              <i className="bi bi-check2-circle" />
+            </div>
+            <div className="ventas-finalizar-error-modal__copy">
+              <h5 id="ventas-finalizar-phone-success-title">Telefono guardado</h5>
+              <p>
+                El telefono {phoneSaveSuccessDialog.telefono} se guardo correctamente para {selectedClienteLabel || 'el cliente'}.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary ventas-finalizar-phone-success-modal__button"
+              onClick={handlePhoneSaveSuccessContinue}
+              autoFocus
+            >
+              Continuar
+            </button>
           </section>
         </div>
       ) : null}

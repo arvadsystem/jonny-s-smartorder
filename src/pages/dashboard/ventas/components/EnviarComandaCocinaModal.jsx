@@ -26,9 +26,9 @@ export default function EnviarComandaCocinaModal({
   const cancelLabel = isPendingOrder ? 'Ahora no' : isReprint ? 'Solo factura' : 'Cancelar';
 
   return (
-    <div className="ventas-finalizar-error-backdrop" role="presentation">
+    <div className="ventas-finalizar-error-backdrop ventas-comanda-cocina-backdrop" role="presentation">
       <section
-        className="ventas-modal-card ventas-finalizar-error-modal"
+        className="ventas-modal-card ventas-finalizar-error-modal ventas-comanda-cocina-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="ventas-enviar-comanda-title"
