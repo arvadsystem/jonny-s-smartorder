@@ -21,6 +21,12 @@ const normalizeSelected = (value) =>
     }))
     .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0 && Number.isInteger(entry.cantidad) && entry.cantidad > 0);
 
+const isStockOnlyUnavailable = (entry) =>
+  String(entry?.codigo_no_disponible || '').trim().toUpperCase() === 'EXTRA_STOCK_INSUFICIENTE';
+
+const isBlockingUnavailable = (entry) =>
+  entry?.disponible === false && !isStockOnlyUnavailable(entry);
+
 export default function VentaExtrasModal({
   open,
   row = null,
@@ -68,7 +74,7 @@ export default function VentaExtrasModal({
     const quantity = Number.isSafeInteger(numeric) ? Math.max(0, numeric) : 0;
     setCurrent((prev) => {
       const currentQuantity = Number(prev.find((entry) => entry.id_extra === option.id_extra)?.cantidad || 0);
-      if (option.disponible !== true && quantity > currentQuantity) return prev;
+      if (isBlockingUnavailable(option) && quantity > currentQuantity) return prev;
       const others = prev.filter((entry) => entry.id_extra !== option.id_extra);
       if (quantity <= 0) return others;
       return [...others, { ...option, cantidad: quantity }].sort((left, right) => left.id_extra - right.id_extra);
@@ -82,7 +88,7 @@ export default function VentaExtrasModal({
   const subtotal = current.reduce((sum, entry) => sum + Number(entry.precio || 0) * Number(entry.cantidad || 0), 0);
   const lineSubtotal = subtotal * lineQuantity;
   const optionById = new Map(optionRows.map((option) => [option.id_extra, option]));
-  const hasUnavailableSelection = current.some((entry) => optionById.get(entry.id_extra)?.disponible !== true);
+  const hasUnavailableSelection = current.some((entry) => isBlockingUnavailable(optionById.get(entry.id_extra)));
   const money = typeof formatCurrency === 'function'
     ? formatCurrency
     : (value) => `L. ${Number(value || 0).toFixed(2)}`;
@@ -127,8 +133,8 @@ export default function VentaExtrasModal({
           <div className="ventas-extras-modal__list">
             {optionRows.map((option) => {
               const qty = getSelectedQuantity(option.id_extra);
-              const unavailable = option.disponible !== true;
-              const soldOut = option.codigo_no_disponible === 'EXTRA_STOCK_INSUFICIENTE';
+              const unavailable = isBlockingUnavailable(option);
+              const soldOut = isStockOnlyUnavailable(option);
               return (
                 <div
                   className={`ventas-extras-modal__card${unavailable ? ' is-unavailable' : ''}`}
@@ -143,11 +149,13 @@ export default function VentaExtrasModal({
                     ) : null}
                     {unavailable ? (
                       <small>No disponible: {option.motivo_no_disponible || 'Este extra no esta disponible.'}</small>
+                    ) : soldOut ? (
+                      <small>{option.motivo_no_disponible || 'Stock bajo o negativo. Se permitira agregar.'}</small>
                     ) : null}
                   </div>
-                  {unavailable ? (
+                  {unavailable || soldOut ? (
                     <span className="badge text-bg-light border">
-                      {soldOut ? 'Agotado' : 'Configuracion pendiente'}
+                      {soldOut ? 'Stock bajo' : 'Configuracion pendiente'}
                     </span>
                   ) : null}
                   <div className="ventas-create-modal__qty-control">

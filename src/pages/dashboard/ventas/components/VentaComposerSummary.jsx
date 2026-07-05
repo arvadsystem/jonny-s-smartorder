@@ -148,11 +148,12 @@ export default function VentaComposerSummary({
               const isStandaloneExtra = isStandaloneExtraLine(line);
               const isRecipe = String(line.kind || '').toUpperCase() === 'RECETA';
               const isQuantityManaged = isSimpleProduct || isStandaloneExtra || isRecipe;
+              const standaloneExtraMax = Number(line.available_units ?? 0);
               const canIncrease =
                 isSimpleProduct
                   ? Number(line.cantidad ?? 0) < Math.min(VENTA_LINE_MAX_QUANTITY, Number(line.stock_disponible ?? 0))
                   : isStandaloneExtra
-                    ? (Number(line.available_units ?? 0) <= 0 || Number(line.cantidad ?? 0) < Math.min(VENTA_LINE_MAX_QUANTITY, Number(line.available_units ?? 0)))
+                    ? (standaloneExtraMax <= 0 || Number(line.cantidad ?? 0) < VENTA_LINE_MAX_QUANTITY)
                     : Number(line.cantidad ?? 0) < VENTA_LINE_MAX_QUANTITY;
               const hasKitchenNote = String(line.observacion || '').trim().length > 0;
               const noteExpanded = Boolean(expandedNotes[line.cartKey]);
@@ -194,7 +195,9 @@ export default function VentaComposerSummary({
                     </div>
                     {isSimpleProduct || isStandaloneExtra ? (
                       <small className="ventas-cart__stock">
-                        Disponible: {Number(isStandaloneExtra ? (line.available_units ?? 0) : (line.stock_disponible ?? 0))}
+                        {isStandaloneExtra && standaloneExtraMax <= 0
+                          ? 'Stock bajo'
+                          : `Disponible: ${Number(isStandaloneExtra ? standaloneExtraMax : (line.stock_disponible ?? 0))}`}
                       </small>
                     ) : isRecipe ? (
                       <small className="ventas-cart__stock">

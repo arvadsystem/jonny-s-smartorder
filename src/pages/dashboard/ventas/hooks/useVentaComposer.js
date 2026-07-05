@@ -73,6 +73,12 @@ const resolveStandaloneExtraAvailableUnits = (entry) => {
   return Math.max(0, Math.floor(stock / consumoBase));
 };
 
+const isStockOnlyExtraUnavailable = (entry) =>
+  String(entry?.codigo_no_disponible || '').trim().toUpperCase() === 'EXTRA_STOCK_INSUFICIENTE';
+
+const isBlockingExtraUnavailable = (entry) =>
+  entry?.disponible === false && !isStockOnlyExtraUnavailable(entry);
+
 const normalizeGlobalExtraOption = (entry) => ({
   id_extra: Number(entry.id_extra),
   codigo: String(entry.codigo || '').trim(),
@@ -977,21 +983,14 @@ export const useVentaComposer = ({
       }
 
       if (kind === 'ITEM') {
-        if (row.disponible === false) {
+        if (isBlockingExtraUnavailable(row)) {
           return {
             ...current,
             submitError: row.motivo_no_disponible || `${row.nombre || 'Extra'} no esta disponible.`
           };
         }
 
-        const availableUnits = resolveStandaloneExtraAvailableUnits(row);
-        if (availableUnits !== null && availableUnits <= 0) {
-          return {
-            ...current,
-            submitError: row.motivo_no_disponible || `No hay existencias suficientes para ${row.nombre || 'este extra'}.`
-          };
-        }
-
+        const availableUnits = isStockOnlyExtraUnavailable(row) ? null : resolveStandaloneExtraAvailableUnits(row);
         const alreadyInCart = getCurrentQuantityInCartByKind('ITEM', row.id_extra, nextCart);
         if (availableUnits !== null && alreadyInCart >= availableUnits) {
           return {
@@ -1267,7 +1266,7 @@ export const useVentaComposer = ({
     );
     const unavailableSelection = normalizeExtras(selectedExtras).find((entry) => {
       const option = optionsById.get(Number(entry.id_extra));
-      return !option || option.disponible !== true;
+      return !option || isBlockingExtraUnavailable(option);
     });
     if (unavailableSelection) {
       const option = optionsById.get(Number(unavailableSelection.id_extra));
