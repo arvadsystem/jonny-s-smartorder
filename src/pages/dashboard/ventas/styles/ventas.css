@@ -9624,6 +9624,12 @@
   color: #fff;
 }
 
+.ventas-pedidos-card__code--order {
+  border: 1px solid #d8b99c;
+  background: #fff8f1;
+  color: #7a3f17;
+}
+
 .ventas-pedidos-card__badge.is-payment {
   background: #fff7ed;
   color: #9a5319;
