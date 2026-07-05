@@ -4,6 +4,18 @@ export const VENTA_LINE_MIN_QUANTITY = 1;
 export const VENTA_LINE_MAX_QUANTITY = 999;
 export const VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD = 10;
 
+export const isStockOnlyStandaloneExtraUnavailable = (entry) =>
+  String(entry?.codigo_no_disponible || '').trim().toUpperCase() === 'EXTRA_STOCK_INSUFICIENTE';
+
+export const isBlockingStandaloneExtraUnavailable = (entry) =>
+  entry?.disponible === false && !isStockOnlyStandaloneExtraUnavailable(entry);
+
+export const canAddStandaloneExtraToCart = (entry) =>
+  !isBlockingStandaloneExtraUnavailable(entry);
+
+export const canIncreaseStandaloneExtraQuantity = (line) =>
+  Number(line?.cantidad ?? 0) < VENTA_LINE_MAX_QUANTITY;
+
 export const parseVentaLineQuantity = (value) => {
   if (typeof value === 'number') {
     return Number.isSafeInteger(value) && value >= VENTA_LINE_MIN_QUANTITY && value <= VENTA_LINE_MAX_QUANTITY

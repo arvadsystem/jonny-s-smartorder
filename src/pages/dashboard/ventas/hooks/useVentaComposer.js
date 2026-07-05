@@ -3,6 +3,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 import {
   buildCartKey,
+  canAddStandaloneExtraToCart,
   createCartLineId,
   filterBySearch,
   findLineIndex,
@@ -72,12 +73,6 @@ const resolveStandaloneExtraAvailableUnits = (entry) => {
   if (!Number.isFinite(consumoBase) || consumoBase <= 0) return null;
   return Math.max(0, Math.floor(stock / consumoBase));
 };
-
-const isStockOnlyExtraUnavailable = (entry) =>
-  String(entry?.codigo_no_disponible || '').trim().toUpperCase() === 'EXTRA_STOCK_INSUFICIENTE';
-
-const isBlockingExtraUnavailable = (entry) =>
-  entry?.disponible === false && !isStockOnlyExtraUnavailable(entry);
 
 const normalizeGlobalExtraOption = (entry) => ({
   id_extra: Number(entry.id_extra),
@@ -983,19 +978,10 @@ export const useVentaComposer = ({
       }
 
       if (kind === 'ITEM') {
-        if (isBlockingExtraUnavailable(row)) {
+        if (!canAddStandaloneExtraToCart(row)) {
           return {
             ...current,
             submitError: row.motivo_no_disponible || `${row.nombre || 'Extra'} no esta disponible.`
-          };
-        }
-
-        const availableUnits = isStockOnlyExtraUnavailable(row) ? null : resolveStandaloneExtraAvailableUnits(row);
-        const alreadyInCart = getCurrentQuantityInCartByKind('ITEM', row.id_extra, nextCart);
-        if (availableUnits !== null && alreadyInCart >= availableUnits) {
-          return {
-            ...current,
-            submitError: `Stock maximo alcanzado para ${row.nombre || 'este extra'}.`
           };
         }
       }
@@ -1010,16 +996,6 @@ export const useVentaComposer = ({
             submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
           };
         }
-        if (kind === 'ITEM') {
-          const maxAvailable = Number(currentLine.available_units ?? 0);
-          if (maxAvailable > 0 && nextQty > maxAvailable) {
-            return {
-              ...current,
-              submitError: `Stock maximo alcanzado para ${row.nombre || 'este extra'}.`
-            };
-          }
-        }
-
         const autoDiscount = canApplyDiscount && !currentLine.id_descuento_catalogo_linea
           ? requestedDiscount || resolveBestDiscountForLine({
             discounts: normalizedDescuentosCatalogo,
@@ -1185,17 +1161,6 @@ export const useVentaComposer = ({
             }
           }
 
-          if (candidate.kind === 'ITEM') {
-            const requested = Number(candidate.cantidad ?? 0);
-            const maxAvailable = Number(candidate.available_units ?? 0);
-            if (maxAvailable > 0 && requested > maxAvailable) {
-              return {
-                ...candidate,
-                cantidad: maxAvailable
-              };
-            }
-          }
-
           const adjustedExtras = normalizeExtras(candidate.extras);
           const isCustomLine = isCustomizableVentaLineKind(candidate.kind);
           const lineId = isCustomLine ? String(candidate.lineId || createCartLineId()) : null;
@@ -1266,7 +1231,7 @@ export const useVentaComposer = ({
     );
     const unavailableSelection = normalizeExtras(selectedExtras).find((entry) => {
       const option = optionsById.get(Number(entry.id_extra));
-      return !option || isBlockingExtraUnavailable(option);
+      return !option || !canAddStandaloneExtraToCart(option);
     });
     if (unavailableSelection) {
       const option = optionsById.get(Number(unavailableSelection.id_extra));

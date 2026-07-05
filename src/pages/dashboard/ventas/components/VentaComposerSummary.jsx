@@ -3,6 +3,7 @@ import {
   VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD,
   VENTA_LINE_MAX_QUANTITY,
   buildVentaQuantityCommitResult,
+  canIncreaseStandaloneExtraQuantity,
   clampVentaLineQuantity,
   normalizeExtras
 } from '../../../../modules/ventas/utils/ventasCartUtils';
@@ -153,7 +154,7 @@ export default function VentaComposerSummary({
                 isSimpleProduct
                   ? Number(line.cantidad ?? 0) < Math.min(VENTA_LINE_MAX_QUANTITY, Number(line.stock_disponible ?? 0))
                   : isStandaloneExtra
-                    ? (standaloneExtraMax <= 0 || Number(line.cantidad ?? 0) < VENTA_LINE_MAX_QUANTITY)
+                    ? canIncreaseStandaloneExtraQuantity(line)
                     : Number(line.cantidad ?? 0) < VENTA_LINE_MAX_QUANTITY;
               const hasKitchenNote = String(line.observacion || '').trim().length > 0;
               const noteExpanded = Boolean(expandedNotes[line.cartKey]);

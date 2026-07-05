@@ -4,6 +4,8 @@ import {
   buildExtrasSignature,
   buildVentaLineConfigSignature,
   buildVentaQuantityCommitResult,
+  canAddStandaloneExtraToCart,
+  canIncreaseStandaloneExtraQuantity,
   getLineExtrasSubtotal,
   mergeEquivalentVentaLines,
   parseVentaLineQuantity
@@ -42,6 +44,65 @@ describe('ventas bulk recipe quantity utilities', () => {
       assert.equal(parseVentaLineQuantity(value), value);
       assert.equal(parseVentaLineQuantity(String(value)), value);
     }
+  });
+
+  it('permite extra independiente con stock cero', () => {
+    const extra = {
+      id_extra: 7,
+      disponible: false,
+      codigo_no_disponible: 'EXTRA_STOCK_INSUFICIENTE',
+      stock_disponible: 0,
+      cantidad_consumo_base: 1
+    };
+
+    assert.equal(canAddStandaloneExtraToCart(extra), true);
+    assert.equal(canIncreaseStandaloneExtraQuantity({ kind: 'ITEM', cantidad: 1, available_units: 0 }), true);
+  });
+
+  it('permite extra independiente con stock negativo', () => {
+    const extra = {
+      id_extra: 7,
+      disponible: false,
+      codigo_no_disponible: 'EXTRA_STOCK_INSUFICIENTE',
+      stock_disponible: -5,
+      cantidad_consumo_base: 1
+    };
+
+    assert.equal(canAddStandaloneExtraToCart(extra), true);
+    assert.equal(canIncreaseStandaloneExtraQuantity({ kind: 'ITEM', cantidad: 25, available_units: 0 }), true);
+  });
+
+  it('permite extra independiente sobre stock disponible positivo', () => {
+    const extra = {
+      id_extra: 7,
+      disponible: true,
+      stock_disponible: 10,
+      cantidad_consumo_base: 1
+    };
+
+    assert.equal(canAddStandaloneExtraToCart(extra), true);
+    assert.equal(canIncreaseStandaloneExtraQuantity({ kind: 'ITEM', cantidad: 10, available_units: 10 }), true);
+    assert.equal(canIncreaseStandaloneExtraQuantity({ kind: 'ITEM', cantidad: 999, available_units: 10 }), false);
+  });
+
+  it('bloquea extra independiente sin asignacion de sucursal', () => {
+    const extra = {
+      id_extra: 7,
+      disponible: false,
+      codigo_no_disponible: 'EXTRA_INSUMO_SIN_ASIGNACION_SUCURSAL'
+    };
+
+    assert.equal(canAddStandaloneExtraToCart(extra), false);
+  });
+
+  it('bloquea extra independiente inactivo', () => {
+    const extra = {
+      id_extra: 7,
+      disponible: false,
+      codigo_no_disponible: 'EXTRA_INACTIVO'
+    };
+
+    assert.equal(canAddStandaloneExtraToCart(extra), false);
   });
 
   it('rechaza cantidades invalidas sin transformarlas', () => {
