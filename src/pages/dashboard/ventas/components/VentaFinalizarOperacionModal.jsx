@@ -515,6 +515,7 @@ export default function VentaFinalizarOperacionModal({
     [selectedCliente?.nombre, selectedCliente?.apellido].filter(Boolean).join(' ')
   );
   const resolvedContactName = normalizeOptionalText(contact.nombre_contacto) || selectedClienteLabel;
+  const isReadyToSubmit = activeTab === 'pagar' && composer.canSubmit;
   const canalOptions = [
     { value: 'LOCAL', label: 'LOCAL' },
     { value: 'TELEFONO', label: 'TELEFONO' },
@@ -615,12 +616,13 @@ export default function VentaFinalizarOperacionModal({
         onClick={(event) => event.stopPropagation()}
       >
         <header className="ventas-modal-header ventas-finalizar-modal__header">
-          <div className="ventas-finalizar-modal__header-copy">
-            <h5 id="ventas-finalizar-title">Finalizar operacion</h5>
-            <p>Selecciona si el pedido se paga ahora o queda pendiente.</p>
-            <div className="ventas-finalizar-modal__summary" aria-label="Resumen de venta">
-              <span>{cartCount} {cartCount === 1 ? 'item' : 'items'}</span>
-              <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
+          <div className="ventas-finalizar-modal__header-main">
+            <span className="ventas-finalizar-modal__header-icon" aria-hidden="true">
+              <i className="bi bi-receipt-cutoff" />
+            </span>
+            <div className="ventas-finalizar-modal__header-copy">
+              <h5 id="ventas-finalizar-title">Finalizar operacion</h5>
+              <p>Revisa los datos de la venta y selecciona como deseas completarla.</p>
             </div>
           </div>
           <button type="button" className="ventas-modal__close-btn" onClick={handleModalClose} disabled={isSubmitting} aria-label="Cerrar">
@@ -652,8 +654,22 @@ export default function VentaFinalizarOperacionModal({
         </div>
 
         <div className="ventas-modal-body ventas-finalizar-modal__body">
+          <div className="ventas-finalizar-modal__context" aria-label="Contexto de la venta">
+            <div><i className="bi bi-basket2" /><span>Items</span><strong>{cartCount}</strong></div>
+            <div><i className="bi bi-cash-stack" /><span>Total</span><strong>{composer.formatCurrency(totalWithDelivery)}</strong></div>
+            <div><i className="bi bi-person" /><span>Cliente</span><strong>{selectedClienteLabel || 'Consumidor final'}</strong></div>
+            {composer.selectedSucursalLabel ? (
+              <div><i className="bi bi-shop" /><span>Sucursal</span><strong>{composer.selectedSucursalLabel}</strong></div>
+            ) : null}
+          </div>
+
+          <div className="ventas-finalizar-modal__workspace">
+            <div className="ventas-finalizar-modal__form-column">
           <section className="ventas-finalizar-modal__section">
-            <strong>Datos del cliente y pedido</strong>
+            <div className="ventas-finalizar-modal__section-heading">
+              <span><i className="bi bi-person-vcard" /></span>
+              <div><strong>Cliente</strong><small>Identifica a quien se asociara la operacion.</small></div>
+            </div>
             <div className="ventas-finalizar-modal__grid">
               <AppSelect
                 label="Cliente"
@@ -718,6 +734,11 @@ export default function VentaFinalizarOperacionModal({
                 />
               </label>
 
+              <div className="ventas-finalizar-modal__subsection-title ventas-finalizar-modal__field-wide">
+                <i className="bi bi-diagram-3" />
+                <div><strong>Canal y modalidad</strong><small>Define como se recibio y entregara el pedido.</small></div>
+              </div>
+
               <AppSelect
                 label="Canal"
                 value={contact.canal}
@@ -747,7 +768,10 @@ export default function VentaFinalizarOperacionModal({
 
           {activeTab === 'pendiente' && contact.modalidad === 'DELIVERY' ? (
             <section className="ventas-finalizar-modal__section">
-              <strong>Delivery</strong>
+              <div className="ventas-finalizar-modal__section-heading">
+                <span><i className="bi bi-truck" /></span>
+                <div><strong>Delivery</strong><small>Datos para coordinar la entrega.</small></div>
+              </div>
               <div className="ventas-finalizar-modal__grid">
                 <label className="ventas-create-modal__field">
                   <span>Nombre receptor (opcional)</span>
@@ -779,7 +803,10 @@ export default function VentaFinalizarOperacionModal({
 
           {activeTab === 'pagar' ? (
             <section className="ventas-finalizar-modal__section">
-              <strong>Pago</strong>
+              <div className="ventas-finalizar-modal__section-heading">
+                <span><i className="bi bi-credit-card-2-front" /></span>
+                <div><strong>Pago</strong><small>Selecciona el metodo y completa sus datos.</small></div>
+              </div>
               <div className="ventas-finalizar-modal__grid">
                 <AppSelect
                   label="Metodo de pago"
@@ -838,7 +865,10 @@ export default function VentaFinalizarOperacionModal({
             </section>
           ) : (
             <section className="ventas-finalizar-modal__section">
-              <strong>Pago pendiente</strong>
+              <div className="ventas-finalizar-modal__section-heading">
+                <span><i className="bi bi-clock-history" /></span>
+                <div><strong>Pago pendiente</strong><small>El pedido quedara abierto hasta registrar su pago.</small></div>
+              </div>
               <label className="ventas-create-modal__field">
                 <span>Observacion pago</span>
                 <input
@@ -851,7 +881,17 @@ export default function VentaFinalizarOperacionModal({
             </section>
           )}
 
-          <div className="ventas-finalizar-modal__total ventas-finalizar-modal__totals-breakdown" aria-live="polite">
+          {localError && !submitDialogError ? (
+            <div className="ventas-create-modal__error">{localError}</div>
+          ) : null}
+            </div>
+
+          <aside className="ventas-finalizar-modal__sale-summary" aria-live="polite">
+            <div className="ventas-finalizar-modal__sale-summary-heading">
+              <span><i className="bi bi-receipt" /></span>
+              <div><strong>Resumen de la venta</strong><small>Importes actuales de la operacion.</small></div>
+            </div>
+            <div className="ventas-finalizar-modal__total ventas-finalizar-modal__totals-breakdown">
             {shouldShowExtrasBreakdown ? (
               <>
                 <div>
@@ -891,14 +931,31 @@ export default function VentaFinalizarOperacionModal({
               </div>
             ) : null}
             <div className="is-total">
-              <span>Total</span>
+              <span>Total a cobrar</span>
               <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
             </div>
+            <div>
+              <span>Metodo de pago</span>
+              <strong>{activeTab === 'pagar' ? selectedPayment.label : 'Pago pendiente'}</strong>
+            </div>
+            <div>
+              <span>Monto recibido</span>
+              <strong>{activeTab === 'pagar' && composer.paymentMethod === 'efectivo' ? composer.formatCurrency(Number(composer.cashReceived || 0)) : '—'}</strong>
+            </div>
+            <div>
+              <span>Cambio</span>
+              <strong>{activeTab === 'pagar' && composer.paymentMethod === 'efectivo' ? composer.formatCurrency(composer.change) : '—'}</strong>
+            </div>
           </div>
-
-          {localError && !submitDialogError ? (
-            <div className="ventas-create-modal__error">{localError}</div>
-          ) : null}
+            <div className={`ventas-finalizar-modal__status ${isReadyToSubmit ? 'is-ready' : 'is-pending'}`}>
+              <i className={`bi ${isReadyToSubmit ? 'bi-check-circle-fill' : 'bi-info-circle-fill'}`} />
+              <div>
+                <strong>{isReadyToSubmit ? 'Listo para registrar la venta' : activeTab === 'pendiente' ? 'Pedido con pago pendiente' : 'Completa los datos requeridos'}</strong>
+                <span>{isReadyToSubmit ? 'Revisa los datos y confirma para completar.' : 'Verifica la informacion antes de continuar.'}</span>
+              </div>
+            </div>
+          </aside>
+          </div>
         </div>
 
         <footer className="ventas-modal-footer">

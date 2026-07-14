@@ -7038,14 +7038,15 @@
 }
 
 .ventas-finalizar-modal {
-  width: min(940px, 100%);
-  max-height: 88vh;
-  max-height: 88dvh;
+  width: min(1160px, 100%);
+  max-height: 92vh;
+  max-height: 92dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 20px;
-  background: #fbfaf7;
+  border-radius: 22px;
+  background: #f7f2ea;
+  box-shadow: 0 28px 70px rgba(47, 28, 18, 0.24);
 }
 
 .ventas-finalizar-modal .ventas-modal-header,
@@ -7055,14 +7056,56 @@
 }
 
 .ventas-finalizar-modal__header {
-  padding: 18px 20px 14px;
+  padding: 20px 24px 17px;
   background: linear-gradient(180deg, #fffdf8 0%, #f8f2e9 100%);
+  border-bottom: 1px solid rgba(157, 150, 112, 0.14);
+}
+
+.ventas-finalizar-modal__header-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ventas-finalizar-modal__header-icon,
+.ventas-finalizar-modal__section-heading>span,
+.ventas-finalizar-modal__sale-summary-heading>span {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: #f1dfcc;
+  color: #7a3f1f;
+  font-size: 1.1rem;
+}
+
+.ventas-finalizar-modal__header-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  background: #8a4915;
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(138, 73, 21, 0.18);
 }
 
 .ventas-finalizar-modal__header-copy {
   min-width: 0;
   display: grid;
   gap: 6px;
+}
+
+.ventas-finalizar-modal__header-copy h5 {
+  color: #2f1c12;
+  font-size: 1.22rem;
+  font-weight: 900;
+}
+
+.ventas-finalizar-modal__header-copy p {
+  color: #73503a;
+  font-size: 0.88rem;
 }
 
 .ventas-finalizar-modal__summary {
@@ -7104,17 +7147,19 @@
 }
 
 .ventas-finalizar-modal__tabs {
-  gap: 6px;
-  padding: 10px 20px;
-  background: #fbfaf7;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 24px;
+  background: #fffdf8;
   border-bottom: 1px solid rgba(157, 150, 112, 0.14);
 }
 
 .ventas-finalizar-modal__tabs button {
-  min-height: 44px;
-  border-radius: 12px;
+  min-height: 48px;
+  border-radius: 14px;
   border-color: transparent;
-  background: #ece7de;
+  background: #efe7dc;
   color: #5d3722;
   transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
@@ -7139,13 +7184,70 @@
 .ventas-finalizar-modal .ventas-modal-body {
   flex: 1 1 auto;
   min-height: 0;
-  padding: 16px 20px;
+  padding: 16px 24px 20px;
   overflow: auto;
   overscroll-behavior: contain;
 }
 
 .ventas-finalizar-modal__body {
+  gap: 16px;
+}
+
+.ventas-finalizar-modal__context {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  border-radius: 15px;
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.ventas-finalizar-modal__context>div {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 8px;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 11px;
+  background: #f7f1e8;
+}
+
+.ventas-finalizar-modal__context i {
+  grid-row: 1 / 3;
+  color: #9a561f;
+}
+
+.ventas-finalizar-modal__context span {
+  color: #85634e;
+  font-size: 0.69rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ventas-finalizar-modal__context strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #3f2618;
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ventas-finalizar-modal__workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 340px);
+  align-items: start;
+  gap: 16px;
+}
+
+.ventas-finalizar-modal__form-column {
+  display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .ventas-finalizar-modal__section {
@@ -7157,9 +7259,47 @@
   box-shadow: 0 10px 28px rgba(82, 44, 34, 0.06);
 }
 
-.ventas-finalizar-modal__section>strong {
-  font-size: 0.9rem;
-  letter-spacing: 0;
+.ventas-finalizar-modal__section-heading,
+.ventas-finalizar-modal__sale-summary-heading,
+.ventas-finalizar-modal__subsection-title {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.ventas-finalizar-modal__section-heading>div,
+.ventas-finalizar-modal__sale-summary-heading>div,
+.ventas-finalizar-modal__subsection-title>div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ventas-finalizar-modal__section-heading strong,
+.ventas-finalizar-modal__sale-summary-heading strong,
+.ventas-finalizar-modal__subsection-title strong {
+  color: #3f2618;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.ventas-finalizar-modal__section-heading small,
+.ventas-finalizar-modal__sale-summary-heading small,
+.ventas-finalizar-modal__subsection-title small {
+  color: #85634e;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.ventas-finalizar-modal__subsection-title {
+  margin-top: 3px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(157, 150, 112, 0.16);
+}
+
+.ventas-finalizar-modal__subsection-title>i {
+  color: #9a561f;
+  font-size: 1rem;
 }
 
 .ventas-finalizar-modal__grid {
@@ -7307,6 +7447,24 @@
   min-width: 0;
 }
 
+.ventas-finalizar-modal__sale-summary {
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid rgba(138, 73, 21, 0.18);
+  border-radius: 16px;
+  background: #fffdf9;
+  box-shadow: 0 14px 32px rgba(82, 44, 34, 0.1);
+}
+
+.ventas-finalizar-modal__sale-summary-heading {
+  padding-bottom: 13px;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.16);
+}
+
 .ventas-finalizar-modal__total {
   min-height: 72px;
   border: 1px solid rgba(184, 104, 33, 0.16);
@@ -7334,6 +7492,64 @@
 .ventas-finalizar-modal__totals-breakdown .is-total {
   padding-top: 8px;
   border-top: 1px solid rgba(184, 104, 33, 0.18);
+}
+
+.ventas-finalizar-modal__sale-summary .ventas-finalizar-modal__total {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.ventas-finalizar-modal__sale-summary .ventas-finalizar-modal__totals-breakdown .is-total {
+  display: grid;
+  gap: 3px;
+  margin: 3px 0;
+  padding: 14px;
+  border: 1px solid rgba(184, 104, 33, 0.18);
+  border-radius: 13px;
+  background: linear-gradient(135deg, #f7e5cf, #fff8ed);
+}
+
+.ventas-finalizar-modal__sale-summary .ventas-finalizar-modal__totals-breakdown .is-total strong {
+  color: #6f3515;
+  font-size: 1.65rem;
+  font-weight: 950;
+}
+
+.ventas-finalizar-modal__status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 13px;
+}
+
+.ventas-finalizar-modal__status>div {
+  display: grid;
+  gap: 3px;
+}
+
+.ventas-finalizar-modal__status strong {
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.ventas-finalizar-modal__status span {
+  font-size: 0.73rem;
+  line-height: 1.35;
+}
+
+.ventas-finalizar-modal__status.is-ready {
+  border: 1px solid rgba(22, 101, 52, 0.16);
+  background: #edf9f0;
+  color: #166534;
+}
+
+.ventas-finalizar-modal__status.is-pending {
+  border: 1px solid rgba(30, 64, 175, 0.13);
+  background: #eef4ff;
+  color: #1e3a8a;
 }
 
 .ventas-cuenta-dividida {
@@ -7752,6 +7968,18 @@
   padding: 10px 16px;
 }
 
+.ventas-finalizar-modal .ventas-modal-footer .btn-primary {
+  border-color: #7a3f1f;
+  background: #7a3f1f;
+  box-shadow: 0 9px 18px rgba(122, 63, 31, 0.18);
+}
+
+.ventas-finalizar-modal .ventas-modal-footer .btn-primary:hover,
+.ventas-finalizar-modal .ventas-modal-footer .btn-primary:focus-visible {
+  border-color: #633017;
+  background: #633017;
+}
+
 .ventas-finalizar-error-backdrop {
   position: fixed;
   inset: 0;
@@ -8104,6 +8332,14 @@
   .ventas-finalizar-modal__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .ventas-finalizar-modal__workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .ventas-finalizar-modal__sale-summary {
+    position: static;
+  }
 }
 
 @media (max-width: 767.98px) {
@@ -8130,8 +8366,14 @@
   }
 
   .ventas-finalizar-modal__tabs {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 10px 16px;
+  }
+
+  .ventas-finalizar-modal__tabs button {
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: 0.82rem;
   }
 
   .ventas-finalizar-modal .ventas-modal-body {
@@ -8140,9 +8382,20 @@
     overflow-y: auto;
   }
 
+  .ventas-finalizar-modal__context {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 8px;
+  }
+
   .ventas-finalizar-modal__section {
     padding: 13px;
     border-radius: 13px;
+  }
+
+  .ventas-finalizar-modal__section-heading>span,
+  .ventas-finalizar-modal__sale-summary-heading>span {
+    width: 38px;
+    height: 38px;
   }
 
   .ventas-finalizar-modal__grid {
@@ -8155,7 +8408,7 @@
   }
 
   .ventas-finalizar-modal__payment-summary,
-  .ventas-finalizar-modal__total {
+  .ventas-finalizar-modal__form-column>.ventas-finalizar-modal__total {
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
@@ -8232,6 +8485,19 @@
 
   .ventas-finalizar-modal__header {
     align-items: flex-start;
+  }
+
+  .ventas-finalizar-modal__header-icon {
+    width: 42px;
+    height: 42px;
+  }
+
+  .ventas-finalizar-modal__header-copy h5 {
+    font-size: 1.05rem;
+  }
+
+  .ventas-finalizar-modal__context {
+    grid-template-columns: 1fr;
   }
 
   .ventas-finalizar-modal__summary span,
