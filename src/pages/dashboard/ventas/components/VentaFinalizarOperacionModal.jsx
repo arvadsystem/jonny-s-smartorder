@@ -713,26 +713,34 @@ export default function VentaFinalizarOperacionModal({
                 </div>
               ) : null}
 
-              <label className="ventas-create-modal__field">
-                  <span>Nombre contacto (opcional)</span>
-                  <input
-                    type="text"
-                    value={contact.nombre_contacto}
-                    data-testid="ventas-pendiente-nombre-contacto"
-                    placeholder="Ej. Angel Perez"
-                    onChange={(event) => setContactField('nombre_contacto', event.target.value)}
-                  />
-              </label>
+              <details
+                className="ventas-finalizar-modal__optional ventas-finalizar-modal__field-wide"
+                open={Boolean(contact.nombre_contacto || contact.telefono_contacto)}
+              >
+                <summary><i className="bi bi-plus-circle" /> Agregar datos de contacto</summary>
+                <div className="ventas-finalizar-modal__optional-grid">
+                  <label className="ventas-create-modal__field">
+                    <span>Nombre contacto (opcional)</span>
+                    <input
+                      type="text"
+                      value={contact.nombre_contacto}
+                      data-testid="ventas-pendiente-nombre-contacto"
+                      placeholder="Ej. Angel Perez"
+                      onChange={(event) => setContactField('nombre_contacto', event.target.value)}
+                    />
+                  </label>
 
-              <label className="ventas-create-modal__field">
-                <span>Telefono (opcional)</span>
-                <input
-                  type="text"
-                  value={contact.telefono_contacto}
-                  data-testid="ventas-contacto-telefono"
-                  onChange={(event) => setContactField('telefono_contacto', event.target.value)}
-                />
-              </label>
+                  <label className="ventas-create-modal__field">
+                    <span>Telefono (opcional)</span>
+                    <input
+                      type="text"
+                      value={contact.telefono_contacto}
+                      data-testid="ventas-contacto-telefono"
+                      onChange={(event) => setContactField('telefono_contacto', event.target.value)}
+                    />
+                  </label>
+                </div>
+              </details>
 
               <div className="ventas-finalizar-modal__subsection-title ventas-finalizar-modal__field-wide">
                 <i className="bi bi-diagram-3" />
@@ -755,14 +763,20 @@ export default function VentaFinalizarOperacionModal({
                 className="app-select--compact app-select--warm"
               />
 
-              <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
-                <span>Observacion</span>
-                <input
-                  type="text"
-                  value={contact.observacion_contexto}
-                  onChange={(event) => setContactField('observacion_contexto', event.target.value)}
-                />
-              </label>
+              <details
+                className="ventas-finalizar-modal__optional ventas-finalizar-modal__field-wide"
+                open={Boolean(contact.observacion_contexto)}
+              >
+                <summary><i className="bi bi-plus-circle" /> Agregar observacion</summary>
+                <label className="ventas-create-modal__field">
+                  <span>Observacion</span>
+                  <input
+                    type="text"
+                    value={contact.observacion_contexto}
+                    onChange={(event) => setContactField('observacion_contexto', event.target.value)}
+                  />
+                </label>
+              </details>
             </div>
           </section>
 
