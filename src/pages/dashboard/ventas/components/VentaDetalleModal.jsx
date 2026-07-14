@@ -8,6 +8,7 @@ import {
   getLineDiscountPercent,
   resolveVentaReversionBlockReason
 } from '../utils/ventasHelpers';
+import { buildVentaDetailSummary } from '../utils/ventasDetailSummary';
 import VentaTicketPrint from './VentaTicketPrint';
 import './VentaTicketPrint.css';
 import { printVentaTicketPdf } from '../utils/ventaPrintUtils';
@@ -26,12 +27,6 @@ const getExtraSubtotal = (extra) => {
 };
 
 const isStandaloneExtraItem = (item) => Boolean(item?.es_linea_extra_independiente || item?.origen_snapshot?.es_linea_extra_independiente);
-
-const getItemExtrasSubtotal = (item) => {
-  if (isStandaloneExtraItem(item)) return 0;
-  const extras = Array.isArray(item?.extras) ? item.extras : [];
-  return extras.reduce((sum, extra) => sum + getExtraSubtotal(extra), 0);
-};
 
 const formatExtraLabel = (extra) => {
   const name = String(extra?.nombre || extra?.nombre_extra || 'Extra').trim();
@@ -116,15 +111,13 @@ export default function VentaDetalleModal({
     ? globalDiscountFromItems
     : Math.max(discountTotal - lineDiscountTotal, 0);
   const resolvedDiscountTotal = Math.max(discountTotal, lineDiscountTotal + globalDiscountTotal);
-  const baseSubtotalFromItems = detailItems.reduce(
-    (sum, item) => sum + (Number(item?.precio_unitario || 0) * Number(item?.cantidad || 0)),
-    0
-  );
-  const extrasSubtotalFromItems = detailItems.reduce((sum, item) => sum + getItemExtrasSubtotal(item), 0);
-  const grossSubtotalFromItems = baseSubtotalFromItems + extrasSubtotalFromItems;
-  const grossSubtotal = grossSubtotalFromItems > 0
-    ? grossSubtotalFromItems
-    : Number(venta?.subtotal_bruto ?? 0) || (Number(venta?.sub_total || 0) + resolvedDiscountTotal);
+  const detailSummary = buildVentaDetailSummary({
+    items: detailItems,
+    total: venta?.total
+  });
+  const baseSubtotalFromItems = detailSummary.base_items;
+  const extrasSubtotalFromItems = detailSummary.extras;
+  const grossSubtotal = detailSummary.subtotal_bruto || Number(venta?.subtotal_bruto ?? 0) || (Number(venta?.sub_total || 0) + resolvedDiscountTotal);
   const shouldShowItemDiscount = detailItems.some((item) => getLineDiscountPercent(item) !== null);
   const reversionBlockReason = resolveVentaReversionBlockReason(venta);
   const delivery = venta?.delivery && typeof venta.delivery === 'object' ? venta.delivery : null;
