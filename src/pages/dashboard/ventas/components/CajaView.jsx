@@ -11,6 +11,7 @@ import VentaExtrasModal from './VentaExtrasModal';
 import VentaFinalizarOperacionModal from './VentaFinalizarOperacionModal';
 import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import ventasService from '../../../../services/ventasService';
+import printerDeviceDetectionService from '../../../../services/printerDeviceDetectionService';
 import { useAuth } from '../../../../hooks/useAuth';
 import AppSelect from '../../../../components/common/AppSelect';
 import { parseCajaUtcTimestamp } from '../utils/cajasHelpers';
@@ -188,6 +189,7 @@ const resolveCajaAssignmentErrorMessage = (error) => {
 export default function CajaView({
   sucursales,
   isSuperAdmin,
+  userId,
   defaultSucursalId,
   productos,
   categorias,
@@ -217,7 +219,7 @@ export default function CajaView({
   onNotify
 }) {
   const { user } = useAuth();
-  const cajaUserKey = buildCajaUserKey(user);
+  const cajaUserKey = buildCajaUserKey({ ...user, id_usuario: userId ?? user?.id_usuario });
   const hasCajaUser = Boolean(user);
 
   const toSafeMessage = (error, fallback) => {
@@ -259,6 +261,8 @@ export default function CajaView({
     total: 0,
     monto: 0
   });
+  const pendientesSummaryRequestRef = useRef({ key: '', promise: null, requestId: 0 });
+  const pendientesSummaryAbortRef = useRef(null);
   const [cajaAsignacion, setCajaAsignacion] = useState(null);
   const [cajaSesionActiva, setCajaSesionActiva] = useState(null);
   const [cajaStatus, setCajaStatus] = useState({
@@ -280,25 +284,54 @@ export default function CajaView({
   const cajaAsignacionInFlightRef = useRef(null);
   const sesionesAbiertasCacheRef = useRef({ key: '', at: 0, rows: [] });
   const sesionesAbiertasInFlightRef = useRef(null);
+  const sesionesAbiertasAbortRef = useRef(null);
+  const sesionesAbiertasRequestIdRef = useRef(0);
+  const cajaUserKeyRef = useRef(cajaUserKey);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
+  const lastDetectionSessionRef = useRef('');
 
   const catalogSucursalRequestRef = useRef('');
+  const catalogSucursalRequestIdRef = useRef(0);
   const bootstrapSesionCaja = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
   const hasCajaSession = Boolean(cajaSesionActiva?.id_sesion_caja || bootstrapSesionCaja?.id_sesion_caja);
+  const lockedSucursalId = toPositiveId(cajaSesionActiva?.id_sucursal || cajaAsignacion?.id_sucursal || defaultSucursalId);
+
+  useEffect(() => {
+    if (cajaUserKeyRef.current === cajaUserKey) return;
+    cajaUserKeyRef.current = cajaUserKey;
+    cajaAsignacionRequestRef.current += 1;
+    cajaAsignacionCacheRef.current = { key: '', at: 0, status: 'idle' };
+    cajaAsignacionInFlightRef.current = null;
+    sesionesAbiertasCacheRef.current = { key: '', at: 0, rows: [] };
+    sesionesAbiertasAbortRef.current?.abort();
+    sesionesAbiertasAbortRef.current = null;
+    sesionesAbiertasRequestIdRef.current += 1;
+    sesionesAbiertasInFlightRef.current = null;
+    pendientesSummaryAbortRef.current?.abort();
+    pendientesSummaryAbortRef.current = null;
+    pendientesSummaryRequestRef.current = { key: '', promise: null, requestId: pendientesSummaryRequestRef.current.requestId + 1, controller: null };
+    catalogSucursalRequestRef.current = '';
+    catalogSucursalRequestIdRef.current += 1;
+    setPendientesSummary({ loading: false, error: '', total: 0, monto: 0 });
+    setCajaAsignacion(null);
+    setCajaSesionActiva(null);
+    setCajaStatus({ loading: false, error: '', assignmentMissing: false });
+  }, [cajaUserKey]);
 
   const openAutoAuxiliarForSucursal = async ({ idSucursal, force = false }) => {
     if (!isSuperAdmin) return;
     const normalizedSucursalId = toPositiveId(idSucursal);
     if (!normalizedSucursalId) return;
 
-    const cacheKey = `sucursal:${normalizedSucursalId}`;
+    const cacheKey = `usuario:${cajaUserKey}:sucursal:${normalizedSucursalId}`;
+    const selectedSucursalId = () => toPositiveId(composerRef.current?.selectedSucursalId || composerRef.current?.selectedSucursal);
     setAutoModalError('');
     setAutoModalOpen(true);
 
     const cached = sesionesAbiertasCacheRef.current;
     if (!force && isTimedCacheFresh(cached, cacheKey, CAJA_SESIONES_ABIERTAS_CACHE_MS)) {
-      const rows = cached.rows || [];
+      const rows = (cached.rows || []).filter((row) => Number(row.id_sucursal) === Number(normalizedSucursalId));
       setSesionesAbiertas(rows);
       setSelectedSesion(rows.length > 0 ? String(rows[0].id_sesion_caja) : '');
       if (rows.length === 0) {
@@ -307,37 +340,81 @@ export default function CajaView({
       return;
     }
 
-    setAutoModalLoading(true);
-    try {
-      let rows;
-      const inFlight = sesionesAbiertasInFlightRef.current;
-      if (inFlight?.key === cacheKey) {
-        rows = await inFlight.promise;
-      } else {
-        const promise = cajasService
-          .listSesionesAbiertasSafe({ id_sucursal: normalizedSucursalId })
-          .then((response) => normalizeOpenSessions(response));
-        sesionesAbiertasInFlightRef.current = { key: cacheKey, promise };
-        rows = await promise;
-      }
-
-      sesionesAbiertasCacheRef.current = { key: cacheKey, at: Date.now(), rows };
-
-      setSesionesAbiertas(rows);
-      setSelectedSesion(rows.length > 0 ? String(rows[0].id_sesion_caja) : '');
-      if (rows.length === 0) {
-        setAutoModalError('No hay cajas activas con sesión abierta para la sucursal seleccionada.');
-      }
-    } catch (error) {
-      setSesionesAbiertas([]);
-      setSelectedSesion('');
-      setAutoModalError(toSafeMessage(error, 'No se pudieron cargar sesiones abiertas.'));
-    } finally {
-      if (sesionesAbiertasInFlightRef.current?.key === cacheKey) {
-        sesionesAbiertasInFlightRef.current = null;
-      }
-      setAutoModalLoading(false);
+    const activeInFlight = sesionesAbiertasInFlightRef.current;
+    if (
+      !force &&
+      activeInFlight?.key === cacheKey &&
+      activeInFlight.promise &&
+      !activeInFlight.controller?.signal?.aborted
+    ) {
+      return activeInFlight.promise;
     }
+
+    sesionesAbiertasAbortRef.current?.abort();
+    const controller = new AbortController();
+    sesionesAbiertasAbortRef.current = controller;
+    const requestId = sesionesAbiertasRequestIdRef.current + 1;
+    sesionesAbiertasRequestIdRef.current = requestId;
+    const requestUserKey = cajaUserKey;
+    const requestSucursalId = normalizedSucursalId;
+    const isCurrentAutoAuxRequest = () => {
+      const current = sesionesAbiertasInFlightRef.current;
+      return current?.key === cacheKey &&
+        current.requestId === requestId &&
+        current.controller === controller &&
+        current.userKey === requestUserKey &&
+        current.sucursalId === requestSucursalId &&
+        cajaUserKeyRef.current === requestUserKey &&
+        selectedSucursalId() === requestSucursalId &&
+        !controller.signal.aborted;
+    };
+
+    setAutoModalLoading(true);
+    const promise = cajasService
+      .listSesionesAbiertasSafe(
+        { id_sucursal: normalizedSucursalId },
+        { signal: controller.signal }
+      )
+      .then((response) => {
+        const rows = normalizeOpenSessions(response)
+          .filter((row) => Number(row.id_sucursal) === Number(normalizedSucursalId));
+        if (!isCurrentAutoAuxRequest()) return null;
+
+        sesionesAbiertasCacheRef.current = { key: cacheKey, at: Date.now(), rows };
+        setSesionesAbiertas(rows);
+        setSelectedSesion(rows.length > 0 ? String(rows[0].id_sesion_caja) : '');
+        if (rows.length === 0) {
+          setAutoModalError('No hay cajas activas con sesión abierta para la sucursal seleccionada.');
+        }
+        return rows;
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || !isCurrentAutoAuxRequest()) return null;
+        setSesionesAbiertas([]);
+        setSelectedSesion('');
+        setAutoModalError(toSafeMessage(error, 'No se pudieron cargar sesiones abiertas.'));
+        return null;
+      })
+      .finally(() => {
+        const current = sesionesAbiertasInFlightRef.current;
+        if (current?.key === cacheKey && current.requestId === requestId && current.controller === controller) {
+          sesionesAbiertasInFlightRef.current = null;
+          if (sesionesAbiertasAbortRef.current === controller) {
+            sesionesAbiertasAbortRef.current = null;
+          }
+          setAutoModalLoading(false);
+        }
+      });
+
+    sesionesAbiertasInFlightRef.current = {
+      key: cacheKey,
+      promise,
+      controller,
+      requestId,
+      userKey: requestUserKey,
+      sucursalId: requestSucursalId
+    };
+    return promise;
   };
 
   const composer = useVentaComposer({
@@ -350,7 +427,7 @@ export default function CajaView({
     canApplyDiscount,
     sucursales,
     isSuperAdmin,
-    defaultSucursalId,
+    defaultSucursalId: isSuperAdmin ? defaultSucursalId : lockedSucursalId,
     allowSucursalAutoSelection: !catalogLoadingStates.bootstrapLoading,
     catalogsEnabled: hasCajaSession,
     onDepartmentDemand: ({ idSucursal, idTipoDepartamento }) => onRecipesDepartmentDemand?.({
@@ -359,7 +436,8 @@ export default function CajaView({
     }),
     onSubmit,
     suppressSubmitErrorToast: true,
-    onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
+    onRequireAutoAuxiliar: openAutoAuxiliarForSucursal,
+    userId: userId ?? user?.id_usuario
   });
   composerRef.current = composer;
   const resolvedCajaSucursalId = toPositiveId(
@@ -411,14 +489,17 @@ export default function CajaView({
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
     if (!selectedSucursalId) return;
 
-    const key = `sucursal:${selectedSucursalId}`;
+    const key = `usuario:${cajaUserKey}:sucursal:${selectedSucursalId}`;
     if (catalogSucursalRequestRef.current === key) return;
     catalogSucursalRequestRef.current = key;
+    const requestId = catalogSucursalRequestIdRef.current + 1;
+    catalogSucursalRequestIdRef.current = requestId;
 
-    void onCatalogSucursalChange?.({ id_sucursal: selectedSucursalId });
+    void onCatalogSucursalChange?.({ id_sucursal: selectedSucursalId, requestId });
   }, [
     composer.selectedSucursal,
     composer.selectedSucursalId,
+    cajaUserKey,
     isSuperAdmin,
     onCatalogSucursalChange
   ]);
@@ -742,9 +823,6 @@ export default function CajaView({
 
     if (isSuperAdmin || catalogLoadingStates.bootstrapLoading) return undefined;
 
-    const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
-    if (bootstrapSucursalId && bootstrapSucursalId === toPositiveId(defaultSucursalId)) return undefined;
-
     setCajaAsignacion(null);
     setCajaSesionActiva(null);
     syncComposerSession(null);
@@ -755,13 +833,12 @@ export default function CajaView({
     return () => {
       cajaAsignacionRequestRef.current += 1;
     };
-  }, [cajaBootstrapData?.id_sucursal, cajaUserKey, catalogLoadingStates.bootstrapLoading, defaultSucursalId, hasCajaUser, isSuperAdmin, loadCajaAsignada, syncComposerSession]);
+  }, [cajaUserKey, catalogLoadingStates.bootstrapLoading, hasCajaUser, isSuperAdmin, loadCajaAsignada, syncComposerSession]);
 
   useEffect(() => {
     if (!hasCajaUser || !isSuperAdmin || catalogLoadingStates.bootstrapLoading) return undefined;
 
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
-    if (cajaBootstrapData) return undefined;
     const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
     if (selectedSucursalId && bootstrapSucursalId === selectedSucursalId) return undefined;
     cajaAsignacionRequestRef.current += 1;
@@ -851,25 +928,62 @@ export default function CajaView({
   };
 
   const loadPendientesSummary = useCallback(async () => {
-    if (!composer.selectedSucursalId) {
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId);
+    if (!selectedSucursalId) {
       setPendientesSummary({ loading: false, error: '', total: 0, monto: 0 });
       return;
     }
 
+    const requestKey = `usuario:${cajaUserKey}:sucursal:${selectedSucursalId}`;
+    const currentInFlight = pendientesSummaryRequestRef.current;
+    if (
+      currentInFlight?.key === requestKey
+      && currentInFlight.promise
+      && !currentInFlight.controller?.signal?.aborted
+    ) {
+      return currentInFlight.promise;
+    }
+
+    pendientesSummaryAbortRef.current?.abort();
+    const controller = new AbortController();
+    pendientesSummaryAbortRef.current = controller;
+    const requestId = currentInFlight.requestId + 1;
+    const requestUserKey = cajaUserKey;
+    const requestSucursalId = selectedSucursalId;
+    const isCurrentPendingRequest = () => {
+      const current = pendientesSummaryRequestRef.current;
+      return current.key === requestKey
+        && current.requestId === requestId
+        && current.controller === controller
+        && requestUserKey === cajaUserKey
+        && requestSucursalId === toPositiveId(composerRef.current?.selectedSucursalId)
+        && !controller.signal.aborted;
+    };
     setPendientesSummary((current) => ({ ...current, loading: true, error: '' }));
-    try {
+    const requestPromise = (async () => {
       const response = await ventasService.listPedidosPendientesPago({
-        id_sucursal: composer.selectedSucursalId,
+        id_sucursal: selectedSucursalId,
         page: 1,
         page_size: 1
+      }, {
+        signal: controller.signal
       });
+      if (!isCurrentPendingRequest()) return null;
       setPendientesSummary({
         loading: false,
         error: '',
         total: Number(response?.summary?.total_pedidos_pendientes ?? 0) || 0,
         monto: Number(response?.summary?.monto_total_pendiente ?? 0) || 0
       });
+      return response;
+    })();
+    pendientesSummaryRequestRef.current = { key: requestKey, promise: requestPromise, requestId, controller };
+
+    try {
+      return await requestPromise;
     } catch (error) {
+      if (controller.signal.aborted) return null;
+      if (!isCurrentPendingRequest()) return null;
       if (Number(error?.status || 0) >= 500) {
         console.error('[Ventas] Error cargando resumen de pedidos pendientes', error);
       } else if (import.meta.env.DEV) {
@@ -884,8 +998,17 @@ export default function CajaView({
         loading: false,
         error: resolvePendientesErrorMessage(error)
       }));
+      return null;
+    } finally {
+      const current = pendientesSummaryRequestRef.current;
+      if (current.key === requestKey && current.requestId === requestId && current.controller === controller) {
+        pendientesSummaryRequestRef.current = { key: '', promise: null, requestId, controller: null };
+        if (pendientesSummaryAbortRef.current === controller) {
+          pendientesSummaryAbortRef.current = null;
+        }
+      }
     }
-  }, [composer.selectedSucursalId]);
+  }, [cajaUserKey, composer.selectedSucursalId]);
 
   useEffect(() => {
     void loadPendientesSummary();
@@ -1000,6 +1123,43 @@ export default function CajaView({
     }
   };
 
+  const triggerCajaPrinterDetection = useCallback(async ({
+    session,
+    origen,
+    notifyOnResult = false
+  } = {}) => {
+    const sessionId = toPositiveId(session?.id_sesion_caja);
+    const cajaId = toPositiveId(session?.id_caja);
+    const sucursalId = toPositiveId(session?.id_sucursal || composer.selectedSucursalId || composer.selectedSucursal);
+    if (!sessionId || !cajaId || !sucursalId) return null;
+
+    try {
+      const result = await printerDeviceDetectionService.detectPrintersForCaja({
+        idSucursal: sucursalId,
+        idCaja: cajaId,
+        idSesionCaja: sessionId,
+        origen
+      });
+      if (notifyOnResult && result?.message && !result?.skipped) {
+        onNotify?.(
+          'IMPRESORAS',
+          result.message,
+          result.status === 'CONFIGURADO' || result.status === 'YA_CONFIGURADO' ? 'success' : 'warning'
+        );
+      }
+      return result;
+    } catch {
+      if (notifyOnResult) {
+        onNotify?.(
+          'IMPRESORAS',
+          'No se pudo validar la impresora automática. Puedes continuar, pero revisa que QZ Tray esté abierto.',
+          'warning'
+        );
+      }
+      return null;
+    }
+  }, [composer.selectedSucursal, composer.selectedSucursalId, onNotify]);
+
   const handleCancelDecision = () => {
     markCajaDecisionDismissed(cajaAsignacion, cajaUserKey);
     setDecisionOpen(false);
@@ -1042,6 +1202,11 @@ export default function CajaView({
       setAbrirSesionOpen(false);
       setCajaStatus({ loading: false, error: '', assignmentMissing: false });
       await onCatalogSucursalChange?.({ id_sucursal: session?.id_sucursal, force: true });
+      await triggerCajaPrinterDetection({
+        session,
+        origen: 'APERTURA_CAJA',
+        notifyOnResult: true
+      });
       onNotify?.('SESIÓN ABIERTA', 'Sesión de caja abierta correctamente.', 'success');
     } catch (error) {
       if (Number(error?.status || 0) >= 500) {
@@ -1097,6 +1262,33 @@ export default function CajaView({
     setRegistrarPagoOpen(true);
   };
 
+  useEffect(() => {
+    const session = cajaSesionActiva || bootstrapSesionCaja;
+    const sessionId = toPositiveId(session?.id_sesion_caja);
+    const cajaId = toPositiveId(session?.id_caja);
+    const sucursalId = toPositiveId(session?.id_sucursal || composer.selectedSucursalId || composer.selectedSucursal);
+    const detectionKey = sessionId && cajaId && sucursalId
+      ? `${sucursalId}:${cajaId}:${sessionId}`
+      : '';
+    if (!detectionKey || lastDetectionSessionRef.current === detectionKey) return;
+    lastDetectionSessionRef.current = detectionKey;
+    void triggerCajaPrinterDetection({
+      session: {
+        id_sesion_caja: sessionId,
+        id_caja: cajaId,
+        id_sucursal: sucursalId
+      },
+      origen: 'CARGA_CAJA',
+      notifyOnResult: false
+    });
+  }, [
+    bootstrapSesionCaja,
+    cajaSesionActiva,
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    triggerCajaPrinterDetection
+  ]);
+
   const closeAutoModal = () => {
     if (autoModalAssigning) return;
     setAutoModalOpen(false);
@@ -1104,7 +1296,7 @@ export default function CajaView({
 
   const confirmAutoAsignacion = async () => {
     const idSesionCaja = Number.parseInt(String(selectedSesion || ''), 10);
-    const idSucursal = Number.parseInt(String(composer.selectedSucursal || ''), 10);
+    const idSucursal = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
     if (!idSesionCaja || !idSucursal) return;
     setAutoModalAssigning(true);
     setAutoModalError('');
@@ -1148,9 +1340,19 @@ export default function CajaView({
       clearCajaDecisionDismissed(assignment, cajaUserKey);
       setAutoModalOpen(false);
       await onCatalogSucursalChange?.({ id_sucursal: idSucursal, force: true });
+      await triggerCajaPrinterDetection({
+        session,
+        origen: 'CARGA_CAJA',
+        notifyOnResult: false
+      });
       onNotify?.('CAJA ACTIVA', 'Te registraste como auxiliar de caja para esta sesión.', 'success');
     } catch (error) {
-      setAutoModalError(toSafeMessage(error, 'No se pudo registrar la autoasignación temporal.'));
+      const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+      if (isSuperAdmin && code === 'VENTAS_CAJAS_USER_ALREADY_IN_OPEN_SESSION') {
+        setAutoModalError('No se pudo registrar esta sesión. Intenta recargar las sesiones de la sucursal seleccionada.');
+      } else {
+        setAutoModalError(toSafeMessage(error, 'No se pudo registrar la autoasignación temporal.'));
+      }
     } finally {
       setAutoModalAssigning(false);
     }

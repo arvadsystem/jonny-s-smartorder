@@ -114,7 +114,8 @@ const inferModifications = (item) => {
     return item.modificaciones
       .filter(Boolean)
       .map((entry) => String(entry).trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter((entry) => !isTechnicalOrderNote(entry));
   }
 
   const itemObservation = String(item?.observacion || '').trim();
@@ -186,6 +187,8 @@ const isTechnicalOrderNote = (note) => {
     source.startsWith('[menu-publico]') ||
     source.includes('[menu-publico]') ||
     source.startsWith('idem:') ||
+    source.startsWith('idempotency:') ||
+    source.startsWith('idempotencia:') ||
     source.startsWith('tel:') ||
     source.startsWith('telefono:') ||
     source.includes('schema_version') ||
@@ -194,6 +197,16 @@ const isTechnicalOrderNote = (note) => {
     /(?:^|[\s|,;])salsas=/.test(source) ||
     /(?:^|[\s|,;])extras=/.test(source)
   );
+};
+
+const buildKitchenTicketLabel = (row) => {
+  const codigo = String(row?.codigo_venta || row?.numero_ticket || '').trim();
+  if (codigo) return codigo;
+
+  const idPedido = Number(row?.id_pedido ?? 0);
+  return Number.isSafeInteger(idPedido) && idPedido > 0
+    ? `VTA-${String(idPedido).padStart(5, '0')}`
+    : 'VTA-S/N';
 };
 
 const extractPedidoGeneralNotes = (descripcionPedido, items = []) => {
@@ -325,7 +338,8 @@ export const normalizeKitchenOrder = (row) => {
     inventario_alertas_total: Number(row?.inventario_alertas_total ?? 0) || 0,
     inventario_alertas_pendientes: Number(row?.inventario_alertas_pendientes ?? 0) || 0,
     total_items: Number(row?.total_items ?? 0) || 0,
-    numero_ticket: String(row?.numero_ticket ?? ''),
+    numero_ticket: buildKitchenTicketLabel(row),
+    codigo_venta: String(row?.codigo_venta ?? '').trim() || null,
     nombre_sucursal: String(row?.nombre_sucursal ?? 'Sucursal no definida'),
     cliente_nombre: String(row?.cliente_nombre ?? 'Consumidor final'),
     estado_codigo: estadoCodigo,

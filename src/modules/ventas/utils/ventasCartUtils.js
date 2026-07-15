@@ -1,5 +1,65 @@
 import { roundMoney } from './ventasMoneyUtils.js';
 
+export const VENTA_LINE_MIN_QUANTITY = 1;
+export const VENTA_LINE_MAX_QUANTITY = 999;
+export const VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD = 10;
+
+export const isStockOnlyStandaloneExtraUnavailable = (entry) =>
+  String(entry?.codigo_no_disponible || '').trim().toUpperCase() === 'EXTRA_STOCK_INSUFICIENTE';
+
+export const isBlockingStandaloneExtraUnavailable = (entry) =>
+  entry?.disponible === false && !isStockOnlyStandaloneExtraUnavailable(entry);
+
+export const canAddStandaloneExtraToCart = (entry) =>
+  !isBlockingStandaloneExtraUnavailable(entry);
+
+export const canIncreaseStandaloneExtraQuantity = (line) =>
+  Number(line?.cantidad ?? 0) < VENTA_LINE_MAX_QUANTITY;
+
+export const parseVentaLineQuantity = (value) => {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= VENTA_LINE_MIN_QUANTITY && value <= VENTA_LINE_MAX_QUANTITY
+      ? value
+      : null;
+  }
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!/^[1-9]\d*$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed >= VENTA_LINE_MIN_QUANTITY && parsed <= VENTA_LINE_MAX_QUANTITY
+    ? parsed
+    : null;
+};
+
+export const buildVentaQuantityCommitResult = (value, currentQuantity, { manual = false } = {}) => {
+  const previousQuantity = clampVentaLineQuantity(currentQuantity ?? 1);
+  const parsed = parseVentaLineQuantity(value);
+  if (!parsed) {
+    return {
+      ok: false,
+      quantity: previousQuantity,
+      draft: String(previousQuantity),
+      shouldConfirm: false,
+      message: 'La cantidad debe ser un entero entre 1 y 999.'
+    };
+  }
+  return {
+    ok: true,
+    quantity: parsed,
+    draft: String(parsed),
+    shouldConfirm: Boolean(manual && parsed >= VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD && parsed !== previousQuantity),
+    message: ''
+  };
+};
+
+export const clampVentaLineQuantity = (value) => {
+  const parsed = typeof value === 'number' && Number.isFinite(value)
+    ? Math.trunc(value)
+    : Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed)) return VENTA_LINE_MIN_QUANTITY;
+  return Math.min(VENTA_LINE_MAX_QUANTITY, Math.max(VENTA_LINE_MIN_QUANTITY, parsed));
+};
+
 export const normalizeComplementIds = (value) =>
   [...new Set(
     (Array.isArray(value) ? value : [])
@@ -48,11 +108,23 @@ export const normalizeExtras = (value) =>
 export const buildExtrasSignature = (value) => {
   const extras = normalizeExtras(value);
   if (extras.length === 0) return 'noextras';
-  return extras.map((entry) => `${entry.id_extra}x${entry.cantidad}`).join('-');
+  return extras.map((entry) => [
+    `${entry.id_extra}x${entry.cantidad}`,
+    `p${roundMoney(entry.precio)}`,
+    `i${entry.id_insumo || 0}`,
+    `im${entry.id_insumo_maestro || 0}`,
+    `cb${Number(entry.cantidad_consumo_base || 0)}`,
+    `ub${entry.id_unidad_base || 0}`,
+    `inv${entry.inventario_configurado ? 1 : 0}`,
+    `disp${entry.disponible ? 1 : 0}`
+  ].join(':')).join('-');
 };
 
 export const getExtrasSubtotal = (value) =>
   roundMoney(normalizeExtras(value).reduce((sum, entry) => sum + Number(entry.precio || 0) * Number(entry.cantidad || 0), 0));
+
+export const getLineExtrasSubtotal = (line) =>
+  roundMoney(getExtrasSubtotal(line?.extras) * clampVentaLineQuantity(line?.cantidad ?? 1));
 
 export const getExtrasCount = (value) =>
   normalizeExtras(value).reduce((sum, entry) => sum + Number(entry.cantidad || 0), 0);
@@ -76,6 +148,83 @@ export const buildCartKey = (kind, entityId, complementos = [], extras = [], lin
     return `${normalizedKind}:line:${lineId}`;
   }
   return `${normalizedKind}:${entityId}:${buildComplementSignature(complementos)}:${buildExtrasSignature(extras)}`;
+};
+
+const normalizeSignatureText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
+export const buildVentaLineConfigSignature = (line) => {
+  const kind = String(line?.kind || '').toUpperCase();
+  const entityId = Number(line?.entityId ?? line?.id_producto ?? line?.id_receta ?? line?.id_extra ?? 0) || 0;
+  const complementSignature = buildComplementSignature(line?.complementos);
+  const extrasSignature = buildExtrasSignature(line?.extras);
+  const observation = normalizeSignatureText(line?.observacion);
+  const lineDiscount = String(line?.id_descuento_catalogo_linea || '').trim() || 'none';
+  const precioUnitario = roundMoney(line?.precio_unitario ?? line?.precio ?? 0);
+  const incompleteAuthorization = line?.complementos_incompletos_autorizados ? 'incomplete-ok' : 'complete-required';
+  const requiresComplements = line?.complementos_requiere ? 'requires-complements' : 'no-complements';
+  const minComplements = Number(line?.minimo_complementos || 0) || 0;
+  const maxComplements = Number(line?.maximo_complementos || 0) || 0;
+  const complementType = String(line?.tipo_complemento || '').trim().toUpperCase() || 'none';
+  return [
+    kind,
+    entityId,
+    precioUnitario,
+    complementSignature,
+    extrasSignature,
+    observation,
+    lineDiscount,
+    incompleteAuthorization,
+    requiresComplements,
+    minComplements,
+    maxComplements,
+    complementType
+  ].join('|');
+};
+
+export const mergeEquivalentVentaLines = (cart) => {
+  const merged = [];
+  const indexesBySignature = new Map();
+  let mergeCount = 0;
+
+  for (const line of Array.isArray(cart) ? cart : []) {
+    let remaining = Number(line?.cantidad || 0);
+    if (!Number.isSafeInteger(remaining) || remaining <= 0) continue;
+    const normalizedLine = { ...line };
+    const signature = buildVentaLineConfigSignature(normalizedLine);
+
+    if (!indexesBySignature.has(signature)) indexesBySignature.set(signature, []);
+    const indexes = indexesBySignature.get(signature);
+
+    for (const existingIndex of indexes) {
+      if (remaining <= 0) break;
+      const existing = merged[existingIndex];
+      const currentQty = Number(existing.cantidad || 0);
+      const capacity = VENTA_LINE_MAX_QUANTITY - currentQty;
+      if (capacity <= 0) continue;
+      const moveQty = Math.min(capacity, remaining);
+      merged[existingIndex] = {
+        ...existing,
+        cantidad: currentQty + moveQty
+      };
+      remaining -= moveQty;
+      mergeCount += 1;
+    }
+
+    while (remaining > 0) {
+      const quantity = Math.min(VENTA_LINE_MAX_QUANTITY, remaining);
+      indexes.push(merged.length);
+      merged.push({ ...normalizedLine, cantidad: quantity });
+      remaining -= quantity;
+    }
+  }
+
+  return { cart: merged, merged: mergeCount > 0, mergeCount };
 };
 
 export const findLineIndex = (cart, cartKey) =>

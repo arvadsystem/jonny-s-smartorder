@@ -18,7 +18,15 @@ export default function SucursalFacturacionPreviewModal({
   const totales = data?.totales || {};
   const opciones = data?.opciones || {};
   const textos = data?.textos || {};
+  const fiscal = data?.fiscal || {};
   const showFiscal = opciones.mostrar_datos_fiscales !== false;
+  const showCai = showFiscal && Boolean(fiscal?.habilitado) && opciones.mostrar_cai_ticket && fiscal?.cai;
+  const showNumeroFiscal = showFiscal
+    && Boolean(fiscal?.habilitado)
+    && opciones.mostrar_numero_fiscal_ticket
+    && fiscal?.numero_factura_fiscal;
+  const showInternalCode = opciones.mostrar_codigo_interno_ticket !== false;
+  const showFiscalBlock = Boolean(showCai || showNumeroFiscal || showInternalCode);
   const showTaxes = Boolean(opciones.mostrar_impuestos_ticket);
 
   return createPortal(
@@ -56,10 +64,10 @@ export default function SucursalFacturacionPreviewModal({
             <div className="suc-fac-preview">
               <div className="text-center border-bottom pb-2 mb-2">
                 {opciones.mostrar_logo_ticket && emisor.logo_url ? (
-                  <img className="suc-fac-preview__logo" src={emisor.logo_url} alt="Logo de facturación" />
+                  <img className="suc-fac-preview__logo" src={emisor.logo_url} alt="Logo de facturacion" />
                 ) : null}
                 <strong>{emisor.nombre || 'EMISOR'}</strong>
-                {showFiscal && opciones.mostrar_rtn && emisor.rtn ? <div>RTN: {emisor.rtn}</div> : null}
+                {opciones.mostrar_rtn && emisor.rtn ? <div>RTN: {emisor.rtn}</div> : null}
                 {opciones.mostrar_direccion && emisor.direccion ? <div>{emisor.direccion}</div> : null}
                 {opciones.mostrar_telefono && emisor.telefono ? <div>Tel: {emisor.telefono}</div> : null}
                 {opciones.mostrar_correo && emisor.correo ? <div>{emisor.correo}</div> : null}
@@ -68,11 +76,11 @@ export default function SucursalFacturacionPreviewModal({
                 <span>{documento.tipo || 'TICKET'}</span>
                 <span>{documento.numero_ejemplo || 'VTA-00001'}</span>
               </div>
-              {showFiscal ? (
+              {showFiscalBlock ? (
                 <div className="small text-muted mb-2">
-                  {opciones.mostrar_cai_ticket ? <div>CAI: 0</div> : null}
-                  {opciones.mostrar_numero_fiscal_ticket ? <div>Número fiscal: 0</div> : null}
-                  {opciones.mostrar_codigo_interno_ticket ? <div>Código interno: {documento.numero_ejemplo || 'VTA-00001'}</div> : null}
+                  {showCai ? <div>CAI: {fiscal.cai}</div> : null}
+                  {showNumeroFiscal ? <div>Numero fiscal: {fiscal.numero_factura_fiscal}</div> : null}
+                  {showInternalCode ? <div>Codigo interno: {documento.numero_ejemplo || 'VTA-00001'}</div> : null}
                 </div>
               ) : null}
               {item ? (

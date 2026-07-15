@@ -2,7 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import GlobalInactivityGuard from '../components/auth/GlobalInactivityGuard';
 
-const MUST_CHANGE_ROUTE = '/cambiar-password';
+const MUST_CHANGE_ROUTE = '/dashboard/perfil/cambiar-contrasena';
 
 const ReconnectSessionScreen = ({ message, onRetry }) => (
   <div

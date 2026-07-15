@@ -39,7 +39,7 @@ export default function CocinaColumn({
           <CocinaOrderCard
             key={pedido.id_pedido}
             pedido={pedido}
-            isPendingColumn={columnKey === 'PENDIENTES'}
+            isPendingColumn={columnKey === 'EN_PREPARACION'}
             now={now}
             canAdvance={canAdvancePedido(pedido)}
             isSuperAdmin={isSuperAdmin}

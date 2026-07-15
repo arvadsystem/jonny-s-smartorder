@@ -39,6 +39,9 @@ const VENTAS_CREATE_RECOVERY_DELAY_MS = parseTimeoutMs(
   import.meta.env.VITE_VENTAS_CREATE_RECOVERY_DELAY_MS,
   1500
 );
+const CAJA_BOOTSTRAP_CACHE_TTL_MS = 5000;
+const cajaBootstrapInFlight = new Map();
+const cajaBootstrapCache = new Map();
 
 const createIdempotencyKey = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -146,6 +149,47 @@ const fetchPdfBlob = async (endpoint) => {
   return response.blob();
 };
 
+const clonePayload = (value) => {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+};
+
+const buildCajaBootstrapRequestKey = (params = {}, config = {}) => JSON.stringify({
+  user: String(config.coalesceUserKey || config.userKey || 'anon'),
+  sucursal: params.id_sucursal ?? null,
+  departamento: params.id_tipo_departamento ?? null
+});
+
+const getCajaBootstrapCoalesced = async (params = {}, config = {}) => {
+  const key = buildCajaBootstrapRequestKey(params, config);
+  const cached = cajaBootstrapCache.get(key);
+  if (!config.force && cached && Date.now() - cached.at < CAJA_BOOTSTRAP_CACHE_TTL_MS) {
+    return clonePayload(cached.value);
+  }
+  if (config.force) cajaBootstrapCache.delete(key);
+
+  const inFlight = cajaBootstrapInFlight.get(key);
+  if (inFlight) return clonePayload(await inFlight);
+
+  const sharedConfig = { ...config };
+  delete sharedConfig.signal;
+  delete sharedConfig.coalesceUserKey;
+  delete sharedConfig.userKey;
+  delete sharedConfig.force;
+
+  const promise = apiFetch(`/ventas/caja/bootstrap${buildQuery(params)}`, 'GET', null, sharedConfig);
+  cajaBootstrapInFlight.set(key, promise);
+  try {
+    const value = await promise;
+    cajaBootstrapCache.set(key, { at: Date.now(), value: clonePayload(value) });
+    return clonePayload(value);
+  } finally {
+    if (cajaBootstrapInFlight.get(key) === promise) {
+      cajaBootstrapInFlight.delete(key);
+    }
+  }
+};
+
 const ventasService = {
   list: (params = {}) => apiFetch(`/ventas${buildVentasListQuery(params)}`, 'GET'),
   buscarVenta: (params = {}) => apiFetch(`/ventas/buscar${buildQuery(params)}`, 'GET'),
@@ -155,6 +199,7 @@ const ventasService = {
   getComandaById: (id) => apiFetch(`/ventas/${id}/comanda`, 'GET'),
   getPedidoComanda: (id) => apiFetch(`/ventas/pedidos/${id}/comanda`, 'GET'),
   getPrintRuntimeConfig: (params = {}) => apiFetch(`/ventas/impresoras-config${buildQuery(params)}`, 'GET'),
+  detectPrinterDevice: (payload) => apiFetch('/ventas/impresoras/dispositivo-deteccion', 'POST', payload),
   getQzCertificate: () => apiFetch('/ventas/qz/certificate', 'GET'),
   signQzRequest: (request) => apiFetch('/ventas/qz/sign', 'POST', { request }),
   registerPrintEvent: (id, payload) => apiFetch(`/ventas/${id}/impresiones`, 'POST', payload),
@@ -162,14 +207,14 @@ const ventasService = {
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
   create: (payload, options = {}) => createVentaWithRecovery(payload, options),
   createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload, withIdempotencyKey()),
-  listPedidosPendientesPago: (params = {}) =>
-    apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET'),
+  listPedidosPendientesPago: (params = {}, options = {}) =>
+    apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET', null, options),
   registrarPagoPedido: (idPedido, payload) =>
     apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload, withIdempotencyKey()),
   guardarTelefonoCliente: (idCliente, payload) =>
     apiFetch(`/ventas/clientes/${idCliente}/telefono`, 'PATCH', payload),
   getCajaBootstrap: (params = {}, config = {}) =>
-    apiFetch(`/ventas/caja/bootstrap${buildQuery(params)}`, 'GET', null, config),
+    getCajaBootstrapCoalesced(params, config),
   getClientesCatalog: (params = {}, config = {}) =>
     apiFetch(`/ventas/catalogos/clientes${buildQuery(params)}`, 'GET', null, config),
   getRecetasCatalog: (params = {}, config = {}) => apiFetch(`/ventas/catalogos/recetas${buildQuery(params)}`, 'GET', null, config),

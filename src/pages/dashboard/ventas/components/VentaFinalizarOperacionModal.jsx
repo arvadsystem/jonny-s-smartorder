@@ -127,6 +127,11 @@ export default function VentaFinalizarOperacionModal({
     saving: false,
     error: ''
   });
+  const [phoneSaveSuccessDialog, setPhoneSaveSuccessDialog] = useState({
+    open: false,
+    pendingAction: '',
+    telefono: ''
+  });
   const [paidSubmitting, setPaidSubmitting] = useState(false);
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
   const paidSubmittingRef = useRef(false);
@@ -260,6 +265,7 @@ export default function VentaFinalizarOperacionModal({
     setContact(CONTACT_INITIAL);
     setDelivery(DELIVERY_INITIAL);
     setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
+    setPhoneSaveSuccessDialog({ open: false, pendingAction: '', telefono: '' });
   }, [open]);
 
   useEffect(() => {
@@ -323,6 +329,12 @@ export default function VentaFinalizarOperacionModal({
     continuePhoneSaveAction(pendingAction);
   };
 
+  const handlePhoneSaveSuccessContinue = () => {
+    const pendingAction = phoneSaveSuccessDialog.pendingAction;
+    setPhoneSaveSuccessDialog({ open: false, pendingAction: '', telefono: '' });
+    continuePhoneSaveAction(pendingAction);
+  };
+
   const handlePhoneSaveConfirm = async () => {
     const pendingAction = phoneSaveDialog.pendingAction;
     const telefono = phoneSaveDialog.telefono;
@@ -331,7 +343,7 @@ export default function VentaFinalizarOperacionModal({
       await ventasService.guardarTelefonoCliente(selectedClienteId, { telefono });
       await onClientesRefresh?.({ search: String(selectedClienteId), limit: 20 });
       setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
-      continuePhoneSaveAction(pendingAction);
+      setPhoneSaveSuccessDialog({ open: true, pendingAction, telefono });
     } catch (error) {
       const status = Number(error?.status ?? error?.data?.status ?? 0);
       const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
@@ -503,6 +515,7 @@ export default function VentaFinalizarOperacionModal({
     [selectedCliente?.nombre, selectedCliente?.apellido].filter(Boolean).join(' ')
   );
   const resolvedContactName = normalizeOptionalText(contact.nombre_contacto) || selectedClienteLabel;
+  const isReadyToSubmit = activeTab === 'pagar' && composer.canSubmit;
   const canalOptions = [
     { value: 'LOCAL', label: 'LOCAL' },
     { value: 'TELEFONO', label: 'TELEFONO' },
@@ -603,12 +616,13 @@ export default function VentaFinalizarOperacionModal({
         onClick={(event) => event.stopPropagation()}
       >
         <header className="ventas-modal-header ventas-finalizar-modal__header">
-          <div className="ventas-finalizar-modal__header-copy">
-            <h5 id="ventas-finalizar-title">Finalizar operacion</h5>
-            <p>Selecciona si el pedido se paga ahora o queda pendiente.</p>
-            <div className="ventas-finalizar-modal__summary" aria-label="Resumen de venta">
-              <span>{cartCount} {cartCount === 1 ? 'item' : 'items'}</span>
-              <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
+          <div className="ventas-finalizar-modal__header-main">
+            <span className="ventas-finalizar-modal__header-icon" aria-hidden="true">
+              <i className="bi bi-receipt-cutoff" />
+            </span>
+            <div className="ventas-finalizar-modal__header-copy">
+              <h5 id="ventas-finalizar-title">Finalizar operacion</h5>
+              <p>Revisa los datos de la venta y selecciona como deseas completarla.</p>
             </div>
           </div>
           <button type="button" className="ventas-modal__close-btn" onClick={handleModalClose} disabled={isSubmitting} aria-label="Cerrar">
@@ -640,8 +654,22 @@ export default function VentaFinalizarOperacionModal({
         </div>
 
         <div className="ventas-modal-body ventas-finalizar-modal__body">
+          <div className="ventas-finalizar-modal__context" aria-label="Contexto de la venta">
+            <div><i className="bi bi-basket2" /><span>Items</span><strong>{cartCount}</strong></div>
+            <div><i className="bi bi-cash-stack" /><span>Total</span><strong>{composer.formatCurrency(totalWithDelivery)}</strong></div>
+            <div><i className="bi bi-person" /><span>Cliente</span><strong>{selectedClienteLabel || 'Consumidor final'}</strong></div>
+            {composer.selectedSucursalLabel ? (
+              <div><i className="bi bi-shop" /><span>Sucursal</span><strong>{composer.selectedSucursalLabel}</strong></div>
+            ) : null}
+          </div>
+
+          <div className="ventas-finalizar-modal__workspace">
+            <div className="ventas-finalizar-modal__form-column">
           <section className="ventas-finalizar-modal__section">
-            <strong>Datos del cliente y pedido</strong>
+            <div className="ventas-finalizar-modal__section-heading">
+              <span><i className="bi bi-person-vcard" /></span>
+              <div><strong>Cliente</strong><small>Identifica a quien se asociara la operacion.</small></div>
+            </div>
             <div className="ventas-finalizar-modal__grid">
               <AppSelect
                 label="Cliente"
@@ -685,26 +713,39 @@ export default function VentaFinalizarOperacionModal({
                 </div>
               ) : null}
 
-              <label className="ventas-create-modal__field">
-                  <span>Nombre contacto (opcional)</span>
-                  <input
-                    type="text"
-                    value={contact.nombre_contacto}
-                    data-testid="ventas-pendiente-nombre-contacto"
-                    placeholder="Ej. Angel Perez"
-                    onChange={(event) => setContactField('nombre_contacto', event.target.value)}
-                  />
-              </label>
+              <details
+                className="ventas-finalizar-modal__optional ventas-finalizar-modal__field-wide"
+                open={Boolean(contact.nombre_contacto || contact.telefono_contacto)}
+              >
+                <summary><i className="bi bi-plus-circle" /> Agregar datos de contacto</summary>
+                <div className="ventas-finalizar-modal__optional-grid">
+                  <label className="ventas-create-modal__field">
+                    <span>Nombre contacto (opcional)</span>
+                    <input
+                      type="text"
+                      value={contact.nombre_contacto}
+                      data-testid="ventas-pendiente-nombre-contacto"
+                      placeholder="Ej. Angel Perez"
+                      onChange={(event) => setContactField('nombre_contacto', event.target.value)}
+                    />
+                  </label>
 
-              <label className="ventas-create-modal__field">
-                <span>Telefono (opcional)</span>
-                <input
-                  type="text"
-                  value={contact.telefono_contacto}
-                  data-testid="ventas-contacto-telefono"
-                  onChange={(event) => setContactField('telefono_contacto', event.target.value)}
-                />
-              </label>
+                  <label className="ventas-create-modal__field">
+                    <span>Telefono (opcional)</span>
+                    <input
+                      type="text"
+                      value={contact.telefono_contacto}
+                      data-testid="ventas-contacto-telefono"
+                      onChange={(event) => setContactField('telefono_contacto', event.target.value)}
+                    />
+                  </label>
+                </div>
+              </details>
+
+              <div className="ventas-finalizar-modal__subsection-title ventas-finalizar-modal__field-wide">
+                <i className="bi bi-diagram-3" />
+                <div><strong>Canal y modalidad</strong><small>Define como se recibio y entregara el pedido.</small></div>
+              </div>
 
               <AppSelect
                 label="Canal"
@@ -722,20 +763,29 @@ export default function VentaFinalizarOperacionModal({
                 className="app-select--compact app-select--warm"
               />
 
-              <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
-                <span>Observacion</span>
-                <input
-                  type="text"
-                  value={contact.observacion_contexto}
-                  onChange={(event) => setContactField('observacion_contexto', event.target.value)}
-                />
-              </label>
+              <details
+                className="ventas-finalizar-modal__optional ventas-finalizar-modal__field-wide"
+                open={Boolean(contact.observacion_contexto)}
+              >
+                <summary><i className="bi bi-plus-circle" /> Agregar observacion</summary>
+                <label className="ventas-create-modal__field">
+                  <span>Observacion</span>
+                  <input
+                    type="text"
+                    value={contact.observacion_contexto}
+                    onChange={(event) => setContactField('observacion_contexto', event.target.value)}
+                  />
+                </label>
+              </details>
             </div>
           </section>
 
           {activeTab === 'pendiente' && contact.modalidad === 'DELIVERY' ? (
             <section className="ventas-finalizar-modal__section">
-              <strong>Delivery</strong>
+              <div className="ventas-finalizar-modal__section-heading">
+                <span><i className="bi bi-truck" /></span>
+                <div><strong>Delivery</strong><small>Datos para coordinar la entrega.</small></div>
+              </div>
               <div className="ventas-finalizar-modal__grid">
                 <label className="ventas-create-modal__field">
                   <span>Nombre receptor (opcional)</span>
@@ -767,7 +817,10 @@ export default function VentaFinalizarOperacionModal({
 
           {activeTab === 'pagar' ? (
             <section className="ventas-finalizar-modal__section">
-              <strong>Pago</strong>
+              <div className="ventas-finalizar-modal__section-heading">
+                <span><i className="bi bi-credit-card-2-front" /></span>
+                <div><strong>Pago</strong><small>Selecciona el metodo y completa sus datos.</small></div>
+              </div>
               <div className="ventas-finalizar-modal__grid">
                 <AppSelect
                   label="Metodo de pago"
@@ -826,7 +879,10 @@ export default function VentaFinalizarOperacionModal({
             </section>
           ) : (
             <section className="ventas-finalizar-modal__section">
-              <strong>Pago pendiente</strong>
+              <div className="ventas-finalizar-modal__section-heading">
+                <span><i className="bi bi-clock-history" /></span>
+                <div><strong>Pago pendiente</strong><small>El pedido quedara abierto hasta registrar su pago.</small></div>
+              </div>
               <label className="ventas-create-modal__field">
                 <span>Observacion pago</span>
                 <input
@@ -839,7 +895,17 @@ export default function VentaFinalizarOperacionModal({
             </section>
           )}
 
-          <div className="ventas-finalizar-modal__total ventas-finalizar-modal__totals-breakdown" aria-live="polite">
+          {localError && !submitDialogError ? (
+            <div className="ventas-create-modal__error">{localError}</div>
+          ) : null}
+            </div>
+
+          <aside className="ventas-finalizar-modal__sale-summary" aria-live="polite">
+            <div className="ventas-finalizar-modal__sale-summary-heading">
+              <span><i className="bi bi-receipt" /></span>
+              <div><strong>Resumen de la venta</strong><small>Importes actuales de la operacion.</small></div>
+            </div>
+            <div className="ventas-finalizar-modal__total ventas-finalizar-modal__totals-breakdown">
             {shouldShowExtrasBreakdown ? (
               <>
                 <div>
@@ -879,14 +945,31 @@ export default function VentaFinalizarOperacionModal({
               </div>
             ) : null}
             <div className="is-total">
-              <span>Total</span>
+              <span>Total a cobrar</span>
               <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
             </div>
+            <div>
+              <span>Metodo de pago</span>
+              <strong>{activeTab === 'pagar' ? selectedPayment.label : 'Pago pendiente'}</strong>
+            </div>
+            <div>
+              <span>Monto recibido</span>
+              <strong>{activeTab === 'pagar' && composer.paymentMethod === 'efectivo' ? composer.formatCurrency(Number(composer.cashReceived || 0)) : '—'}</strong>
+            </div>
+            <div>
+              <span>Cambio</span>
+              <strong>{activeTab === 'pagar' && composer.paymentMethod === 'efectivo' ? composer.formatCurrency(composer.change) : '—'}</strong>
+            </div>
           </div>
-
-          {localError && !submitDialogError ? (
-            <div className="ventas-create-modal__error">{localError}</div>
-          ) : null}
+            <div className={`ventas-finalizar-modal__status ${isReadyToSubmit ? 'is-ready' : 'is-pending'}`}>
+              <i className={`bi ${isReadyToSubmit ? 'bi-check-circle-fill' : 'bi-info-circle-fill'}`} />
+              <div>
+                <strong>{isReadyToSubmit ? 'Listo para registrar la venta' : activeTab === 'pendiente' ? 'Pedido con pago pendiente' : 'Completa los datos requeridos'}</strong>
+                <span>{isReadyToSubmit ? 'Revisa los datos y confirma para completar.' : 'Verifica la informacion antes de continuar.'}</span>
+              </div>
+            </div>
+          </aside>
+          </div>
         </div>
 
         <footer className="ventas-modal-footer">
@@ -914,7 +997,7 @@ export default function VentaFinalizarOperacionModal({
       {phoneSaveDialog.open ? (
         <div className="ventas-finalizar-error-backdrop" role="presentation">
           <section
-            className="ventas-modal-card ventas-finalizar-error-modal"
+            className="ventas-modal-card ventas-finalizar-error-modal ventas-finalizar-phone-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="ventas-finalizar-phone-title"
@@ -934,7 +1017,7 @@ export default function VentaFinalizarOperacionModal({
                 </p>
               ) : null}
             </div>
-            <div className="ventas-modal-footer">
+            <div className="ventas-modal-footer ventas-finalizar-phone-modal__actions">
               <button type="button" className="btn btn-outline-secondary" onClick={handlePhoneSaveCancel} disabled={phoneSaveDialog.saving}>
                 Cancelar
               </button>
@@ -945,6 +1028,34 @@ export default function VentaFinalizarOperacionModal({
                 {phoneSaveDialog.saving ? 'Guardando...' : 'Guardar y continuar'}
               </button>
             </div>
+          </section>
+        </div>
+      ) : null}
+      {phoneSaveSuccessDialog.open ? (
+        <div className="ventas-finalizar-error-backdrop" role="presentation">
+          <section
+            className="ventas-modal-card ventas-finalizar-error-modal ventas-finalizar-phone-success-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ventas-finalizar-phone-success-title"
+          >
+            <div className="ventas-finalizar-error-modal__icon ventas-finalizar-phone-success-modal__icon" aria-hidden="true">
+              <i className="bi bi-check2-circle" />
+            </div>
+            <div className="ventas-finalizar-error-modal__copy">
+              <h5 id="ventas-finalizar-phone-success-title">Telefono guardado</h5>
+              <p>
+                El telefono {phoneSaveSuccessDialog.telefono} se guardo correctamente para {selectedClienteLabel || 'el cliente'}.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary ventas-finalizar-phone-success-modal__button"
+              onClick={handlePhoneSaveSuccessContinue}
+              autoFocus
+            >
+              Continuar
+            </button>
           </section>
         </div>
       ) : null}

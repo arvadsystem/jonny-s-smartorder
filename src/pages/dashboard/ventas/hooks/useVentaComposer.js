@@ -1,17 +1,22 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization, react-hooks/exhaustive-deps */
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 import {
   buildCartKey,
+  canAddStandaloneExtraToCart,
   createCartLineId,
   filterBySearch,
   findLineIndex,
   getExtrasCount,
+  getLineExtrasSubtotal,
   getExtrasSubtotal,
   getResultsLabel,
   isCustomizableVentaLineKind,
+  mergeEquivalentVentaLines,
   normalizeComplementIds,
   normalizeValidComplementIds,
   normalizeExtras,
+  parseVentaLineQuantity,
   toNormalizedId
 } from '../../../../modules/ventas/utils/ventasCartUtils';
 import {
@@ -29,35 +34,37 @@ import {
 import { formatCurrency, roundMoney } from '../../../../modules/ventas/utils/ventasMoneyUtils';
 import ventasService from '../../../../services/ventasService';
 import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
+import { buildCajaSucursalStorageKey } from '../utils/ventasCajaSucursalStorage';
 
 export { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 
 const DEFAULT_CATALOG_KEY = 'RECETAS';
 const DEFAULT_DEPARTMENT_NAME = 'ALITAS';
 const DEFAULT_DEPARTMENT_ID = '5';
-const CAJA_SUCURSAL_STORAGE_KEY = 'jonny:ventas:caja:sucursal';
 
-const readPersistedCajaSucursal = () => {
+const readPersistedCajaSucursal = (storageKey) => {
   if (typeof window === 'undefined') return '';
   try {
-    return String(window.sessionStorage.getItem(CAJA_SUCURSAL_STORAGE_KEY) || '').trim();
+    return String(window.sessionStorage.getItem(storageKey) || '').trim();
   } catch {
     return '';
   }
 };
 
-const persistCajaSucursal = (value) => {
+const persistCajaSucursal = (storageKey, value) => {
   if (typeof window === 'undefined') return;
   try {
     const normalized = String(value || '').trim();
-    if (normalized) window.sessionStorage.setItem(CAJA_SUCURSAL_STORAGE_KEY, normalized);
-    else window.sessionStorage.removeItem(CAJA_SUCURSAL_STORAGE_KEY);
+    if (normalized) window.sessionStorage.setItem(storageKey, normalized);
+    else window.sessionStorage.removeItem(storageKey);
   } catch {
     // Session storage puede estar deshabilitado.
   }
 };
 
-const isQuantityManagedVentaLineKind = (kind) => ['PRODUCTO', 'ITEM'].includes(String(kind || '').toUpperCase());
+const clearPersistedCajaSucursal = (storageKey) => persistCajaSucursal(storageKey, '');
+
+const isQuantityManagedVentaLineKind = (kind) => ['PRODUCTO', 'ITEM', 'RECETA'].includes(String(kind || '').toUpperCase());
 
 const resolveStandaloneExtraAvailableUnits = (entry) => {
   const stock = Number(entry?.stock_disponible);
@@ -114,6 +121,7 @@ const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = 
   cashReceived: '',
   referenciaPago: '',
   cart: [],
+  cartNotice: '',
   submitError: '',
   incompleteComplementCartKey: ''
 });
@@ -123,41 +131,10 @@ const resolveCatalogImageUrl = (row) => {
   return rawUrl ? resolveInventarioImageUrl(rawUrl) : null;
 };
 
-const inferSauceUnitsBaseFromText = (...sources) => {
-  const text = sources
-    .filter(Boolean)
-    .join(' ')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-  if (!text) return 1;
-  if (!/(alitas?|tenders?)/i.test(text)) return 1;
-  const match =
-    text.match(/\b(\d{1,3})\s*(?:alitas?|tenders?)\b/i) ||
-    text.match(/\b(\d{1,3})\s*(?:uds?|unidades?|pzas?|piezas?)\b/i) ||
-    text.match(/\((\d{1,3})\s*(?:uds?|unidades?|pzas?|piezas?)\)/i);
-  const units = Number(match?.[1] || 0);
-  return Number.isFinite(units) && units > 0 ? Math.max(1, Math.floor(units)) : 1;
-};
-
-const getQuantityAwareComplementLimit = (line, limit) => {
-  const baseLimit = Math.max(0, Number(limit || 0));
-  const quantity = Math.max(1, Number(line?.cantidad || 1));
-  if (baseLimit <= 0 || quantity <= 1) return baseLimit;
-
-  const wingUnitsBase = inferSauceUnitsBaseFromText(line?.nombre_item, line?.descripcion_item);
-  const fallbackBaseLimit = wingUnitsBase > 1 ? Math.ceil(wingUnitsBase / 6) : 0;
-  if (fallbackBaseLimit > 0 && fallbackBaseLimit === baseLimit) {
-    return Math.ceil((wingUnitsBase * quantity) / 6);
-  }
-
-  return baseLimit * quantity;
-};
-
 const getLineComplementRequirement = (line) => {
   const selectedCount = normalizeComplementIds(line?.complementos).length;
-  const required = getQuantityAwareComplementLimit(line, line?.minimo_complementos);
-  const rawMax = getQuantityAwareComplementLimit(line, line?.maximo_complementos);
+  const required = Math.max(0, Number(line?.minimo_complementos || 0));
+  const rawMax = Math.max(0, Number(line?.maximo_complementos || 0));
   const max = rawMax > 0 ? Math.max(required, rawMax) : 0;
   return {
     required,
@@ -207,14 +184,13 @@ const getLineComplementSelectionIssue = (line) => {
     };
   }
   if (requirement.max > 0 && requirement.selectedCount > requirement.max) {
-    const quantity = Math.max(1, Number(line.cantidad || 1));
     return {
       type: 'too_many',
       line,
       cartKey: line.cartKey,
       name,
       ...requirement,
-      message: `La cantidad de complementos de ${name} (cantidad ${quantity}) supera el maximo permitido. Seleccionados ${requirement.selectedCount}/${requirement.max}.`
+      message: `La cantidad de complementos de ${name} supera el maximo permitido. Seleccionados ${requirement.selectedCount}/${requirement.max}.`
     };
   }
   return null;
@@ -350,9 +326,20 @@ export const useVentaComposer = ({
   suppressSubmitErrorToast = false,
   onRequireAutoAuxiliar,
   resetKey,
-  canApplyDiscount = false
+  canApplyDiscount = false,
+  userId = null
 }) => {
-  const [state, setState] = useState(() => buildInitialState({ isSuperAdmin, defaultSucursalId }));
+  const cajaSucursalStorageKey = useMemo(
+    () => buildCajaSucursalStorageKey(userId),
+    [userId]
+  );
+  const [state, setState] = useState(() => {
+    const initialState = buildInitialState({ isSuperAdmin, defaultSucursalId });
+    if (!isSuperAdmin) return initialState;
+    const persisted = readPersistedCajaSucursal(buildCajaSucursalStorageKey(userId));
+    return persisted ? { ...initialState, selectedSucursal: persisted } : initialState;
+  });
+  const cajaSucursalStorageKeyRef = useRef(cajaSucursalStorageKey);
   const [complementModal, setComplementModal] = useState({
     open: false,
     mode: 'ADD',
@@ -381,13 +368,49 @@ export const useVentaComposer = ({
   });
   const globalExtrasCacheRef = useRef(new Map());
   const globalExtrasAbortRef = useRef(null);
+  const globalExtrasRequestIdRef = useRef(0);
   const [globalExtrasRetryToken, setGlobalExtrasRetryToken] = useState(0);
   const deferredSearch = useDeferredValue(state.search);
 
   useEffect(() => {
+    if (cajaSucursalStorageKeyRef.current === cajaSucursalStorageKey) return;
+    cajaSucursalStorageKeyRef.current = cajaSucursalStorageKey;
+    setState(() => {
+      const nextState = buildInitialState({ isSuperAdmin, defaultSucursalId });
+      if (!isSuperAdmin) return nextState;
+      const persisted = readPersistedCajaSucursal(cajaSucursalStorageKey);
+      return persisted ? { ...nextState, selectedSucursal: persisted } : nextState;
+    });
+    setComplementModal({
+      open: false,
+      mode: 'ADD',
+      kind: null,
+      row: null,
+      cartKey: '',
+      selected: [],
+      options: {},
+      error: ''
+    });
+    setExtrasModal({
+      open: false,
+      cartKey: '',
+      row: null,
+      options: [],
+      selected: [],
+      loading: false,
+      error: ''
+    });
+  }, [cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin]);
+
+  useEffect(() => {
     if (resetKey === undefined) return;
-    setState(buildInitialState({ isSuperAdmin, defaultSucursalId }));
-  }, [defaultSucursalId, isSuperAdmin, resetKey]);
+    setState(() => {
+      const nextState = buildInitialState({ isSuperAdmin, defaultSucursalId });
+      if (!isSuperAdmin) return nextState;
+      const persisted = readPersistedCajaSucursal(cajaSucursalStorageKey);
+      return persisted ? { ...nextState, selectedSucursal: persisted } : nextState;
+    });
+  }, [cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin, resetKey]);
 
   const setPartialState = (partial) => {
     setState((current) => ({
@@ -443,6 +466,19 @@ export const useVentaComposer = ({
 
   const selectedSucursalId = toNormalizedId(state.selectedSucursal);
   const hasSelectedSucursal = Boolean(selectedSucursalId);
+  const selectedSucursalCacheKey = selectedSucursalId ? `${cajaSucursalStorageKey}:${selectedSucursalId}` : '';
+
+  useEffect(() => {
+    globalExtrasAbortRef.current?.abort();
+    globalExtrasCacheRef.current.clear();
+    setGlobalExtrasCatalog({
+      options: [],
+      loading: false,
+      error: '',
+      sucursalId: null,
+      status: 'idle'
+    });
+  }, [cajaSucursalStorageKey]);
 
   useEffect(() => {
     const shouldLoadExtras = catalogsEnabled && (state.activeCatalog === 'EXTRAS' || extrasModal.open);
@@ -459,7 +495,7 @@ export const useVentaComposer = ({
     }
     if (!shouldLoadExtras) {
       globalExtrasAbortRef.current?.abort();
-      const cached = globalExtrasCacheRef.current.get(selectedSucursalId);
+      const cached = globalExtrasCacheRef.current.get(selectedSucursalCacheKey);
       setGlobalExtrasCatalog({
         options: cached?.options || [],
         loading: false,
@@ -470,7 +506,7 @@ export const useVentaComposer = ({
       return;
     }
 
-    const cached = globalExtrasCacheRef.current.get(selectedSucursalId);
+    const cached = globalExtrasCacheRef.current.get(selectedSucursalCacheKey);
     if (cached?.status === 'success') {
       setGlobalExtrasCatalog({ ...cached, loading: false, sucursalId: selectedSucursalId });
       return;
@@ -479,6 +515,17 @@ export const useVentaComposer = ({
     globalExtrasAbortRef.current?.abort();
     const controller = new AbortController();
     globalExtrasAbortRef.current = controller;
+    const requestId = globalExtrasRequestIdRef.current + 1;
+    globalExtrasRequestIdRef.current = requestId;
+    const requestUserKey = cajaSucursalStorageKey;
+    const requestSucursalId = selectedSucursalId;
+    const isCurrentGlobalExtrasRequest = () => (
+      globalExtrasRequestIdRef.current === requestId
+      && globalExtrasAbortRef.current === controller
+      && requestUserKey === cajaSucursalStorageKey
+      && requestSucursalId === selectedSucursalId
+      && !controller.signal.aborted
+    );
     setGlobalExtrasCatalog((current) => ({
       options: current.sucursalId === selectedSucursalId ? current.options : [],
       loading: true,
@@ -492,7 +539,7 @@ export const useVentaComposer = ({
       { signal: controller.signal }
     )
       .then((response) => {
-        if (controller.signal.aborted) return;
+        if (!isCurrentGlobalExtrasRequest()) return;
         const options = (Array.isArray(response) ? response : [])
           .filter((entry) => entry?.estado !== false)
           .map(normalizeGlobalExtraOption)
@@ -504,14 +551,17 @@ export const useVentaComposer = ({
           sucursalId: selectedSucursalId,
           status: 'success'
         };
-        globalExtrasCacheRef.current.set(selectedSucursalId, entry);
+        globalExtrasCacheRef.current.set(selectedSucursalCacheKey, entry);
         setGlobalExtrasCatalog(entry);
       })
       .catch((error) => {
-        if (controller.signal.aborted) {
-          setGlobalExtrasCatalog({ options: [], loading: false, error: '', sucursalId: selectedSucursalId, status: 'idle' });
+        if (controller.signal.aborted || globalExtrasRequestIdRef.current !== requestId) {
+          if (globalExtrasAbortRef.current === controller && globalExtrasRequestIdRef.current === requestId) {
+            setGlobalExtrasCatalog({ options: [], loading: false, error: '', sucursalId: selectedSucursalId, status: 'idle' });
+          }
           return;
         }
+        if (!isCurrentGlobalExtrasRequest()) return;
         const entry = {
           options: [],
           loading: false,
@@ -519,14 +569,14 @@ export const useVentaComposer = ({
           sucursalId: selectedSucursalId,
           status: 'error'
         };
-        globalExtrasCacheRef.current.set(selectedSucursalId, entry);
+        globalExtrasCacheRef.current.set(selectedSucursalCacheKey, entry);
         setGlobalExtrasCatalog(entry);
       });
 
     return () => {
       controller.abort();
     };
-  }, [catalogsEnabled, extrasModal.open, globalExtrasRetryToken, selectedSucursalId, state.activeCatalog]);
+  }, [cajaSucursalStorageKey, catalogsEnabled, extrasModal.open, globalExtrasRetryToken, selectedSucursalCacheKey, selectedSucursalId, state.activeCatalog]);
 
   useEffect(() => {
     setExtrasModal((current) => {
@@ -640,15 +690,26 @@ export const useVentaComposer = ({
       const validIds = new Set(normalizedSucursales.map((row) => String(row.id_sucursal)));
       const sessionSelection = String(defaultSucursalId || '').trim();
       const currentSelection = String(current.selectedSucursal || '').trim();
-      const persistedSelection = readPersistedCajaSucursal();
-      const nextSelection = validIds.has(sessionSelection)
-        ? sessionSelection
-        : validIds.has(currentSelection)
+      const persistedSelection = readPersistedCajaSucursal(cajaSucursalStorageKey);
+      if (currentSelection && !validIds.has(currentSelection)) {
+        clearPersistedCajaSucursal(cajaSucursalStorageKey);
+        return {
+          ...current,
+          selectedSucursal: '',
+          activeCatalog: DEFAULT_CATALOG_KEY,
+          activeCategory: resolveDefaultDepartmentId(tiposDepartamento),
+          search: ''
+        };
+      }
+      if (persistedSelection && !validIds.has(persistedSelection)) {
+        clearPersistedCajaSucursal(cajaSucursalStorageKey);
+      }
+      const nextSelection = validIds.has(currentSelection)
           ? currentSelection
           : validIds.has(persistedSelection)
             ? persistedSelection
-            : normalizedSucursales.length === 1
-              ? String(normalizedSucursales[0].id_sucursal)
+            : validIds.has(sessionSelection)
+              ? sessionSelection
               : '';
       if (currentSelection === nextSelection) return current;
       return {
@@ -659,14 +720,18 @@ export const useVentaComposer = ({
         search: ''
       };
     });
-  }, [allowSucursalAutoSelection, defaultSucursalId, isSuperAdmin, normalizedSucursales, tiposDepartamento]);
+  }, [allowSucursalAutoSelection, cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin, normalizedSucursales, tiposDepartamento]);
 
   useEffect(() => {
     if (isSuperAdmin) return;
-    setState((current) => ({
-      ...current,
-      selectedSucursal: String(defaultSucursalId || '')
-    }));
+    setState((current) => {
+      const nextSucursal = String(defaultSucursalId || '');
+      if (String(current.selectedSucursal || '') === nextSucursal) return current;
+      return {
+        ...current,
+        selectedSucursal: nextSucursal
+      };
+    });
   }, [defaultSucursalId, isSuperAdmin]);
 
   const selectedSucursalLabel = useMemo(() => {
@@ -776,7 +841,7 @@ export const useVentaComposer = ({
     [state.cart]
   );
   const extrasSubtotal = useMemo(
-    () => roundMoney(state.cart.reduce((total, line) => total + getExtrasSubtotal(line.extras), 0)),
+    () => roundMoney(state.cart.reduce((total, line) => total + getLineExtrasSubtotal(line), 0)),
     [state.cart]
   );
   const subtotal = roundMoney(baseSubtotal + extrasSubtotal);
@@ -913,26 +978,10 @@ export const useVentaComposer = ({
       }
 
       if (kind === 'ITEM') {
-        if (row.disponible === false) {
+        if (!canAddStandaloneExtraToCart(row)) {
           return {
             ...current,
             submitError: row.motivo_no_disponible || `${row.nombre || 'Extra'} no esta disponible.`
-          };
-        }
-
-        const availableUnits = resolveStandaloneExtraAvailableUnits(row);
-        if (availableUnits !== null && availableUnits <= 0) {
-          return {
-            ...current,
-            submitError: row.motivo_no_disponible || `No hay existencias suficientes para ${row.nombre || 'este extra'}.`
-          };
-        }
-
-        const alreadyInCart = getCurrentQuantityInCartByKind('ITEM', row.id_extra, nextCart);
-        if (availableUnits !== null && alreadyInCart >= availableUnits) {
-          return {
-            ...current,
-            submitError: `Stock maximo alcanzado para ${row.nombre || 'este extra'}.`
           };
         }
       }
@@ -947,16 +996,6 @@ export const useVentaComposer = ({
             submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
           };
         }
-        if (kind === 'ITEM') {
-          const maxAvailable = Number(currentLine.available_units ?? 0);
-          if (maxAvailable > 0 && nextQty > maxAvailable) {
-            return {
-              ...current,
-              submitError: `Stock maximo alcanzado para ${row.nombre || 'este extra'}.`
-            };
-          }
-        }
-
         const autoDiscount = canApplyDiscount && !currentLine.id_descuento_catalogo_linea
           ? requestedDiscount || resolveBestDiscountForLine({
             discounts: normalizedDescuentosCatalogo,
@@ -967,7 +1006,7 @@ export const useVentaComposer = ({
 
         nextCart[index] = {
           ...currentLine,
-          cantidad: Number(currentLine.cantidad ?? 0) + 1,
+          cantidad: nextQty,
           id_descuento_catalogo_linea: currentLine.id_descuento_catalogo_linea || (autoDiscount ? String(autoDiscount.id_descuento_catalogo) : '')
         };
         return {
@@ -991,12 +1030,14 @@ export const useVentaComposer = ({
         ...catalogLine,
         id_descuento_catalogo_linea: autoDiscount ? String(autoDiscount.id_descuento_catalogo) : ''
       });
+      const mergedResult = mergeEquivalentVentaLines(nextCart);
 
       return {
         ...current,
-        cart: nextCart,
+        cart: mergedResult.cart,
         incompleteComplementCartKey: '',
-        submitError: ''
+        submitError: '',
+        cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
       };
     });
   };
@@ -1061,22 +1102,24 @@ export const useVentaComposer = ({
       rebuilt.extras = normalizeExtras(editedLine.extras);
       setState((current) => {
         const cartKey = editedLine.lineId ? (editedLine.cartKey || rebuilt.cartKey) : rebuilt.cartKey;
+        const nextCart = current.cart.map((line) =>
+          line.cartKey === complementModal.cartKey
+            ? {
+              ...line,
+              lineId,
+              cartKey,
+              complementos: rebuilt.complementos,
+              complementos_incompletos_autorizados: rebuilt.complementos_incompletos_autorizados
+            }
+            : line
+        );
+        const mergedResult = mergeEquivalentVentaLines(nextCart);
         return {
           ...current,
-          cart: current.cart.map((line) =>
-            line.cartKey === complementModal.cartKey
-              ? {
-                ...line,
-                lineId,
-                cartKey,
-                cantidad: 1,
-                complementos: rebuilt.complementos,
-                complementos_incompletos_autorizados: rebuilt.complementos_incompletos_autorizados
-              }
-              : line
-          ),
+          cart: mergedResult.cart,
           incompleteComplementCartKey: '',
-          submitError: ''
+          submitError: '',
+          cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
         };
       });
     } else {
@@ -1100,7 +1143,7 @@ export const useVentaComposer = ({
     return true;
   };
 
-  const updateLine = (cartKey, updater) => {
+  const updateLine = (cartKey, updater, options = {}) => {
     setState((current) => {
       const nextCart = current.cart
         .map((line) => {
@@ -1118,24 +1161,15 @@ export const useVentaComposer = ({
             }
           }
 
-          if (candidate.kind === 'ITEM') {
-            const requested = Number(candidate.cantidad ?? 0);
-            const maxAvailable = Number(candidate.available_units ?? 0);
-            if (maxAvailable > 0 && requested > maxAvailable) {
-              return {
-                ...candidate,
-                cantidad: maxAvailable
-              };
-            }
-          }
-
           const adjustedExtras = normalizeExtras(candidate.extras);
           const isCustomLine = isCustomizableVentaLineKind(candidate.kind);
           const lineId = isCustomLine ? String(candidate.lineId || createCartLineId()) : null;
+          const rawQuantity = Number(candidate.cantidad ?? 0);
+          const quantity = rawQuantity <= 0 ? 0 : (parseVentaLineQuantity(candidate.cantidad) || 1);
           return {
             ...candidate,
             lineId,
-            cantidad: isCustomLine ? 1 : candidate.cantidad,
+            cantidad: quantity,
             extras: adjustedExtras,
             cartKey: isCustomLine
               ? (candidate.lineId ? candidate.cartKey : buildCartKey(candidate.kind, candidate.entityId, candidate.complementos, adjustedExtras, lineId))
@@ -1143,12 +1177,22 @@ export const useVentaComposer = ({
           };
         })
         .filter((line) => Number(line.cantidad ?? 0) > 0);
+      if (options?.merge === false) {
+        return {
+          ...current,
+          cart: nextCart,
+          incompleteComplementCartKey: '',
+          submitError: ''
+        };
+      }
+      const mergedResult = mergeEquivalentVentaLines(nextCart);
 
       return {
         ...current,
-        cart: nextCart,
+        cart: mergedResult.cart,
         incompleteComplementCartKey: '',
-        submitError: ''
+        submitError: '',
+        cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
       };
     });
   };
@@ -1187,7 +1231,7 @@ export const useVentaComposer = ({
     );
     const unavailableSelection = normalizeExtras(selectedExtras).find((entry) => {
       const option = optionsById.get(Number(entry.id_extra));
-      return !option || option.disponible !== true;
+      return !option || !canAddStandaloneExtraToCart(option);
     });
     if (unavailableSelection) {
       const option = optionsById.get(Number(unavailableSelection.id_extra));
@@ -1206,21 +1250,23 @@ export const useVentaComposer = ({
       const nextCartKey = currentLine.lineId
         ? currentLine.cartKey
         : buildCartKey(currentLine.kind, currentLine.entityId, currentLine.complementos, nextExtras, lineId);
+      const nextCart = current.cart.map((line) =>
+        line.cartKey === extrasModal.cartKey
+          ? {
+            ...line,
+            lineId,
+            extras: nextExtras,
+            cartKey: nextCartKey
+          }
+          : line
+      );
+      const mergedResult = mergeEquivalentVentaLines(nextCart);
       return {
         ...current,
-        cart: current.cart.map((line) =>
-          line.cartKey === extrasModal.cartKey
-            ? {
-              ...line,
-              lineId,
-              cantidad: 1,
-              extras: nextExtras,
-              cartKey: nextCartKey
-            }
-            : line
-        ),
+        cart: mergedResult.cart,
         incompleteComplementCartKey: '',
-        submitError: ''
+        submitError: '',
+        cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
       };
     });
     setExtrasModal({
@@ -1345,7 +1391,7 @@ export const useVentaComposer = ({
     try {
       const response = await onSubmit(
         buildPaidSalePayload({ contacto, contexto, cuentaDividida }),
-        { suppressErrorToast: suppressSubmitErrorToast }
+        { suppressErrorToast: suppressSubmitErrorToast, origin: 'CAJA' }
       );
 
       resetComposer({ preserveSucursal: true, preserveSession: true });
@@ -1411,6 +1457,7 @@ export const useVentaComposer = ({
     cashReceived: state.cashReceived,
     referenciaPago: state.referenciaPago,
     cart: state.cart,
+    cartNotice: state.cartNotice,
     submitError: state.submitError,
     incompleteComplementCartKey: state.incompleteComplementCartKey,
     currentCatalogRows,
@@ -1419,7 +1466,7 @@ export const useVentaComposer = ({
     currentCatalogStatus: state.activeCatalog === 'EXTRAS' ? globalExtrasCatalog.status : null,
     retryGlobalExtras: () => {
       if (!selectedSucursalId) return;
-      globalExtrasCacheRef.current.delete(selectedSucursalId);
+      globalExtrasCacheRef.current.delete(selectedSucursalCacheKey);
       setGlobalExtrasRetryToken((current) => current + 1);
     },
     discountCatalogRows,
@@ -1480,7 +1527,7 @@ export const useVentaComposer = ({
     setSucursalPickerOpen: (value) => setPartialState({ sucursalPickerOpen: value }),
     setSelectedSucursal: (value) => {
       const nextSucursal = String(value || '');
-      persistCajaSucursal(nextSucursal);
+      persistCajaSucursal(cajaSucursalStorageKey, nextSucursal);
       setState((current) => {
         const changed = String(current.selectedSucursal || '') !== nextSucursal;
         return {
@@ -1562,27 +1609,35 @@ export const useVentaComposer = ({
       }),
     setLineDiscount: (cartKey, discountId) => {
       if (!canApplyDiscount) {
-        setState((current) => ({
-          ...current,
-          selectedDiscountId: '',
-          cart: current.cart.map((line) =>
+        setState((current) => {
+          const mergedResult = mergeEquivalentVentaLines(current.cart.map((line) =>
             line.cartKey === cartKey
               ? { ...line, id_descuento_catalogo_linea: '' }
               : line
-          ),
-          submitError: ''
-        }));
+          ));
+          return {
+            ...current,
+            selectedDiscountId: '',
+            cart: mergedResult.cart,
+            submitError: '',
+            cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
+          };
+        });
         return;
       }
-      setState((current) => ({
-        ...current,
-        cart: current.cart.map((line) =>
+      setState((current) => {
+        const mergedResult = mergeEquivalentVentaLines(current.cart.map((line) =>
           line.cartKey === cartKey
             ? { ...line, id_descuento_catalogo_linea: discountId || '' }
             : line
-        ),
-        submitError: ''
-      }));
+        ));
+        return {
+          ...current,
+          cart: mergedResult.cart,
+          submitError: '',
+          cartNotice: mergedResult.merged ? 'Se combinaron lineas identicas del carrito.' : current.cartNotice
+        };
+      });
     },
     setCashReceived: (value) => setPartialState({ cashReceived: value }),
     setReferenciaPago: (value) => setPartialState({ referenciaPago: value }),
@@ -1595,6 +1650,7 @@ export const useVentaComposer = ({
     closeExtrasModal,
     confirmExtrasModal,
     getExtrasSubtotal,
+    getLineExtrasSubtotal,
     getExtrasCount,
     updateLine,
     removeLine,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 import { toPublicMenuUiErrorMessage } from '../utils/publicMenuApiError';
 import {
@@ -170,9 +170,14 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncWarning, setSyncWarning] = useState('');
+  const requestSequenceRef = useRef(0);
 
   // Carga catalogo real por sucursal y tipo de pedido.
   const loadCatalog = useCallback(async ({ forceRefresh = false } = {}) => {
+    const requestId = requestSequenceRef.current + 1;
+    requestSequenceRef.current = requestId;
+    const isCurrentRequest = () => requestSequenceRef.current === requestId;
+
     if (!branchId) {
       setProducts([]);
       setMenuSummary(null);
@@ -205,10 +210,12 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
         forceRefresh
       });
 
+      if (!isCurrentRequest()) return null;
       setProducts(Array.isArray(response?.items) ? response.items : []);
       setMenuSummary(response?.menu || null);
       writeCatalogSnapshot(snapshotKey, response);
     } catch (err) {
+      if (!isCurrentRequest()) return null;
       const offline = typeof window !== 'undefined' && window.navigator?.onLine === false;
       const fallbackMessage = offline
         ? 'No hay conexion a internet. Verifica tu red e intenta nuevamente.'
@@ -228,13 +235,17 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
       }
     } finally {
       // Si hubo snapshot, la UI ya se mantenia visible; evitamos overlay de carga tardio.
-      if (!hasSnapshot) setLoading(false);
+      if (isCurrentRequest() && !hasSnapshot) setLoading(false);
     }
+    return null;
   }, [branchId, orderType]);
 
   // Re-carga cuando cambia contexto base (sucursal/tipo pedido).
   useEffect(() => {
-    loadCatalog();
+    void loadCatalog();
+    return () => {
+      requestSequenceRef.current += 1;
+    };
   }, [loadCatalog]);
 
   useEffect(() => {
@@ -313,6 +324,11 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
     };
   }, [filteredProducts]);
 
+  const reloadCatalog = useCallback(
+    () => loadCatalog({ forceRefresh: true }),
+    [loadCatalog]
+  );
+
   return {
     products,
     availableProducts,
@@ -327,6 +343,6 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
     stats,
     setSearchTerm,
     setSelectedCategory,
-    reloadCatalog: loadCatalog
+    reloadCatalog
   };
 };

@@ -15,13 +15,13 @@ const buildQuery = (params = {}) => {
 
 const normalizeRows = (rows) => (Array.isArray(rows) ? rows : []);
 
-const getSafeOpenSessions = async (params = {}) => {
+const getSafeOpenSessions = async (params = {}, config = {}) => {
   const idSucursal = Number.parseInt(String(params?.id_sucursal ?? ''), 10);
   if (!Number.isInteger(idSucursal) || idSucursal <= 0) return [];
 
   const attempts = [
-    () => apiFetch(`/ventas/cajas/sesiones-abiertas${buildQuery({ id_sucursal: idSucursal })}`, 'GET'),
-    () => apiFetch(`/ventas/cajas/sesiones${buildQuery({ id_sucursal: idSucursal })}`, 'GET')
+    () => apiFetch(`/ventas/cajas/sesiones-abiertas${buildQuery({ id_sucursal: idSucursal })}`, 'GET', null, config),
+    () => apiFetch(`/ventas/cajas/sesiones${buildQuery({ id_sucursal: idSucursal })}`, 'GET', null, config)
   ];
 
   for (const attempt of attempts) {
@@ -94,7 +94,7 @@ const cajasService = {
 
   listSesiones: (params = {}) => apiFetch(`/ventas/cajas/sesiones${buildQuery(params)}`, 'GET'),
   listSesionesAbiertas: (params = {}) => apiFetch(`/ventas/cajas/sesiones-abiertas${buildQuery(params)}`, 'GET'),
-  listSesionesAbiertasSafe: (params = {}) => getSafeOpenSessions(params),
+  listSesionesAbiertasSafe: (params = {}, config = {}) => getSafeOpenSessions(params, config),
 
   getSesionById: (idSesionCaja, params = {}) =>
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}${buildQuery(params)}`, 'GET'),
@@ -117,12 +117,19 @@ const cajasService = {
     apiFetch('/ventas/cajas/mi-sesion/ingresos', 'POST', payload),
   registrarMiSesionEgreso: (payload) =>
     apiFetch('/ventas/cajas/mi-sesion/egresos', 'POST', payload),
+  registrarSesionIngreso: (idSesionCaja, payload) =>
+    apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/ingresos`, 'POST', payload),
+  registrarSesionEgreso: (idSesionCaja, payload) =>
+    apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/egresos`, 'POST', payload),
 
   editCierre: (idCierreCaja, payload) =>
     apiFetch(`/ventas/cajas/cierres/${idCierreCaja}`, 'PATCH', payload),
 
   resolveCloseDifference: (idCierreCaja, payload) =>
     apiFetch(`/ventas/cajas/cierres/${idCierreCaja}/resolucion`, 'PATCH', payload),
+
+  retryCloseEmail: (idCierreCaja) =>
+    apiFetch(`/ventas/cajas/cierres/${idCierreCaja}/reintentar-correo`, 'POST'),
 
   createArqueo: (idSesionCaja, payload) =>
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/arqueos`, 'POST', payload),

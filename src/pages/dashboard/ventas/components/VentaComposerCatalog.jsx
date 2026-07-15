@@ -13,8 +13,12 @@ const buildDiscountBadgeLabel = (discount) => {
   return `L ${value.toFixed(0)} OFF`;
 };
 
-const isExplicitlyOutOfStock = (row, isProducto) => {
+const isExplicitlyOutOfStock = (row, isProducto, isExtra = false) => {
   if (isProducto) return Number(row?.cantidad ?? row?.stock_disponible ?? 0) <= 0;
+  if (isExtra) {
+    const unavailableCode = String(row?.codigo_no_disponible || '').trim().toUpperCase();
+    return row?.disponible === false && unavailableCode !== 'EXTRA_STOCK_INSUFICIENTE';
+  }
 
   const availabilityFields = [
     row?.disponible,
@@ -122,13 +126,15 @@ export default function VentaComposerCatalog({
   const visibleCatalogRows = composer.currentCatalogRows.filter((row) => {
     if (isDiscountCatalog) return false;
     const isProducto = composer.activeCatalog === 'PRODUCTOS';
-    const isOutOfStock = isExplicitlyOutOfStock(row, isProducto);
+    const isExtra = composer.activeCatalog === 'EXTRAS';
+    const isOutOfStock = isExplicitlyOutOfStock(row, isProducto, isExtra);
     return showOutOfStock ? isOutOfStock : !isOutOfStock;
   });
   const outOfStockCount = composer.currentCatalogRows.filter((row) => {
     if (isDiscountCatalog) return false;
     const isProducto = composer.activeCatalog === 'PRODUCTOS';
-    return isExplicitlyOutOfStock(row, isProducto);
+    const isExtra = composer.activeCatalog === 'EXTRAS';
+    return isExplicitlyOutOfStock(row, isProducto, isExtra);
   }).length;
 
   return (
@@ -406,7 +412,8 @@ export default function VentaComposerCatalog({
             const imageSrc = resolveImageUrl(row);
             const precio = Number(row.precio || 0);
             const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
-            const isOutOfStock = isExplicitlyOutOfStock(row, isProducto);
+            const isOutOfStock = isExplicitlyOutOfStock(row, isProducto, isExtra);
+            const isStockWarning = isExtra && String(row?.codigo_no_disponible || '').trim().toUpperCase() === 'EXTRA_STOCK_INSUFICIENTE';
             const badgeDiscount = composer.getBestCatalogDiscount(kind, row);
             const badgeLabel = buildDiscountBadgeLabel(badgeDiscount);
 
@@ -459,7 +466,7 @@ export default function VentaComposerCatalog({
                     </div>
                   ) : (
                     <div className={`vcp-card__stock ${isOutOfStock ? 'is-empty' : ''}`}>
-                      {isOutOfStock ? 'Agotado' : isExtra ? 'Extra independiente' : 'Preparacion de cocina'}
+                      {isStockWarning ? 'Stock bajo' : isOutOfStock ? 'Agotado' : isExtra ? 'Extra independiente' : 'Preparacion de cocina'}
                     </div>
                   )}
 

@@ -8,7 +8,7 @@ const MenuProductGrid = ({
   onIncrease,
   onDecrease
 }) => (
-  <div className="pm-menu-product-grid" aria-label="Productos del menu">
+  <div className="pm-menu-product-grid" aria-label="Elementos del menu">
     {products.map((product) => {
       const idDetalle = Number(product?.id_detalle_menu || 0);
       return (

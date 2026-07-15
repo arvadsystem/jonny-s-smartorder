@@ -447,6 +447,7 @@ const getTelefonoReferencia = (empleado) =>
 const SUGGESTION_LIMIT = 8;
 const MAX_EMPLEADOS_PAGE_CACHE = 24;
 const GLOBAL_STATS_FETCH_LIMIT = 1;
+const EMPLEADOS_FETCH_BATCH_LIMIT = 100;
 
 const isAbortError = (error) =>
   Boolean(error) && (
@@ -847,7 +848,7 @@ export default function Empleados({ openToast }) {
   const [page, setPage] = useState(1);
   const isTableView = viewMode === "table";
   const limit = isTableView ? 10 : 9;
-  const [total, setTotal] = useState(0);
+  const [, setTotal] = useState(0);
   const [globalStats, setGlobalStats] = useState({ total: 0, activas: 0, inactivas: 0 });
   const [predictiveSuggestions, setPredictiveSuggestions] = useState([]);
 
@@ -898,7 +899,6 @@ export default function Empleados({ openToast }) {
   const requestIdRef = useRef(0);
   const globalStatsRequestIdRef = useRef(0);
   const listAbortRef = useRef(null);
-  const listPrefetchAbortRef = useRef(null);
   const suggestionsAbortRef = useRef(null);
   const empleadosListCacheRef = useRef(new Map());
   const catalogosBaseCargadosRef = useRef(false);
@@ -911,8 +911,6 @@ export default function Empleados({ openToast }) {
   const telefonoReferenciaCaretRef = useRef(null);
   const cargoModalOpenedAtRef = useRef(0);
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
   const isAnyDrawerOpen = showModal || filtersOpen;
 
   const blurFocusedElementInside = useCallback((containerId) => {
@@ -1613,15 +1611,13 @@ export default function Empleados({ openToast }) {
   );
 
   const buildEmpleadosCacheKey = useCallback(
-    (targetPage) =>
+    () =>
       JSON.stringify({
-        page: Number(targetPage) || 1,
-        limit,
         search: normalizeSearchText(debouncedSearch),
         sucursal: toEmpleadoId(selectedSucursalFilter) || null,
         estado: estadoFiltro,
       }),
-    [limit, debouncedSearch, selectedSucursalFilter, estadoFiltro]
+    [debouncedSearch, selectedSucursalFilter, estadoFiltro]
   );
 
   const setEmpleadosCacheEntry = useCallback((cacheKey, data) => {
@@ -1643,61 +1639,47 @@ export default function Empleados({ openToast }) {
 
   const clearEmpleadosListCache = useCallback(() => {
     empleadosListCacheRef.current.clear();
-    listPrefetchAbortRef.current?.abort();
-    listPrefetchAbortRef.current = null;
   }, []);
 
-  const prefetchEmpleadosPage = useCallback(
-    async (targetPage, totalKnown = null) => {
-      const nextPage = Number(targetPage);
-      if (!Number.isFinite(nextPage) || nextPage < 1) return;
+  const fetchVisibleEmpleadosCollection = useCallback(
+    async ({ signal } = {}) => {
+      const normalizedSucursalId = toEmpleadoId(selectedSucursalFilter);
+      const estadoQuery = estadoFiltro === "inactivo" ? false : true;
+      const visibleItems = [];
 
-      const totalValue = Number.isFinite(Number(totalKnown)) ? Number(totalKnown) : null;
-      if (totalValue !== null) {
-        const totalPages = Math.max(1, Math.ceil(totalValue / limit));
-        if (nextPage > totalPages) return;
-      }
+      const firstResponse = await personaService.getEmpleados({
+        page: 1,
+        limit: EMPLEADOS_FETCH_BATCH_LIMIT,
+        nombre: debouncedSearch || undefined,
+        id_sucursal: normalizedSucursalId || undefined,
+        estado: estadoQuery,
+        signal,
+      });
 
-      const cacheKey = buildEmpleadosCacheKey(nextPage);
-      if (empleadosListCacheRef.current.has(cacheKey)) return;
+      const { items: firstItems, total: totalResp } = normalizeListResponse(firstResponse);
+      visibleItems.push(...firstItems.filter((item) => !shouldHideSystemEmployee(item)));
 
-      listPrefetchAbortRef.current?.abort();
-      const controller = new AbortController();
-      listPrefetchAbortRef.current = controller;
-
-      try {
-        const normalizedSucursalId = toEmpleadoId(selectedSucursalFilter);
-        const estadoQuery = estadoFiltro === "inactivo" ? false : true;
-        const resp = await personaService.getEmpleados({
-          page: nextPage,
-          limit,
+      const totalPagesRaw = Math.max(1, Math.ceil(Math.max(0, Number(totalResp) || 0) / EMPLEADOS_FETCH_BATCH_LIMIT));
+      for (let rawPage = 2; rawPage <= totalPagesRaw; rawPage += 1) {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        const response = await personaService.getEmpleados({
+          page: rawPage,
+          limit: EMPLEADOS_FETCH_BATCH_LIMIT,
           nombre: debouncedSearch || undefined,
           id_sucursal: normalizedSucursalId || undefined,
           estado: estadoQuery,
-          signal: controller.signal,
+          signal,
         });
-
-        if (!mountedRef.current || controller.signal.aborted) return;
-        const { items, total: totalResp } = normalizeListResponse(resp);
-        const visibleItems = items.filter((item) => !shouldHideSystemEmployee(item));
-        const adjustedTotal = Math.max(0, totalResp - Math.max(0, items.length - visibleItems.length));
-        setEmpleadosCacheEntry(cacheKey, { items: visibleItems, total: adjustedTotal });
-      } catch (error) {
-        if (isAbortError(error)) return;
-      } finally {
-        if (listPrefetchAbortRef.current === controller) {
-          listPrefetchAbortRef.current = null;
-        }
+        const { items } = normalizeListResponse(response);
+        visibleItems.push(...items.filter((item) => !shouldHideSystemEmployee(item)));
       }
+
+      return {
+        items: visibleItems,
+        total: visibleItems.length,
+      };
     },
-    [
-      buildEmpleadosCacheKey,
-      debouncedSearch,
-      estadoFiltro,
-      limit,
-      selectedSucursalFilter,
-      setEmpleadosCacheEntry,
-    ]
+    [debouncedSearch, estadoFiltro, selectedSucursalFilter]
   );
 
   const cargarCatalogosBase = useCallback(async () => {
@@ -1748,20 +1730,17 @@ export default function Empleados({ openToast }) {
   const cargarEmpleados = useCallback(async (options = {}) => {
     const requestId = ++requestIdRef.current;
     const force = Boolean(options?.force);
-    const requestedPage = Number(options?.page);
-    const targetPage = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : page;
 
     listAbortRef.current?.abort();
     listAbortRef.current = null;
 
-    const cacheKey = buildEmpleadosCacheKey(targetPage);
+    const cacheKey = buildEmpleadosCacheKey();
     if (!force) {
       const cached = empleadosListCacheRef.current.get(cacheKey);
       if (cached) {
         setEmpleados(Array.isArray(cached.items) ? cached.items : []);
         setTotal(Math.max(0, Number(cached.total) || 0));
         setLoading(false);
-        prefetchEmpleadosPage(targetPage + 1, cached.total);
         return;
       }
     }
@@ -1771,25 +1750,14 @@ export default function Empleados({ openToast }) {
     listAbortRef.current = controller;
 
     try {
-      const normalizedSucursalId = toEmpleadoId(selectedSucursalFilter);
-      const estadoQuery = estadoFiltro === "inactivo" ? false : true;
-      const resp = await personaService.getEmpleados({
-        page: targetPage,
-        limit,
-        nombre: debouncedSearch || undefined,
-        id_sucursal: normalizedSucursalId || undefined,
-        estado: estadoQuery,
-        signal: controller.signal,
-      });
+      const resp = await fetchVisibleEmpleadosCollection({ signal: controller.signal });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
-      const { items, total: totalResp } = normalizeListResponse(resp);
-      const visibleItems = items.filter((item) => !shouldHideSystemEmployee(item));
-      const adjustedTotal = Math.max(0, totalResp - Math.max(0, items.length - visibleItems.length));
+      const visibleItems = Array.isArray(resp?.items) ? resp.items : [];
+      const adjustedTotal = Math.max(0, Number(resp?.total) || visibleItems.length);
       setEmpleados(visibleItems);
       setTotal(adjustedTotal);
       setEmpleadosCacheEntry(cacheKey, { items: visibleItems, total: adjustedTotal });
-      prefetchEmpleadosPage(targetPage + 1, adjustedTotal);
     } catch (error) {
       if (isAbortError(error)) return;
       if (!mountedRef.current) return;
@@ -1803,14 +1771,9 @@ export default function Empleados({ openToast }) {
     }
   }, [
     buildEmpleadosCacheKey,
-    page,
-    limit,
-    debouncedSearch,
-    estadoFiltro,
+    fetchVisibleEmpleadosCollection,
     safeToast,
-    selectedSucursalFilter,
     setEmpleadosCacheEntry,
-    prefetchEmpleadosPage,
   ]);
 
   const cargarEmpleadosGlobalStats = useCallback(async () => {
@@ -1873,8 +1836,6 @@ export default function Empleados({ openToast }) {
       mountedRef.current = false;
       listAbortRef.current?.abort();
       listAbortRef.current = null;
-      listPrefetchAbortRef.current?.abort();
-      listPrefetchAbortRef.current = null;
     };
   }, []);
 
@@ -3282,10 +3243,21 @@ export default function Empleados({ openToast }) {
 
     return filtered;
   }, [empleados, search, estadoFiltro, sortBy, getPersonaNombre, getSucursalNombre]);
+  const paginationTotal = empleadosFiltrados.length;
+  const totalPages = Math.max(1, Math.ceil(paginationTotal / limit));
+  const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
+  const empleadosPagina = useMemo(() => {
+    const startIndex = Math.max(0, (page - 1) * limit);
+    return empleadosFiltrados.slice(startIndex, startIndex + limit);
+  }, [empleadosFiltrados, limit, page]);
   const pageWindowLabel = useMemo(
-    () => buildPageRangeLabel({ page, limit, total, currentLength: empleadosFiltrados.length }),
-    [empleadosFiltrados.length, limit, page, total]
+    () => buildPageRangeLabel({ page, limit, total: paginationTotal, currentLength: empleadosPagina.length }),
+    [empleadosPagina.length, limit, page, paginationTotal]
   );
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
 
   useEffect(() => {
     const searchTerm = normalizeSearchText(search);
@@ -3528,8 +3500,8 @@ export default function Empleados({ openToast }) {
 
         <div className="inv-catpro-body inv-prod-body p-3">
           <div className="inv-prod-results-meta personas-page__results-meta">
-            <span>{loading ? "Cargando empleados..." : `${empleadosFiltrados.length} resultados`}</span>
-            <span>{loading ? "" : `Total: ${total}`}</span>
+            <span>{loading ? "Cargando empleados..." : `${paginationTotal} resultados`}</span>
+            <span>{loading ? "" : `Total: ${paginationTotal}`}</span>
             <label className="form-check form-switch mb-0 personas-page__inactive-toggle inv-catpro-inline-toggle">
               <input
                 className="form-check-input"
@@ -3600,7 +3572,7 @@ export default function Empleados({ openToast }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {empleadosFiltrados.map((empleado, idx) => {
+                    {empleadosPagina.map((empleado, idx) => {
                       const isActive = isActivo(empleado);
                       const idEmpleado = empleado?.id_empleado;
                       const deleting = deletingId === idEmpleado;
@@ -3673,7 +3645,7 @@ export default function Empleados({ openToast }) {
               </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
-                {empleadosFiltrados.map((empleado, idx) => (
+                {empleadosPagina.map((empleado, idx) => (
                   <EmpleadoCard
                     key={empleado?.id_empleado ?? idx}
                     empleado={empleado}
@@ -3699,7 +3671,7 @@ export default function Empleados({ openToast }) {
 
           <div className="inv-warehouse-moves__pagination inv-ins-pagination">
             <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
-              {`Mostrando ${pageWindowLabel} de ${total}`}
+              {`Mostrando ${pageWindowLabel} de ${paginationTotal}`}
             </div>
 
             <div className="inv-warehouse-moves__pagination-controls">

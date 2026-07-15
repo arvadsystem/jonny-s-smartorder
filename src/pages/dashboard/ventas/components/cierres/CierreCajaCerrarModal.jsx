@@ -37,6 +37,7 @@ const resolveResultBadgeClass = (resultado) => {
 export default function CierreCajaCerrarModal({
   open,
   sesion,
+  currentUser = null,
   saving,
   canViewCajaTheoreticalAmounts = true,
   onClose,
@@ -64,6 +65,7 @@ export default function CierreCajaCerrarModal({
   const transferenciaObservacionRef = useRef(null);
   const validationLoadingRef = useRef(false);
   const validationRequestIdRef = useRef(0);
+  const validationPayloadKeyRef = useRef('');
 
   const fieldRefs = useMemo(() => ({
     EFECTIVO: {
@@ -83,6 +85,23 @@ export default function CierreCajaCerrarModal({
   }), []);
 
   const step = STEP_ORDER[stepIndex];
+  const currentUserId = Number.parseInt(String(currentUser?.id_usuario ?? ''), 10);
+  const responsableId = Number.parseInt(String(sesion?.id_usuario_responsable ?? ''), 10);
+  const isAdministrativeClose =
+    Number.isInteger(currentUserId) &&
+    currentUserId > 0 &&
+    Number.isInteger(responsableId) &&
+    responsableId > 0 &&
+    currentUserId !== responsableId;
+  const currentUserLabel =
+    currentUser?.nombre_completo ||
+    currentUser?.nombre_usuario ||
+    currentUser?.email ||
+    (currentUserId ? `Usuario #${currentUserId}` : 'Usuario actual');
+  const responsableLabel =
+    sesion?.responsable_nombre ||
+    sesion?.responsable_usuario ||
+    (responsableId ? `Usuario #${responsableId}` : 'Responsable original');
 
   const declaredSummary = useMemo(() => {
     const efectivo = Number(form.EFECTIVO.monto || 0);
@@ -119,8 +138,9 @@ export default function CierreCajaCerrarModal({
       }
       return true;
     });
+    if (isAdministrativeClose && !form.observacion_cierre.trim()) return false;
     return methodsValid;
-  }, [form]);
+  }, [form, isAdministrativeClose]);
 
   const buildArqueosPayload = useCallback(() => ({
     arqueos: [
@@ -181,8 +201,12 @@ export default function CierreCajaCerrarModal({
     setStaleValidationNotice('');
 
     try {
-      const response = await onValidate(buildArqueosPayload(), { silent: true });
+      const payload = buildArqueosPayload();
+      const payloadKey = JSON.stringify(payload);
+      const response = await onValidate(payload, { silent: true });
       if (validationRequestIdRef.current !== requestId) return null;
+      if (payloadKey !== JSON.stringify(buildArqueosPayload())) return null;
+      validationPayloadKeyRef.current = payloadKey;
       setValidationData(response || null);
       setInlineMethodErrors({});
       return response || null;
@@ -207,6 +231,7 @@ export default function CierreCajaCerrarModal({
     validationLoadingRef.current = false;
     setValidationLoading(false);
     setValidationData(null);
+    validationPayloadKeyRef.current = '';
     setValidationError('');
     setInlineMethodErrors({});
     setStaleValidationNotice('');
@@ -221,7 +246,11 @@ export default function CierreCajaCerrarModal({
 
   useEffect(() => {
     if (!open || !externalInvalidationKey) return;
+    validationRequestIdRef.current += 1;
+    validationLoadingRef.current = false;
+    setValidationLoading(false);
     setValidationData(null);
+    validationPayloadKeyRef.current = '';
     setValidationError('');
     setStaleValidationNotice(externalInvalidationMessage || 'Movimiento registrado. Revisa diferencias nuevamente.');
   }, [externalInvalidationKey, externalInvalidationMessage, open]);
@@ -229,9 +258,13 @@ export default function CierreCajaCerrarModal({
   if (!open) return null;
 
   const invalidateValidation = () => {
+    validationRequestIdRef.current += 1;
+    validationLoadingRef.current = false;
+    setValidationLoading(false);
+    validationPayloadKeyRef.current = '';
     setValidationData((current) => {
       if (!current) return current;
-      setStaleValidationNotice('Cambiaste montos después de revisar diferencias. Debes revisar diferencias nuevamente.');
+      setStaleValidationNotice('Cambiaste el formulario despues de revisar diferencias. Debes revisar diferencias nuevamente.');
       return null;
     });
   };
@@ -245,10 +278,8 @@ export default function CierreCajaCerrarModal({
       }
     }));
 
-    if (field === 'monto' || field === 'cantidad_referencias') {
-      invalidateValidation();
-      setValidationError('');
-    }
+    invalidateValidation();
+    setValidationError('');
 
     if (field === 'observacion') {
       setInlineMethodErrors((current) => {
@@ -275,14 +306,30 @@ export default function CierreCajaCerrarModal({
     if (!canSubmit || saving || validationLoading) return;
 
     try {
-      const currentValidation = validationData || await runValidation({ focusOnError: true });
+      const payload = buildArqueosPayload();
+      const payloadKey = JSON.stringify(payload);
+      const currentValidation = validationData && validationPayloadKeyRef.current === payloadKey
+        ? validationData
+        : await runValidation({ focusOnError: true });
       if (!currentValidation) return;
+      if (validationPayloadKeyRef.current !== JSON.stringify(buildArqueosPayload())) {
+        setValidationData(null);
+        validationPayloadKeyRef.current = '';
+        setStaleValidationNotice('El formulario cambio despues de revisar diferencias. Debes revisar diferencias nuevamente.');
+        return;
+      }
       await onSubmit({
-        ...buildArqueosPayload(),
+        ...payload,
         id_validacion_cierre: currentValidation.id_validacion_cierre || null
       });
     } catch (error) {
-      if (!handleExpectedValidationError(error, true)) {
+      const code = error?.data?.code || error?.code;
+      if (code === 'VENTAS_CAJAS_CLOSE_VALIDATION_STALE') {
+        validationPayloadKeyRef.current = '';
+        setValidationData(null);
+        setStaleValidationNotice('La sesion cambio. Revisa las diferencias nuevamente.');
+        setStepIndex(STEP_ORDER.indexOf('RESUMEN'));
+      } else if (!handleExpectedValidationError(error, true)) {
         setValidationError(error?.message || 'No se pudo registrar el cierre de caja.');
       }
     }
@@ -375,6 +422,15 @@ export default function CierreCajaCerrarModal({
         </header>
 
         <form className="ventas-modal__body cierres-caja-action-modal__body cierres-caja-compact-modal__body" onSubmit={handleSubmit}>
+          {isAdministrativeClose ? (
+            <div className="alert alert-warning mb-0">
+              <strong>Cierre administrativo</strong>
+              <div>Responsable original: {responsableLabel}</div>
+              <div>Usuario que realizara el cierre: {currentUserLabel}</div>
+              <div>El responsable original no sera reemplazado. Su usuario quedara registrado como autor del cierre.</div>
+            </div>
+          ) : null}
+
           <div className="d-flex align-items-center justify-content-between small text-muted">
             <span>Paso {stepIndex + 1} de {STEP_ORDER.length}</span>
             <span>{step}</span>
@@ -525,15 +581,25 @@ export default function CierreCajaCerrarModal({
               ) : null}
 
               <label className="ventas-create-modal__field">
-                <span>Observación general de cierre</span>
+                <span>{isAdministrativeClose ? 'Motivo de cierre administrativo' : 'Observación general de cierre'}</span>
                 <textarea
                   className="ventas-create-modal__note-input"
                   rows="2"
                   value={form.observacion_cierre}
-                  onChange={(event) => setForm((current) => ({ ...current, observacion_cierre: event.target.value }))}
-                  placeholder="Observación general opcional..."
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, observacion_cierre: event.target.value }));
+                    invalidateValidation();
+                    setValidationError('');
+                  }}
+                  placeholder={isAdministrativeClose ? 'Motivo obligatorio del cierre administrativo...' : 'Observación general opcional...'}
+                  required={isAdministrativeClose}
                 />
               </label>
+              {isAdministrativeClose && !form.observacion_cierre.trim() ? (
+                <div className="cierres-caja-inline-error" role="alert">
+                  Debe indicar el motivo para cerrar una sesion ajena.
+                </div>
+              ) : null}
             </>
           )}
 

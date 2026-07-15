@@ -14,8 +14,6 @@ const Registro = lazy(() => import('./pages/auth/Registro'));
 const RecuperarPassword = lazy(() => import('./pages/auth/RecuperarPassword'));
 const AuthCallback = lazy(() => import('./pages/auth/AuthCallback'));
 const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'));
-const ForcePasswordChange = lazy(() => import('./pages/auth/ForcePasswordChange'));
-
 // Layouts
 const DashboardLayout = lazy(() => import('./components/layout/DashboardLayout'));
 const PublicLayout = lazy(() => import('./components/layout/PublicLayout'));
@@ -113,7 +111,10 @@ function App() {
 
         {/* Rutas protegidas staff */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/cambiar-password" element={<ForcePasswordChange />} />
+          <Route
+            path="/cambiar-password"
+            element={<Navigate to="/dashboard/perfil/cambiar-contrasena" replace />}
+          />
 
           <Route path="/dashboard" element={<DashboardLayout />}>
             <Route index element={<Inicio />} />

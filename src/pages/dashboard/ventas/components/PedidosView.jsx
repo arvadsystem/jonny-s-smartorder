@@ -67,6 +67,13 @@ const buildPedidoVisibleCode = (pedido) => {
   return idPedido ? `VTA-${String(idPedido).padStart(5, '0')}` : 'VTA-SIN-CODIGO';
 };
 
+const buildPedidoOrderCode = (pedido) => {
+  const orderCode = String(pedido?.codigo_pedido || '').trim();
+  if (orderCode) return orderCode;
+  const idPedido = Number(pedido?.id_pedido ?? 0) || 0;
+  return idPedido ? `PED-${String(idPedido).padStart(5, '0')}` : '';
+};
+
 const isPedidoKdsVencido = (pedido) => {
   if (pedido?.kds_vencido === true) return true;
   if (String(pedido?.kds_vencido || '').toLowerCase() === 'true') return true;
@@ -861,6 +868,7 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
   const telefonoContacto = String(pedido?.telefono_contacto || pedido?.telefono_normalizado || '').trim();
   const laneCode = mapPedidoStateCode(pedido);
   const visibleCode = buildPedidoVisibleCode(pedido);
+  const orderCode = buildPedidoOrderCode(pedido);
   const pendingPago = isPedidoPendientePago(pedido);
   const puedeCobrar = canCobrarPedido(pedido);
   const kdsVencido = isPedidoKdsVencido(pedido);
@@ -877,7 +885,12 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
       <header className="ventas-pedidos-card__header ventas-pedidos-card__head">
         <div>
           <div className="ventas-pedidos-card__badges">
-            <span className="ventas-pedidos-card__code">{visibleCode}</span>
+            <span className="ventas-pedidos-card__code" title="Código de venta">{visibleCode}</span>
+            {orderCode && orderCode !== visibleCode ? (
+              <span className="ventas-pedidos-card__code ventas-pedidos-card__code--order" title="Código de pedido">
+                {orderCode}
+              </span>
+            ) : null}
             {hasCuentaDividida ? <span className="ventas-pedidos-card__badge is-split">Cuenta dividida</span> : null}
             {pendingPago ? <span className="ventas-pedidos-card__badge is-payment">Pago pendiente</span> : null}
             {kdsVencido ? <span className="ventas-pedidos-card__badge is-overdue">Retrasado</span> : null}

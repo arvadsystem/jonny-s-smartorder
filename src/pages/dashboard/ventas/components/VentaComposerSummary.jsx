@@ -1,4 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import {
+  VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD,
+  VENTA_LINE_MAX_QUANTITY,
+  buildVentaQuantityCommitResult,
+  canIncreaseStandaloneExtraQuantity,
+  clampVentaLineQuantity,
+  normalizeExtras
+} from '../../../../modules/ventas/utils/ventasCartUtils';
 
 const buildComplementSummaryLabel = (line, composer) => {
   const requirement = typeof composer?.getLineComplementRequirement === 'function'
@@ -27,6 +35,9 @@ export default function VentaComposerSummary({
   onClose
 }) {
   const [expandedNotes, setExpandedNotes] = useState({});
+  const [quantityDrafts, setQuantityDrafts] = useState({});
+  const [quantityValidationMessage, setQuantityValidationMessage] = useState('');
+  const [pendingQuantityConfirm, setPendingQuantityConfirm] = useState(null);
   const isStandaloneExtraLine = (line) => String(line?.kind || '').toUpperCase() === 'ITEM';
   const pendingCount = Number(pendingPaymentsSummary?.total ?? 0) || 0;
   const pendingAmount = Number(pendingPaymentsSummary?.monto ?? 0) || 0;
@@ -52,6 +63,40 @@ export default function VentaComposerSummary({
   const extrasSubtotal = Number(composer.extrasSubtotal || 0);
   const baseSubtotal = Number(composer.baseSubtotal ?? Math.max(Number(composer.subtotal || 0) - extrasSubtotal, 0));
   const shouldShowExtrasBreakdown = extrasSubtotal > 0;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- drafts mirror cart identity/quantity after merges, removals and cartKey changes.
+    setQuantityDrafts(() => Object.fromEntries(
+      (Array.isArray(composer.cart) ? composer.cart : []).map((line) => [
+        String(line.cartKey),
+        String(line.cantidad || 1)
+      ])
+    ));
+  }, [composer.cart]);
+  const commitQuantity = (line, rawValue, { manual = false } = {}) => {
+    const result = buildVentaQuantityCommitResult(rawValue, line.cantidad, { manual });
+    if (!result.ok) {
+      setQuantityDrafts((current) => ({ ...current, [line.cartKey]: result.draft }));
+      setQuantityValidationMessage(result.message);
+      return;
+    }
+    setQuantityValidationMessage('');
+    if (result.shouldConfirm) {
+      setPendingQuantityConfirm({ line, cantidad: result.quantity });
+      return;
+    }
+    composer.updateLine(line.cartKey, (current) => ({ ...current, cantidad: result.quantity }));
+    setQuantityDrafts((current) => ({ ...current, [line.cartKey]: result.draft }));
+  };
+  const describeLineConfig = (line) => {
+    const parts = [line?.nombre_item || 'Item'];
+    if (Array.isArray(line?.complementos) && line.complementos.length > 0) {
+      parts.push(`Salsa: ${line.complementos.map((entry) => entry?.nombre || 'Complemento').join(', ')}`);
+    }
+    normalizeExtras(line?.extras).forEach((extra) => {
+      parts.push(`Extra: ${extra.nombre} x ${extra.cantidad} por orden`);
+    });
+    return parts;
+  };
 
   return (
     <aside className={`ventas-create-modal__summary ventas-caja-layout__cart ventas-cart-panel ventas-cart-panel--${variant}`}>
@@ -92,19 +137,25 @@ export default function VentaComposerSummary({
           ) : (
             composer.cart.map((line) => {
               const extrasCount = typeof composer.getExtrasCount === 'function' ? composer.getExtrasCount(line.extras) : 0;
-              const extrasSubtotal = typeof composer.getExtrasSubtotal === 'function' ? composer.getExtrasSubtotal(line.extras) : 0;
-              const lineTotal = composer.formatCurrency((line.precio_unitario * line.cantidad) + extrasSubtotal);
+              const quantity = clampVentaLineQuantity(line.cantidad || 1);
+              const extrasPerOrderSubtotal = typeof composer.getExtrasSubtotal === 'function' ? composer.getExtrasSubtotal(line.extras) : 0;
+              const extrasSubtotal = typeof composer.getLineExtrasSubtotal === 'function'
+                ? composer.getLineExtrasSubtotal(line)
+                : extrasPerOrderSubtotal * quantity;
+              const lineTotal = composer.formatCurrency((line.precio_unitario * quantity) + extrasSubtotal);
               const discountDetail = lineDiscountDetailsByKey.get(String(line.cartKey)) || null;
               const thumb = line.imagen_principal_url || null;
               const isSimpleProduct = line.kind === 'PRODUCTO';
               const isStandaloneExtra = isStandaloneExtraLine(line);
-              const isQuantityManaged = isSimpleProduct || isStandaloneExtra;
+              const isRecipe = String(line.kind || '').toUpperCase() === 'RECETA';
+              const isQuantityManaged = isSimpleProduct || isStandaloneExtra || isRecipe;
+              const standaloneExtraMax = Number(line.available_units ?? 0);
               const canIncrease =
                 isSimpleProduct
-                  ? Number(line.cantidad ?? 0) < Number(line.stock_disponible ?? 0)
+                  ? Number(line.cantidad ?? 0) < Math.min(VENTA_LINE_MAX_QUANTITY, Number(line.stock_disponible ?? 0))
                   : isStandaloneExtra
-                    ? (Number(line.available_units ?? 0) <= 0 || Number(line.cantidad ?? 0) < Number(line.available_units ?? 0))
-                    : false;
+                    ? canIncreaseStandaloneExtraQuantity(line)
+                    : Number(line.cantidad ?? 0) < VENTA_LINE_MAX_QUANTITY;
               const hasKitchenNote = String(line.observacion || '').trim().length > 0;
               const noteExpanded = Boolean(expandedNotes[line.cartKey]);
               const complementIssue = typeof composer.getLineComplementSelectionIssue === 'function'
@@ -143,9 +194,15 @@ export default function VentaComposerSummary({
                       ) : null}
                       {hasKitchenNote ? <span className="ventas-cart__note-badge">Con observacion</span> : null}
                     </div>
-                    {isQuantityManaged ? (
+                    {isSimpleProduct || isStandaloneExtra ? (
                       <small className="ventas-cart__stock">
-                        Disponible: {Number(isStandaloneExtra ? (line.available_units ?? 0) : (line.stock_disponible ?? 0))}
+                        {isStandaloneExtra && standaloneExtraMax <= 0
+                          ? 'Stock bajo'
+                          : `Disponible: ${Number(isStandaloneExtra ? standaloneExtraMax : (line.stock_disponible ?? 0))}`}
+                      </small>
+                    ) : isRecipe ? (
+                      <small className="ventas-cart__stock">
+                        {line.complementos_requiere ? buildComplementSummaryLabel(line, composer) : 'Preparacion en cocina'}
                       </small>
                     ) : (
                       <small className="ventas-cart__stock">
@@ -159,40 +216,68 @@ export default function VentaComposerSummary({
                           <button
                             type="button"
                             aria-label={`Disminuir cantidad de ${line.nombre_item}`}
-                            onClick={() =>
+                            onClick={() => {
+                              const nextQuantity = Number(line.cantidad ?? 0) - 1;
+                              setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(Math.max(nextQuantity, 0)) }));
+                              setQuantityValidationMessage('');
                               composer.updateLine(line.cartKey, (current) => ({
                                 ...current,
                                 cantidad: Number(current.cantidad ?? 0) - 1
-                              }))
-                            }
+                              }));
+                            }}
                           >
                             <i className="bi bi-dash" />
                           </button>
-                          <span>{line.cantidad}</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            aria-label={`Cantidad de ${line.nombre_item}`}
+                            value={quantityDrafts[line.cartKey] ?? String(line.cantidad || 1)}
+                            onChange={(event) => {
+                              setQuantityDrafts((current) => ({ ...current, [line.cartKey]: event.target.value }));
+                              setQuantityValidationMessage('');
+                            }}
+                            onBlur={(event) => commitQuantity(line, event.target.value, { manual: true })}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                commitQuantity(line, event.currentTarget.value, { manual: true });
+                              }
+                            }}
+                          />
                           <button
                             type="button"
                             aria-label={`Aumentar cantidad de ${line.nombre_item}`}
                             disabled={!canIncrease}
-                            onClick={() =>
+                            onClick={() => {
+                              const nextQuantity = Number(line.cantidad ?? 0) + 1;
+                              setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(nextQuantity) }));
+                              setQuantityValidationMessage('');
                               composer.updateLine(line.cartKey, (current) => ({
                                 ...current,
                                 cantidad: Number(current.cantidad ?? 0) + 1
-                              }))
-                            }
+                              }));
+                            }}
                           >
                             <i className="bi bi-plus-lg" />
                           </button>
                         </div>
-                      ) : (
-                        <span className="ventas-create-modal__count-pill" data-testid="ventas-cart-custom-qty">
-                          1 unidad
-                        </span>
-                      )}
+                      ) : null}
                       <strong className="ventas-create-modal__line-total">{lineTotal}</strong>
                       <button
                         type="button"
                         className="ventas-create-modal__remove-btn"
-                        onClick={() => composer.removeLine(line.cartKey)}
+                        onClick={() => {
+                          const lineQuantity = Number(line.cantidad || 1);
+                          if (
+                            lineQuantity >= VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD &&
+                            !window.confirm(`Eliminar las ${lineQuantity} ordenes de ${line.nombre_item}?`)
+                          ) {
+                            return;
+                          }
+                          composer.removeLine(line.cartKey);
+                        }}
                         title="Eliminar item"
                         aria-label={`Eliminar ${line.nombre_item}`}
                       >
@@ -250,10 +335,21 @@ export default function VentaComposerSummary({
                               composer.updateLine(line.cartKey, (current) => ({
                                 ...current,
                                 observacion: event.target.value
-                              }))
+                              }), { merge: false })
                             }
-                            placeholder="Detalle para cocina"
+                            onBlur={() => composer.updateLine(line.cartKey, (current) => ({ ...current }))}
+                            placeholder={Number(line.cantidad || 1) > 1 ? `Observacion para las ${line.cantidad} ordenes` : 'Detalle para cocina'}
                           />
+                        ) : null}
+                        {extrasCount > 0 ? (
+                          <div className="ventas-cart__extras-summary">
+                            {normalizeExtras(line.extras).map((extra) => (
+                              <small key={extra.id_extra}>
+                                {extra.nombre}: {extra.cantidad} por orden - {extra.cantidad * quantity} en total
+                              </small>
+                            ))}
+                            <small>Extras por orden: {composer.formatCurrency(extrasPerOrderSubtotal)}</small>
+                          </div>
                         ) : null}
                       </div>
                     ) : null}
@@ -307,6 +403,8 @@ export default function VentaComposerSummary({
         </div>
 
         {composer.submitError ? <div className="ventas-create-modal__error">{composer.submitError}</div> : null}
+        {quantityValidationMessage ? <div className="ventas-create-modal__error">{quantityValidationMessage}</div> : null}
+        {composer.cartNotice ? <div className="ventas-create-modal__hint">{composer.cartNotice}</div> : null}
 
         <button
           type="button"
@@ -328,6 +426,80 @@ export default function VentaComposerSummary({
           )}
         </button>
       </footer>
+      {pendingQuantityConfirm ? (
+        <div className="ventas-modal-backdrop ventas-bulk-quantity-modal-backdrop" role="presentation">
+          <section
+            className="ventas-modal ventas-bulk-quantity-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="ventas-bulk-qty-title"
+          >
+            <header className="ventas-modal__header">
+              <div className="ventas-modal__title-wrap">
+                <span className="ventas-modal__icon"><i className="bi bi-exclamation-triangle" /></span>
+                <div>
+                  <h3 id="ventas-bulk-qty-title">Confirmar cantidad</h3>
+                  <p>Estas agregando {pendingQuantityConfirm.cantidad} ordenes de:</p>
+                </div>
+              </div>
+            </header>
+            <div className="ventas-modal__body ventas-bulk-quantity-modal__body">
+              <div className="ventas-bulk-quantity-modal__summary">
+                {describeLineConfig(pendingQuantityConfirm.line).map((entry) => (
+                  <p className="ventas-bulk-quantity-modal__line" key={entry}>{entry}</p>
+                ))}
+                <p className="ventas-bulk-quantity-modal__line">
+                  <strong>Cantidad:</strong>
+                  <span>{pendingQuantityConfirm.cantidad}</span>
+                </p>
+                {normalizeExtras(pendingQuantityConfirm.line.extras).map((extra) => (
+                  <p className="ventas-bulk-quantity-modal__line" key={extra.id_extra}>
+                    <strong>Extra {extra.nombre} total:</strong>
+                    <span>{extra.cantidad * pendingQuantityConfirm.cantidad}</span>
+                  </p>
+                ))}
+                <p className="ventas-bulk-quantity-modal__total">
+                  <strong>Subtotal estimado antes de descuentos:</strong>{' '}
+                  <span>
+                    {composer.formatCurrency(
+                      (Number(pendingQuantityConfirm.line.precio_unitario || 0) + composer.getExtrasSubtotal(pendingQuantityConfirm.line.extras)) *
+                      pendingQuantityConfirm.cantidad
+                    )}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <footer className="ventas-detail-modal__footer ventas-bulk-quantity-modal__footer">
+              <div className="ventas-detail-modal__footer-actions ventas-bulk-quantity-modal__actions">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary ventas-bulk-quantity-modal__button"
+                  onClick={() => {
+                    const { line } = pendingQuantityConfirm;
+                    setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(line.cantidad || 1) }));
+                    setPendingQuantityConfirm(null);
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-warning ventas-bulk-quantity-modal__button ventas-bulk-quantity-modal__button--primary"
+                  onClick={() => {
+                    const { line, cantidad } = pendingQuantityConfirm;
+                    composer.updateLine(line.cartKey, (current) => ({ ...current, cantidad }));
+                    setQuantityDrafts((current) => ({ ...current, [line.cartKey]: String(cantidad) }));
+                    setQuantityValidationMessage('');
+                    setPendingQuantityConfirm(null);
+                  }}
+                >
+                  Aplicar {pendingQuantityConfirm.cantidad} ordenes
+                </button>
+              </div>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </aside>
   );
 }

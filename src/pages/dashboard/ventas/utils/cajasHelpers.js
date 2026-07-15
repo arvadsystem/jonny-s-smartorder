@@ -3,14 +3,24 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-export const parseCajaUtcTimestamp = (value) => {
+const HN_LOCAL_OFFSET = '-06:00';
+
+export const parseCajaDateTimeValue = (value) => {
   if (!value || value instanceof Date) return value;
   const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return `${text}T00:00:00${HN_LOCAL_OFFSET}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/i.test(text)) {
+    return text.replace(' ', 'T');
+  }
   if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(text)) {
-    return `${text.replace(' ', 'T')}Z`;
+    return `${text.replace(' ', 'T')}${HN_LOCAL_OFFSET}`;
   }
   return value;
 };
+
+export const parseCajaUtcTimestamp = parseCajaDateTimeValue;
 
 export const truthy = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
@@ -38,7 +48,7 @@ export const formatCajaCurrency = (value) =>
 
 export const formatCajaDateTime = (value) => {
   if (!value) return '-';
-  const date = new Date(parseCajaUtcTimestamp(value));
+  const date = new Date(parseCajaDateTimeValue(value));
   if (Number.isNaN(date.getTime())) return '-';
 
   return date.toLocaleString('es-HN', {
@@ -53,7 +63,7 @@ export const formatCajaDateTime = (value) => {
 
 export const formatCajaDateTimeHN = (value) => {
   if (!value) return '-';
-  const date = new Date(parseCajaUtcTimestamp(value));
+  const date = new Date(parseCajaDateTimeValue(value));
   if (Number.isNaN(date.getTime())) return '-';
 
   return date.toLocaleString('es-HN', {
@@ -119,6 +129,8 @@ export const normalizeSesion = (row = {}) => ({
   id_caja: toNumber(row.id_caja, 0) || null,
   id_sucursal: toNumber(row.id_sucursal, 0) || null,
   id_usuario_responsable: toNumber(row.id_usuario_responsable, 0) || null,
+  id_usuario_apertura: toNumber(row.id_usuario_apertura, 0) || null,
+  id_usuario_cierre: toNumber(row.id_usuario_cierre, 0) || null,
   id_estado_sesion_caja: toNumber(row.id_estado_sesion_caja, 0) || null,
   fecha_apertura: row.fecha_apertura ?? null,
   fecha_cierre: row.fecha_cierre ?? null,
@@ -142,7 +154,13 @@ export const normalizeSesion = (row = {}) => ({
   resolucion_codigo: String(row.resolucion_codigo ?? '').trim().toUpperCase(),
   resolucion_nombre: String(row.resolucion_nombre ?? '').trim(),
   responsable_usuario: String(row.responsable_usuario ?? '').trim(),
-  responsable_nombre: String(row.responsable_nombre ?? '').trim()
+  responsable_nombre: String(row.responsable_nombre ?? '').trim(),
+  apertura_usuario: String(row.apertura_usuario ?? '').trim(),
+  apertura_nombre: String(row.apertura_nombre ?? '').trim(),
+  cierre_usuario: String(row.cierre_usuario ?? '').trim(),
+  cierre_nombre: String(row.cierre_nombre ?? '').trim(),
+  observacion_apertura: String(row.observacion_apertura ?? '').trim(),
+  observacion_cierre: String(row.observacion_cierre ?? '').trim()
 });
 
 export const normalizeCierreReporte = (row = {}) => ({
@@ -203,6 +221,22 @@ const normalizeCierreRecuento = (row = {}) => ({
   metodos: (Array.isArray(row.metodos) ? row.metodos : []).map(normalizeCierreRecuentoMetodo)
 });
 
+const normalizeCierreNotificacionCorreo = (row = {}) => {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    id_notificacion: toNumber(row.id_notificacion, 0) || null,
+    id_cierre_caja: toNumber(row.id_cierre_caja, 0) || null,
+    estado: String(row.estado ?? '').trim().toUpperCase(),
+    intentos: toNumber(row.intentos, 0),
+    proximo_intento: row.proximo_intento ?? null,
+    bloqueado_hasta: row.bloqueado_hasta ?? null,
+    ultimo_error: String(row.ultimo_error ?? '').trim(),
+    email_destino: String(row.email_destino ?? '').trim(),
+    message_id: String(row.message_id ?? '').trim(),
+    fecha_envio: row.fecha_envio ?? null
+  };
+};
+
 export const normalizeSesionDetalle = (payload = {}) => {
   const participantes = Array.isArray(payload.participantes) ? payload.participantes : [];
   const cobrosPorUsuario = Array.isArray(payload.cobros_por_usuario) ? payload.cobros_por_usuario : [];
@@ -219,6 +253,9 @@ export const normalizeSesionDetalle = (payload = {}) => {
     rol_codigo: String(row.rol_codigo ?? '').trim().toUpperCase(),
     rol_participacion: String(row.rol_codigo ?? row.rol_participacion ?? '').trim().toUpperCase(),
     rol_nombre: String(row.rol_nombre ?? '').trim(),
+    roles_globales: Array.isArray(row.roles_globales)
+      ? row.roles_globales.map((role) => String(role ?? '').trim().toUpperCase()).filter(Boolean)
+      : [],
     nombre_usuario: String(row.nombre_usuario ?? '').trim(),
     nombre_completo: String(row.nombre_completo ?? '').trim(),
     activo: truthy(row.activo),
@@ -238,8 +275,13 @@ export const normalizeSesionDetalle = (payload = {}) => {
       : null,
     participantes: equipoCaja,
     equipo_caja: equipoCaja,
-    cobros_por_usuario: cobrosPorUsuario.map((row) => ({
+    cobros_por_usuario: cobrosPorUsuario.map((row, index) => ({
       ...row,
+      key: [
+        row.id_usuario_ejecutor || 'usuario',
+        row.rol_participacion_codigo || row.rol_participacion || 'rol',
+        row.fecha_inicio || row.primer_cobro || index
+      ].join(':'),
       id_usuario_ejecutor: toNumber(row.id_usuario_ejecutor, 0) || null,
       total_cobrado: toNumber(row.total_cobrado, 0),
       cobros_registrados: toNumber(
@@ -276,6 +318,7 @@ export const normalizeSesionDetalle = (payload = {}) => {
         : null,
       total_responsable: toNumber(resumen.total_responsable, 0),
       total_auxiliares: toNumber(resumen.total_auxiliares, 0),
+      total_otros_ejecutores: toNumber(resumen.total_otros_ejecutores, 0),
       monto_teorico: toNumber(resumen.monto_teorico ?? resumen.efectivo_teorico, 0),
       monto_declarado: toNumber(resumen.monto_declarado ?? resumen.monto_declarado_cierre, 0),
       responsabilidad_final_id_usuario: toNumber(resumen.responsabilidad_final_id_usuario, 0) || null
@@ -320,7 +363,9 @@ export const normalizeSesionDetalle = (payload = {}) => {
           monto_declarado_cierre: toNumber(payload.cierre.monto_declarado_cierre, 0),
           diferencia: toNumber(payload.cierre.diferencia, 0),
           resolucion_codigo: String(payload.cierre.resolucion_codigo ?? '').trim().toUpperCase(),
-          resolucion_nombre: String(payload.cierre.resolucion_nombre ?? '').trim()
+          resolucion_nombre: String(payload.cierre.resolucion_nombre ?? '').trim(),
+          correo_estado: String(payload.cierre.correo_estado ?? payload.cierre.notificacion_correo?.estado ?? '').trim().toUpperCase(),
+          notificacion_correo: normalizeCierreNotificacionCorreo(payload.cierre.notificacion_correo)
         }
       : null
   };

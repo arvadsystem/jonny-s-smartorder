@@ -1,3 +1,4 @@
+/* global process, Buffer */
 import { test, expect } from '@playwright/test';
 
 const QA_HOST_PATTERN = /(^|\.)qa\.jonnyshn\.com$/i;
@@ -122,7 +123,10 @@ const addExtrasToLine = async (page, kind, index, quantity) => {
     .first()
     .click();
 
-  const modal = page.getByRole('dialog', { name: /Extras/i });
+  const modal = page.getByRole('dialog', { name: /Extras|Editar configuracion de \d+ ordenes/i })
+    .or(page.locator('.ventas-extras-modal, .ventas-detail-modal').filter({
+      has: page.getByTestId('ventas-extras-confirmar')
+    }));
   await expect(modal).toBeVisible();
   let extraOptions = modal.getByTestId('ventas-extra-option').filter({
     has: page.locator('[data-testid="ventas-extra-increment"]:not(:disabled)')
@@ -173,13 +177,15 @@ const fillCartScenario = async (page) => {
 
   const recetaName = await addCatalogItem(page, 'RECETA', getEnvText('E2E_RECETA_NAME'));
   await addCatalogItem(page, 'RECETA', getEnvText('E2E_RECETA_NAME') || recetaName);
-  await expect(await cartLines(page, 'RECETA')).toHaveCount(2);
+  const recetaLines = await cartLines(page, 'RECETA');
+  await expect(recetaLines).toHaveCount(1);
+  await expect(recetaLines.first().locator('.ventas-create-modal__qty-control input')).toHaveValue('2');
 
   await addCatalogItem(page, 'PRODUCTO');
   await addCatalogItem(page, 'PRODUCTO');
   const productLines = await cartLines(page, 'PRODUCTO');
   await expect(productLines).toHaveCount(1);
-  await expect(productLines.first().getByTestId('ventas-cart-product-qty').or(productLines.first().locator('.ventas-create-modal__qty-control'))).toContainText('2');
+  await expect(productLines.first().locator('.ventas-create-modal__qty-control input')).toHaveValue('2');
 
   return { comboName, recetaName };
 };
@@ -188,15 +194,29 @@ const assertIndependentCustomLines = async (page) => {
   const comboLines = await cartLines(page, 'COMBO');
   const recetaLines = await cartLines(page, 'RECETA');
   await expect(comboLines).toHaveCount(2);
-  await expect(recetaLines).toHaveCount(2);
+  await expect(recetaLines).toHaveCount(1);
   await expect(comboLines.nth(0).getByTestId('ventas-cart-custom-qty')).toContainText('1 unidad');
   await expect(comboLines.nth(1).getByTestId('ventas-cart-custom-qty')).toContainText('1 unidad');
+  await expect(recetaLines.first().locator('.ventas-create-modal__qty-control input')).toHaveValue('2');
 
   const firstComboKey = await comboLines.nth(0).getAttribute('data-cart-key');
   const secondComboKey = await comboLines.nth(1).getAttribute('data-cart-key');
   expect(firstComboKey).toBeTruthy();
   expect(secondComboKey).toBeTruthy();
   expect(firstComboKey).not.toBe(secondComboKey);
+};
+
+const setRecipeQuantity = async (page, quantity) => {
+  const recetaLine = (await cartLines(page, 'RECETA')).first();
+  await expect(recetaLine).toBeVisible();
+  const quantityInput = recetaLine.locator('.ventas-create-modal__qty-control input').first();
+  await quantityInput.fill(String(quantity));
+  await quantityInput.press('Enter');
+  const confirmModal = page.getByRole('alertdialog', { name: /Confirmar cantidad/i });
+  await expect(confirmModal).toBeVisible();
+  await confirmModal.getByRole('button', { name: new RegExp(`Aplicar ${quantity} ordenes`, 'i') }).click();
+  await expect(confirmModal).toBeHidden();
+  await expect(recetaLine.locator('.ventas-create-modal__qty-control input')).toHaveValue(String(quantity));
 };
 
 const openFinalize = async (page) => {
@@ -273,5 +293,31 @@ test.describe.serial('Caja: combos y recetas independientes', () => {
 
     await createPendingOrder(page);
     await expect(page.locator('body')).toContainText(/pendiente|pedido/i, { timeout: 30_000 });
+  });
+
+  test('receta configurada soporta cantidad masiva y extras por orden', async ({ page }) => {
+    const recetaName = await addCatalogItem(page, 'RECETA', getEnvText('E2E_RECETA_NAME'));
+    await expect(await cartLines(page, 'RECETA')).toHaveCount(1);
+
+    await setRecipeQuantity(page, 99);
+    await addExtrasToLine(page, 'RECETA', 0, 1);
+    const recetaLine = (await cartLines(page, 'RECETA')).first();
+    await expect(recetaLine).toContainText(/99 en total/i);
+
+    await recetaLine.getByTestId('ventas-cart-complementos')
+      .or(recetaLine.getByRole('button', { name: /complementos/i }))
+      .first()
+      .click();
+    const complementModal = page.getByRole('dialog', { name: /Editar configuracion de 99 ordenes|Seleccionar complementos/i });
+    await expect(complementModal).toBeVisible();
+    await complementModal.getByTestId('ventas-complementos-confirmar')
+      .or(complementModal.getByRole('button', { name: /Aplicar a las 99 ordenes|Guardar complementos/i }))
+      .first()
+      .click();
+    await expect(complementModal).toBeHidden();
+    await expect((await cartLines(page, 'RECETA')).first().locator('.ventas-create-modal__qty-control input')).toHaveValue('99');
+
+    await addCatalogItem(page, 'RECETA', getEnvText('E2E_RECETA_NAME') || recetaName);
+    await expect(await cartLines(page, 'RECETA')).toHaveCount(1);
   });
 });

@@ -3,6 +3,7 @@ import { useAuth } from '../../../../../hooks/useAuth';
 import { usePermisos } from '../../../../../context/PermisosContext';
 import sucursalesService from '../../../../../services/sucursalesService';
 import cajasService from '../../../../../services/cajasService';
+import printerDeviceDetectionService from '../../../../../services/printerDeviceDetectionService';
 import { normalizeRoles, PERMISSIONS } from '../../../../../utils/permissions';
 import VentasToast from '../VentasToast';
 import { useCierresCaja } from '../../hooks/useCierresCaja';
@@ -174,6 +175,7 @@ export default function CierresCajaView() {
   const [miAsignacionCajaMissing, setMiAsignacionCajaMissing] = useState(false);
   const [miAsignacionCajaError, setMiAsignacionCajaError] = useState('');
   const [cajeroOpenSaving, setCajeroOpenSaving] = useState(false);
+  const [retryingCloseEmail, setRetryingCloseEmail] = useState(false);
   const usuariosRequestIdRef = useRef(0);
   const cajasRequestIdRef = useRef(0);
   const miAsignacionRequestIdRef = useRef(0);
@@ -357,6 +359,31 @@ export default function CierresCajaView() {
     return response;
   };
 
+  const handleRetryCloseEmail = async () => {
+    const idCierreCaja = selectedDetalle?.cierre?.id_cierre_caja;
+    if (!idCierreCaja || !isSuperAdmin) return null;
+    setRetryingCloseEmail(true);
+    try {
+      const response = await cajasService.retryCloseEmail(idCierreCaja);
+      openToast(
+        'Correo de cierre',
+        response?.message || 'El estado del correo de cierre fue actualizado.',
+        'success'
+      );
+      await ensureDetalle(selectedSesion || selectedDetalle?.sesion, { contexto: 'DETALLE' });
+      return response;
+    } catch (errorResponse) {
+      openToast(
+        'Correo de cierre',
+        String(errorResponse?.message || errorResponse?.data?.message || 'No se pudo reintentar el correo de cierre.'),
+        'danger'
+      );
+      return null;
+    } finally {
+      setRetryingCloseEmail(false);
+    }
+  };
+
   const loadMiAsignacionCaja = useCallback(async () => {
     const requestId = miAsignacionRequestIdRef.current + 1;
     miAsignacionRequestIdRef.current = requestId;
@@ -519,7 +546,13 @@ export default function CierresCajaView() {
   };
 
   const openMovimientoManual = (context = {}) => {
-    if (!hasActiveCajaSession) {
+    const contextSession = context?.sesion || selectedSesion || sesionActiva;
+    const canUseSelectedCloseSession =
+      context?.source === 'cierre' &&
+      canAccessMovimientoManual &&
+      isSuperAdmin &&
+      contextSession?.id_sesion_caja;
+    if (!hasActiveCajaSession && !canUseSelectedCloseSession) {
       openToast(
         'SESIÓN REQUERIDA',
         'Debes tener una sesión activa para registrar movimientos manuales. Abre una sesión de caja asignada antes de registrar ingresos o egresos.',
@@ -529,7 +562,7 @@ export default function CierresCajaView() {
     }
     setMovimientoManualContext({
       ...context,
-      sesion: context?.sesion || selectedSesion || sesionActiva
+      sesion: contextSession
     });
     setMovimientoManualTipoInicial(context?.tipoInicial === 'EGRESO' ? 'EGRESO' : 'INGRESO');
     setMovimientoManualOpen(true);
@@ -538,10 +571,20 @@ export default function CierresCajaView() {
   const handleSubmitMovimientoManual = async ({ tipo, monto, observacion, referencia }) => {
     const normalizedTipo = tipo === 'EGRESO' ? 'EGRESO' : 'INGRESO';
     const source = movimientoManualContext?.source;
+    const targetSession = movimientoManualContext?.sesion || selectedSesion || sesionActiva;
+    const targetSessionId = toPositiveId(targetSession?.id_sesion_caja);
+    const activeSessionId = toPositiveId(sesionActiva?.id_sesion_caja);
+    const useSelectedSessionEndpoint =
+      source === 'cierre' &&
+      targetSessionId &&
+      targetSessionId !== activeSessionId;
     await createMiSesionMovimientoManual(
       normalizedTipo,
       { monto, observacion, referencia },
-      { silent: Boolean(source === 'cierre') }
+      {
+        silent: Boolean(source === 'cierre'),
+        ...(useSelectedSessionEndpoint ? { idSesionCaja: targetSessionId } : {})
+      }
     );
     await refreshCurrentScope();
     if (selectedSesion?.id_sesion_caja) {
@@ -563,6 +606,40 @@ export default function CierresCajaView() {
   };
 
   const handleSubmitOpenSession = async (payload) => {
+    const triggerPrinterDetection = async (sessionLike) => {
+      const idSesionCaja = toPositiveId(sessionLike?.id_sesion_caja);
+      const idCaja = toPositiveId(sessionLike?.id_caja || payload?.id_caja || miAsignacionCaja?.id_caja);
+      const idSucursal = toPositiveId(
+        sessionLike?.id_sucursal
+        || payload?.id_sucursal
+        || miAsignacionCaja?.id_sucursal
+        || selectedSucursalId
+        || userSucursalId
+      );
+      if (!idSesionCaja || !idCaja || !idSucursal) return;
+      try {
+        const detection = await printerDeviceDetectionService.detectPrintersForCaja({
+          idSucursal,
+          idCaja,
+          idSesionCaja,
+          origen: 'APERTURA_CAJA'
+        });
+        if (detection?.message && !detection?.skipped) {
+          openToast(
+            'IMPRESORAS',
+            detection.message,
+            detection.status === 'CONFIGURADO' || detection.status === 'YA_CONFIGURADO' ? 'success' : 'warning'
+          );
+        }
+      } catch {
+        openToast(
+          'IMPRESORAS',
+          'No se pudo validar la impresora automática. Puedes continuar, pero revisa que QZ Tray esté abierto.',
+          'warning'
+        );
+      }
+    };
+
     if (isRestrictedCajero) {
       setCajeroOpenSaving(true);
       try {
@@ -576,6 +653,7 @@ export default function CierresCajaView() {
           'success'
         );
         await refreshCurrentScope();
+        await triggerPrinterDetection(response);
         setOpenCajaOpen(false);
       } catch (errorResponse) {
         openToast('ERROR', resolveMiCajaError(errorResponse, 'No se pudo abrir la sesión de caja.'), 'danger');
@@ -586,8 +664,9 @@ export default function CierresCajaView() {
     }
 
     try {
-      await openSesion(payload);
+      const response = await openSesion(payload);
       await refreshCurrentScope();
+      await triggerPrinterDetection(response);
       setOpenCajaOpen(false);
     } catch {
       // El hook muestra toast; evitamos uncaught promise en el modal.
@@ -770,6 +849,8 @@ export default function CierresCajaView() {
         canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
         canResolveDifference={canResolveDifference}
         saving={saving}
+        canRetryCloseEmail={isSuperAdmin}
+        retryingCloseEmail={retryingCloseEmail}
         onClose={() => {
           setDetailOpen(false);
           setSelectedSesion(null);
@@ -778,6 +859,7 @@ export default function CierresCajaView() {
         onOpenArqueo={openArqueo}
         onOpenCerrar={openCerrar}
         onResolveDifference={handleResolveDifference}
+        onRetryCloseEmail={handleRetryCloseEmail}
       />
 
       <CierreCajaAbrirModal
@@ -792,6 +874,8 @@ export default function CierresCajaView() {
         sucursales={sucursales}
         usuariosDisponibles={usuariosOperativos}
         loadingUsuarios={loadingUsuariosOperativos}
+        isSuperAdmin={isSuperAdmin}
+        currentUser={user}
         useAssignedCajaOnly={isRestrictedCajero}
         assignedCaja={miAsignacionCaja}
         loadingAssignedCaja={loadingMiAsignacionCaja}
@@ -821,6 +905,7 @@ export default function CierresCajaView() {
         key={closeOpen ? `cierre-${selectedSesion?.id_sesion_caja || 'none'}` : 'cierre-closed'}
         open={closeOpen}
         sesion={selectedSesion}
+        currentUser={user}
         detalle={selectedDetalle}
         resoluciones={catalogos.resoluciones_cierre}
         saving={saving}

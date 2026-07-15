@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import GlobalInactivityGuard from '../../../components/auth/GlobalInactivityGuard';
 import PublicMenuFlowShell from '../components/layout/PublicMenuFlowShell';
 import OrderTypeScreen from '../screens/OrderTypeScreen';
 import CatalogScreen from '../screens/CatalogScreen';
@@ -36,6 +37,7 @@ const RedirectToBestStep = () => {
 // Public module router isolated under /menu-publico/*
 const PublicMenuRoutes = () => (
   <PublicMenuFlowProvider>
+    <GlobalInactivityGuard />
     <Routes>
       <Route element={<PublicMenuFlowShell />}>
         <Route index element={<Navigate to="menu" replace />} />

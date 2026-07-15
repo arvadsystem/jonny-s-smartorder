@@ -21,9 +21,22 @@ const resolveRolCobroLabel = (row = {}) => {
 
 const resolveParticipantRole = (row = {}) => {
   const code = String(row.rol_codigo || row.rol_participacion || '').trim().toUpperCase();
+  const rolesGlobales = Array.isArray(row.roles_globales)
+    ? row.roles_globales.map((role) => String(role || '').trim().toUpperCase())
+    : [];
+  const observation = String(row.observacion || '').trim().toUpperCase();
+  if (code === 'RESPONSABLE' && observation.includes('CONTINGENCIA')) return 'Responsable por contingencia';
   if (code === 'RESPONSABLE') return 'Responsable';
+  if (code === 'AUXILIAR' && rolesGlobales.includes('SUPER_ADMIN')) return 'Super admin auxiliar';
   if (code === 'AUXILIAR') return 'Auxiliar';
   return 'Ejecutor';
+};
+
+const formatGlobalRoles = (roles = []) => {
+  const normalized = (Array.isArray(roles) ? roles : [])
+    .map((role) => String(role || '').trim().toUpperCase())
+    .filter(Boolean);
+  return normalized.length ? normalized.join(', ') : '-';
 };
 
 const resolveMovimientoRole = (row = {}) => {
@@ -66,6 +79,25 @@ const AmountCard = ({ label, value, tone = 'neutral', icon = 'bi-cash-stack', fa
   </article>
 );
 
+const resolveCloseEmailStatusLabel = (estado) => {
+  const code = String(estado || '').trim().toUpperCase();
+  if (code === 'PENDIENTE') return 'Pendiente';
+  if (code === 'PROCESANDO') return 'Procesando';
+  if (code === 'ENVIADO') return 'Enviado';
+  if (code === 'REINTENTO') return 'Reintento programado';
+  if (code === 'FALLIDO') return 'Fallido';
+  return 'No disponible';
+};
+
+const resolveCloseEmailStatusClass = (estado) => {
+  const code = String(estado || '').trim().toUpperCase();
+  if (code === 'ENVIADO') return 'bg-success border-success text-white';
+  if (code === 'FALLIDO') return 'bg-danger border-danger text-white';
+  if (code === 'PROCESANDO') return 'bg-info border-info text-dark';
+  if (code === 'REINTENTO') return 'bg-warning border-warning text-dark';
+  return 'bg-light border-secondary text-secondary';
+};
+
 const DetailMobileCards = ({ rows = [], emptyMessage = 'No hay registros.' }) => {
   const normalizedRows = Array.isArray(rows) ? rows : [];
   return (
@@ -104,10 +136,13 @@ export default function CierreCajaDetalleModal({
   canViewCajaTheoreticalAmounts = true,
   canResolveDifference = false,
   saving = false,
+  canRetryCloseEmail = false,
+  retryingCloseEmail = false,
   onClose,
   onOpenArqueo,
   onOpenCerrar,
-  onResolveDifference
+  onResolveDifference,
+  onRetryCloseEmail
 }) {
   const [activeTab, setActiveTab] = useState('RESUMEN');
   const [movimientoFiltro, setMovimientoFiltro] = useState('TODOS');
@@ -121,7 +156,10 @@ export default function CierreCajaDetalleModal({
     : (Array.isArray(detalle?.participantes) ? detalle.participantes : []);
   const cobrosPorUsuario = Array.isArray(detalle?.cobros_por_usuario) ? detalle.cobros_por_usuario : [];
   const arqueos = Array.isArray(detalle?.arqueos) ? detalle.arqueos : [];
-  const movimientos = Array.isArray(detalle?.movimientos) ? detalle.movimientos : [];
+  const movimientos = useMemo(
+    () => (Array.isArray(detalle?.movimientos) ? detalle.movimientos : []),
+    [detalle?.movimientos]
+  );
   const recuentos = Array.isArray(detalle?.recuentos)
     ? detalle.recuentos
     : (Array.isArray(detalle?.validaciones_cierre) ? detalle.validaciones_cierre : []);
@@ -154,6 +192,18 @@ export default function CierreCajaDetalleModal({
     sesion?.diferencia_cierre
   ) ?? null;
   const cierreObservacion = cierre?.observacion || cierre?.observacion_cierre || resumen?.observacion_cierre || '';
+  const closeEmailNotification = cierre?.notificacion_correo || null;
+  const closeEmailStatus = closeEmailNotification?.estado || cierre?.correo_estado || '';
+  const canRetrySelectedCloseEmail =
+    canRetryCloseEmail &&
+    closeEmailNotification?.estado === 'FALLIDO' &&
+    typeof onRetryCloseEmail === 'function';
+  const aperturaContingencia = String(sesion?.observacion_apertura || '').toUpperCase().includes('CONTINGENCIA');
+  const cierreAdministrativo = Boolean(
+    sesion?.id_usuario_cierre &&
+    sesion?.id_usuario_responsable &&
+    Number(sesion.id_usuario_cierre) !== Number(sesion.id_usuario_responsable)
+  );
   const canSubmitResolution = canResolveCierreDifference({
     cierre,
     sesion,
@@ -241,6 +291,7 @@ export default function CierreCajaDetalleModal({
                 <th className="text-end">Egresos manuales</th>
                 <th className="text-end">Total responsable</th>
                 <th className="text-end">Total auxiliares</th>
+                {Number(resumen.total_otros_ejecutores || 0) > 0 ? <th className="text-end">Otros ejecutores</th> : null}
                 <th className="text-end">Monto teorico</th>
                 <th className="text-end">Monto declarado</th>
               </tr>
@@ -253,6 +304,9 @@ export default function CierreCajaDetalleModal({
                 <td className="text-end">L. {formatCajaCurrency(resumen.egresos_manuales)}</td>
                 <td className="text-end">L. {formatCajaCurrency(resumen.total_responsable)}</td>
                 <td className="text-end">L. {formatCajaCurrency(resumen.total_auxiliares)}</td>
+                {Number(resumen.total_otros_ejecutores || 0) > 0 ? (
+                  <td className="text-end">L. {formatCajaCurrency(resumen.total_otros_ejecutores)}</td>
+                ) : null}
                 <td className="text-end">{formatMoneyOrLabel(theoreticalAmount)}</td>
                 <td className="text-end">{formatMoneyOrLabel(declaredAmount)}</td>
               </tr>
@@ -270,6 +324,9 @@ export default function CierreCajaDetalleModal({
               { label: 'Egresos manuales', value: `L. ${formatCajaCurrency(resumen.egresos_manuales)}` },
               { label: 'Total responsable', value: `L. ${formatCajaCurrency(resumen.total_responsable)}` },
               { label: 'Total auxiliares', value: `L. ${formatCajaCurrency(resumen.total_auxiliares)}` },
+              ...(Number(resumen.total_otros_ejecutores || 0) > 0
+                ? [{ label: 'Otros ejecutores', value: `L. ${formatCajaCurrency(resumen.total_otros_ejecutores)}` }]
+                : []),
               { label: 'Monto teorico', value: formatMoneyOrLabel(theoreticalAmount) },
               { label: 'Monto declarado', value: formatMoneyOrLabel(declaredAmount) }
             ]
@@ -301,7 +358,9 @@ export default function CierreCajaDetalleModal({
           <thead>
             <tr>
               <th>Usuario</th>
+              <th>Alias</th>
               <th>Rol</th>
+              <th>Rol global</th>
               <th>Inicio</th>
               <th>Fin</th>
               <th>Estado</th>
@@ -309,11 +368,13 @@ export default function CierreCajaDetalleModal({
           </thead>
           <tbody>
             {participantes.length === 0
-              ? renderEmptyRow('No hay registros.', 5)
+              ? renderEmptyRow('No hay registros.', 7)
               : participantes.map((row) => (
                   <tr key={row.id_participacion_caja || row.id_usuario}>
                     <td>{row.nombre_completo || row.nombre_usuario || 'Usuario no disponible'}</td>
+                    <td>{row.nombre_usuario ? `@${row.nombre_usuario}` : '-'}</td>
                     <td>{resolveParticipantRole(row)}</td>
+                    <td>{formatGlobalRoles(row.roles_globales)}</td>
                     <td>{formatCajaDateTimeHN(row.fecha_inicio)}</td>
                     <td>{formatCajaDateTimeHN(row.fecha_fin)}</td>
                     <td>{row.activo ? 'Activo' : 'Inactivo'}</td>
@@ -330,6 +391,7 @@ export default function CierreCajaDetalleModal({
           badge: row.activo ? 'Activo' : 'Inactivo',
           items: [
             { label: 'Rol', value: resolveParticipantRole(row) },
+            { label: 'Rol global', value: formatGlobalRoles(row.roles_globales) },
             { label: 'Inicio', value: formatCajaDateTimeHN(row.fecha_inicio) },
             { label: 'Fin', value: formatCajaDateTimeHN(row.fecha_fin) }
           ]
@@ -354,13 +416,15 @@ export default function CierreCajaDetalleModal({
               <th className="text-end">Total efectivo</th>
               <th className="text-end">Total no efectivo</th>
               <th className="text-end">Total cobrado</th>
+              <th>Primer cobro</th>
+              <th>Ultimo cobro</th>
             </tr>
           </thead>
           <tbody>
             {cobrosPorUsuario.length === 0
-              ? renderEmptyRow('No hay registros.', 6)
-              : cobrosPorUsuario.map((row) => (
-                  <tr key={row.id_usuario_ejecutor}>
+              ? renderEmptyRow('No hay registros.', 8)
+              : cobrosPorUsuario.map((row, index) => (
+                  <tr key={row.key || `${row.id_usuario_ejecutor || 'usuario'}-${row.rol_participacion || 'rol'}-${row.primer_cobro || index}`}>
                     <td>
                       <div className="ventas-page__table-sale">
                         <strong>{row.nombre_completo || row.nombre_usuario || 'Usuario no disponible'}</strong>
@@ -372,6 +436,8 @@ export default function CierreCajaDetalleModal({
                     <td className="text-end align-middle">{formatMoneyOrLabel(row.total_efectivo)}</td>
                     <td className="text-end align-middle">{formatMoneyOrLabel(row.total_no_efectivo)}</td>
                     <td className="text-end align-middle ventas-page__table-total">{formatMoneyOrLabel(row.total_cobrado)}</td>
+                    <td>{formatCajaDateTimeHN(row.primer_cobro)}</td>
+                    <td>{formatCajaDateTimeHN(row.ultimo_cobro)}</td>
                   </tr>
                 ))}
           </tbody>
@@ -380,14 +446,16 @@ export default function CierreCajaDetalleModal({
       <DetailMobileCards
         emptyMessage="No hay registros."
         rows={cobrosPorUsuario.map((row) => ({
-          key: row.id_usuario_ejecutor,
+          key: row.key,
           title: row.nombre_completo || row.nombre_usuario || 'Usuario no disponible',
           badge: resolveRolCobroLabel(row),
           items: [
             { label: 'Cobros', value: row.cobros_registrados },
             { label: 'Total efectivo', value: formatMoneyOrLabel(row.total_efectivo) },
             { label: 'Total no efectivo', value: formatMoneyOrLabel(row.total_no_efectivo) },
-            { label: 'Total cobrado', value: formatMoneyOrLabel(row.total_cobrado) }
+            { label: 'Total cobrado', value: formatMoneyOrLabel(row.total_cobrado) },
+            { label: 'Primer cobro', value: formatCajaDateTimeHN(row.primer_cobro) },
+            { label: 'Ultimo cobro', value: formatCajaDateTimeHN(row.ultimo_cobro) }
           ]
         }))}
       />
@@ -727,6 +795,17 @@ export default function CierreCajaDetalleModal({
                 <i className="bi bi-shield-check" />
               </button>
             ) : null}
+            {canRetrySelectedCloseEmail ? (
+              <button
+                type="button"
+                className="ventas-modal__ghost-btn"
+                title="Reintentar correo de cierre"
+                onClick={onRetryCloseEmail}
+                disabled={saving || retryingCloseEmail}
+              >
+                <i className="bi bi-envelope-arrow-up" />
+              </button>
+            ) : null}
             <button type="button" className="ventas-modal__close-btn" onClick={onClose} aria-label="Cerrar">
               <i className="bi bi-x-lg" />
             </button>
@@ -746,6 +825,11 @@ export default function CierreCajaDetalleModal({
                   <div className="cierres-caja-detail__badges">
                     <span className={`ventas-page__table-pill ${statusBadge.className}`}>{statusBadge.label}</span>
                     <span className={`ventas-page__table-pill ${closeBadge.className}`}>{closeBadge.label}</span>
+                    {closeEmailStatus ? (
+                      <span className={`ventas-page__table-pill ${resolveCloseEmailStatusClass(closeEmailStatus)}`}>
+                        Correo: {resolveCloseEmailStatusLabel(closeEmailStatus)}
+                      </span>
+                    ) : null}
                     {cierre?.resolucion_codigo && !['CAJA_CUADRA', 'PENDIENTE_REVISION'].includes(cierre.resolucion_codigo) ? (
                       <span className="ventas-page__table-pill bg-white border-secondary text-secondary">
                         {cierre.resolucion_nombre}
@@ -756,9 +840,20 @@ export default function CierreCajaDetalleModal({
                   <div className="cierres-caja-detail-summary__grid">
                     <DetailField label="Caja" value={sesion?.nombre_caja || 'Sin caja'} />
                     <DetailField label="Sucursal" value={sesion?.nombre_sucursal || 'Sin sucursal'} />
+                    <DetailField label="Responsable" value={detalle?.responsable?.nombre_completo || detalle?.responsable?.nombre_usuario || sesion?.responsable_nombre || 'Sin responsable'} />
+                    <DetailField label="Usuario que abrio" value={sesion?.apertura_nombre || sesion?.apertura_usuario || '-'} />
+                    <DetailField label="Usuario que cerro" value={sesion?.cierre_nombre || sesion?.cierre_usuario || '-'} />
                     <DetailField label="Apertura" value={`L. ${formatCajaCurrency(sesion?.monto_apertura)}`} />
                     <DetailField label="Cierre" value={formatCajaDateTimeHN(sesion?.fecha_cierre || cierre?.fecha_cierre)} />
                     <DetailField label="Estado" value={statusBadge.label} />
+                    {closeEmailNotification ? (
+                      <>
+                        <DetailField label="Correo cierre" value={resolveCloseEmailStatusLabel(closeEmailStatus)} />
+                        <DetailField label="Destino correo" value={closeEmailNotification.email_destino || '-'} />
+                        <DetailField label="Intentos correo" value={String(closeEmailNotification.intentos ?? 0)} />
+                        <DetailField label="Envio correo" value={formatCajaDateTimeHN(closeEmailNotification.fecha_envio)} />
+                      </>
+                    ) : null}
                     {canViewCajaTheoreticalAmounts ? (
                       <DetailField
                         label="Diferencia"
@@ -766,6 +861,17 @@ export default function CierreCajaDetalleModal({
                       />
                     ) : null}
                   </div>
+                  {aperturaContingencia || cierreAdministrativo ? (
+                    <div className="alert alert-warning mb-0 mt-2">
+                      {aperturaContingencia ? 'Apertura administrativa por contingencia registrada. ' : ''}
+                      {cierreAdministrativo ? 'Cierre administrativo por super admin registrado.' : ''}
+                    </div>
+                  ) : null}
+                  {closeEmailNotification?.ultimo_error ? (
+                    <div className="alert alert-danger mb-0 mt-2">
+                      {closeEmailNotification.ultimo_error}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="cierres-caja-detail-summary__cards">

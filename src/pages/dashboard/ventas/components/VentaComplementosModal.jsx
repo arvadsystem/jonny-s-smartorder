@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState } from 'react';
 
 const normalizeIds = (value) =>
@@ -34,6 +35,7 @@ export default function VentaComplementosModal({
 
   const min = Number(row?.minimo_complementos ?? 0) || 0;
   const max = Number(row?.maximo_complementos ?? 0) || 0;
+  const lineQuantity = Math.max(1, Number(row?.cantidad || 1));
   const selectedCount = current.length;
   const missingCount = Math.max(min - selectedCount, 0);
 
@@ -87,8 +89,14 @@ export default function VentaComplementosModal({
               <i className="bi bi-list-check" />
             </span>
             <div>
-              <h3 id="ventas-complementos-title">Seleccionar complementos</h3>
-              <p>Elige las salsas para este producto.</p>
+              <h3 id="ventas-complementos-title">
+                {mode === 'EDIT' && lineQuantity > 1 ? `Editar configuracion de ${lineQuantity} ordenes` : 'Seleccionar complementos'}
+              </h3>
+              <p>
+                {mode === 'EDIT' && lineQuantity > 1
+                  ? 'Los cambios se aplicaran a todas las unidades de esta linea.'
+                  : 'Elige las salsas para este producto.'}
+              </p>
             </div>
           </div>
           <button type="button" className="ventas-modal__close-btn" onClick={onCancel} aria-label="Cerrar">
@@ -193,7 +201,7 @@ export default function VentaComplementosModal({
               Cancelar
             </button>
             <button type="button" className="btn btn-warning" data-testid="ventas-complementos-confirmar" onClick={handleConfirm}>
-              {mode === 'EDIT' ? 'Guardar complementos' : 'Agregar al carrito'}
+              {mode === 'EDIT' && lineQuantity > 1 ? `Aplicar a las ${lineQuantity} ordenes` : (mode === 'EDIT' ? 'Guardar complementos' : 'Agregar al carrito')}
             </button>
           </div>
         </footer>

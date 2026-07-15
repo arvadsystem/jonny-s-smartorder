@@ -5,10 +5,12 @@ import { FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import { useAuth } from '../../hooks/useAuth';
 import authService from '../../services/authService';
 import clientePublicoService from '../../services/clientePublicoService';
-import ForcePasswordChange from './ForcePasswordChange';
 import logo from '../../assets/images/logo-sin-fondo.png';
 import bgImage from '../../assets/images/imagen-fondo.png';
 import './Login.scss';
+
+const MUST_CHANGE_ROUTE = '/dashboard/perfil/cambiar-contrasena';
+void motion;
 
 const normalizeRoleName = (value) =>
   String(value ?? '')
@@ -49,7 +51,6 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(false);
 
   const [error, setError] = useState('');
-  const [showForcePasswordModal, setShowForcePasswordModal] = useState(false);
   const [successMsg, setSuccessMsg] = useState(
     searchParams.get('verified') === '1'
       ? 'Cuenta verificada. Ya puedes iniciar sesion.'
@@ -62,7 +63,6 @@ const Login = () => {
 
   useEffect(() => {
     if (!user) {
-      setShowForcePasswordModal(false);
       return;
     }
 
@@ -70,29 +70,25 @@ const Login = () => {
     const mustChange = Boolean(user?.must_change_password);
 
     if (forceLoginView) {
-      setShowForcePasswordModal(false);
       return;
     }
 
     if (isCliente) {
-      setShowForcePasswordModal(false);
       const from = searchParams.get('from');
       navigate(from === 'carrito' ? '/carrito' : '/menu-publico', { replace: true });
       return;
     }
 
     if (isPantallaCocinaUser(user)) {
-      setShowForcePasswordModal(false);
       navigate('/dashboard/cocina', { replace: true });
       return;
     }
 
     if (mustChange) {
-      setShowForcePasswordModal(true);
+      navigate(MUST_CHANGE_ROUTE, { replace: true });
       return;
     }
 
-    setShowForcePasswordModal(false);
     navigate('/dashboard', { replace: true });
   }, [forceLoginView, navigate, user, searchParams]);
 
@@ -145,23 +141,22 @@ const Login = () => {
         const isPantallaCocina = isPantallaCocinaUser(usuario);
         const mustChange = !isCliente && Boolean(usuario?.must_change_password);
 
-        setShowForcePasswordModal(mustChange);
         setResendTarget('');
 
-        if (!mustChange) {
-          const from = searchParams.get('from');
+        const from = searchParams.get('from');
 
-          navigate(
-            isCliente
+        navigate(
+          mustChange
+            ? MUST_CHANGE_ROUTE
+            : isCliente
               ? from === 'carrito'
                 ? '/carrito'
                 : '/menu-publico'
               : isPantallaCocina
                 ? '/dashboard/cocina'
-              : '/dashboard',
-            { replace: true }
-          );
-        }
+                : '/dashboard',
+          { replace: true }
+        );
 
         return;
       } else if (internalError) {
@@ -213,24 +208,6 @@ const Login = () => {
     } finally {
       setResendingVerification(false);
     }
-  };
-
-  const handleForcePasswordCompleted = async () => {
-    try {
-      const refreshed = await authService.me({ noCache: true });
-      if (refreshed?.usuario) {
-        login(refreshed);
-      } else {
-        throw new Error('No se pudo refrescar la sesion.');
-      }
-    } catch (err) {
-      setError(err?.message || 'No se pudo refrescar la sesion. Inicia sesion nuevamente.');
-      setShowForcePasswordModal(false);
-      return;
-    }
-
-    setShowForcePasswordModal(false);
-    navigate('/dashboard', { replace: true });
   };
 
   return (
@@ -407,10 +384,6 @@ const Login = () => {
           </div>
         </form>
       </motion.aside>
-
-      {showForcePasswordModal ? (
-        <ForcePasswordChange asModal onCompleted={handleForcePasswordCompleted} />
-      ) : null}
     </div>
   );
 };
