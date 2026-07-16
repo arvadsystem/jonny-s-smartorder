@@ -5,6 +5,9 @@ export const normalizePrintMode = (value) => {
   return VALID_MODES.has(mode) ? mode : 'direct';
 };
 
-export const getPrintMode = () => normalizePrintMode(import.meta.env.VITE_PRINT_MODE);
+const BUILD_PRINT_MODE = normalizePrintMode(import.meta.env?.VITE_PRINT_MODE);
+
+export const PRINT_MODE_BUILD_MARKER = `JONNYS_PRINT_MODE_${BUILD_PRINT_MODE.toUpperCase()}`;
+export const getPrintMode = () => BUILD_PRINT_MODE;
 export const isAgentPrintMode = () => getPrintMode() === 'agent';
 export const isDirectPrintMode = () => getPrintMode() === 'direct';

@@ -1,5 +1,6 @@
 import { apiFetch } from './api';
 import importedQz from 'qz-tray';
+import { isAgentPrintMode, PRINT_MODE_BUILD_MARKER } from './printModeService';
 
 const QZ_LIBRARY_SOURCES = [
   import.meta.env.VITE_QZ_TRAY_SCRIPT_URL,
@@ -26,6 +27,15 @@ const createQzError = (code, message, cause = null) => {
   error.code = code;
   if (cause) error.cause = cause;
   return error;
+};
+
+export const assertQzDirectMode = () => {
+  if (isAgentPrintMode()) {
+    throw createQzError(
+      'QZ_DISABLED_IN_AGENT_MODE',
+      `QZ Tray esta deshabilitado en el navegador (${PRINT_MODE_BUILD_MARKER}).`
+    );
+  }
 };
 
 const toBrowserQz = () => {
@@ -64,6 +74,7 @@ const injectQzScript = (src) => new Promise((resolve, reject) => {
 });
 
 const ensureQzLibrary = async () => {
+  assertQzDirectMode();
   const bundled = toImportedQz();
   if (bundled) {
     if (typeof window !== 'undefined' && !window.qz) window.qz = bundled;
@@ -297,6 +308,7 @@ export const isQzConnected = async () => {
 export const connectQz = async () => ensureConnectedQz();
 
 export const disconnectQz = async () => {
+  assertQzDirectMode();
   const qz = toImportedQz() || toBrowserQz();
   if (!qz?.websocket?.isActive?.()) return false;
   await qz.websocket.disconnect();
