@@ -1,5 +1,6 @@
 import qzPrintService from './qzPrintService';
 import ventasService from './ventasService';
+import { isAgentPrintMode } from './printModeService';
 
 const STORAGE_PREFIX = 'jonny_printer_detection';
 const SUCCESS_STATUSES = new Set(['CONFIGURADO', 'YA_CONFIGURADO', 'REQUIERE_CONFIGURACION_ADMIN']);
@@ -125,6 +126,9 @@ export const detectPrintersForCaja = async ({
   origen = 'CARGA_CAJA',
   force = false
 }) => {
+  if (isAgentPrintMode()) {
+    return { ok: true, skipped: true, status: 'AGENT_MODE', message: '' };
+  }
   const sucursalId = toPositiveInt(idSucursal);
   const cajaId = toPositiveInt(idCaja);
   const sesionId = toPositiveInt(idSesionCaja);

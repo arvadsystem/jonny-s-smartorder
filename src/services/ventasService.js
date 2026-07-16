@@ -203,6 +203,13 @@ const ventasService = {
   getQzCertificate: () => apiFetch('/ventas/qz/certificate', 'GET'),
   signQzRequest: (request) => apiFetch('/ventas/qz/sign', 'POST', { request }),
   registerPrintEvent: (id, payload) => apiFetch(`/ventas/${id}/impresiones`, 'POST', payload),
+  enqueuePrintJob: (id, payload, idempotencyKey) => apiFetch(
+    `/ventas/${id}/print-jobs`,
+    'POST',
+    payload,
+    withIdempotencyKey({}, idempotencyKey)
+  ),
+  getPrintJob: (id) => apiFetch(`/ventas/print-jobs/${id}`, 'GET'),
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload, withIdempotencyKey()),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
   create: (payload, options = {}) => createVentaWithRecovery(payload, options),
