@@ -2,15 +2,16 @@ import { apiFetch } from './api';
 import importedQz from 'qz-tray';
 import { assertBrowserQzAllowed } from './printModeGuard.js';
 
-const QZ_LIBRARY_SOURCES = [
-  import.meta.env.VITE_QZ_TRAY_SCRIPT_URL,
+const QZ_LIBRARY_SOURCES = [...new Set([
   '/vendor/qz-tray.js',
+  import.meta.env.VITE_QZ_TRAY_SCRIPT_URL,
   'https://cdn.jsdelivr.net/npm/qz-tray@2.2.6/qz-tray.js',
   'https://unpkg.com/qz-tray@2.2.6/qz-tray.js'
-].filter(Boolean);
+].filter(Boolean))];
 
 let qzLoadPromise = null;
 let qzSecuritySetupPromise = null;
+let qzConnectionPromise = null;
 
 const QZ_DEBUG_ENABLED = String(import.meta.env.DEV || '').trim() === 'true'
   || /qa\.jonnyshn\.com$/i.test(typeof window !== 'undefined' ? window.location.hostname : '');
@@ -19,7 +20,7 @@ const QZ_LOCAL_CONNECTION_OPTIONS = {
   retries: 1,
   delay: 0
 };
-const QZ_DEFAULT_REMOTE_PORT = 8182;
+const QZ_DEFAULT_REMOTE_SECURE_PORT = 8181;
 
 const createQzError = (code, message, cause = null) => {
   const error = new Error(message);
@@ -88,7 +89,11 @@ const ensureQzLibrary = async () => {
         try {
           await injectQzScript(source);
           const qz = toBrowserQz();
-          if (qz) return qz;
+          if (isUsableQz(qz)) return qz;
+          lastError = createQzError(
+            'QZ_LIBRARY_INVALID',
+            `La libreria cargada desde ${source} no expone la API requerida.`
+          );
         } catch (error) {
           lastError = error;
         }
@@ -171,16 +176,33 @@ const isAndroidDevice = () => {
   return /Android/i.test(navigator.userAgent || '');
 };
 
-const resolveQzRemotePort = () => {
-  const rawPort = String(import.meta.env.VITE_QZ_REMOTE_PORT || '').trim();
-  if (!rawPort) return QZ_DEFAULT_REMOTE_PORT;
+const resolveQzRemoteSecurePort = () => {
+  const rawPort = String(import.meta.env.VITE_QZ_REMOTE_SECURE_PORT || '').trim();
+  if (!rawPort) return QZ_DEFAULT_REMOTE_SECURE_PORT;
 
   const parsedPort = Number(rawPort);
   if (Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort <= 65535) {
     return parsedPort;
   }
 
-  return QZ_DEFAULT_REMOTE_PORT;
+  return QZ_DEFAULT_REMOTE_SECURE_PORT;
+};
+
+const assertSecureQzConnectionOptions = (connectionOptions) => {
+  const isHttpsPage = typeof window !== 'undefined' && window.location?.protocol === 'https:';
+  const remoteHost = String(connectionOptions?.host || '').trim();
+  const hasInsecurePort = Array.isArray(connectionOptions?.port?.insecure)
+    && connectionOptions.port.insecure.length > 0;
+  const hasInsecureScheme = /^ws:\/\//i.test(remoteHost);
+
+  if (hasInsecureScheme || (isHttpsPage && (connectionOptions?.usingSecure !== true || hasInsecurePort))) {
+    throw createQzError(
+      'QZ_INSECURE_CONNECTION_BLOCKED',
+      'La conexion insegura con QZ Tray fue bloqueada. Configura WSS con un certificado valido.'
+    );
+  }
+
+  return connectionOptions;
 };
 
 const resolveQzConnectionOptions = () => {
@@ -191,12 +213,12 @@ const resolveQzConnectionOptions = () => {
   if (!remoteEnabled || !remoteHost) return { ...QZ_LOCAL_CONNECTION_OPTIONS };
   if (androidOnly && !isAndroidDevice()) return { ...QZ_LOCAL_CONNECTION_OPTIONS };
 
-  const remotePort = resolveQzRemotePort();
+  const remoteSecurePort = resolveQzRemoteSecurePort();
   return {
     host: remoteHost,
-    usingSecure: false,
+    usingSecure: true,
     port: {
-      insecure: [remotePort]
+      secure: [remoteSecurePort]
     },
     retries: 2,
     delay: 1
@@ -205,13 +227,18 @@ const resolveQzConnectionOptions = () => {
 
 const describeQzConnectionOptions = (connectionOptions) => {
   if (connectionOptions?.host) {
-    const port = connectionOptions?.port?.insecure?.[0] || QZ_DEFAULT_REMOTE_PORT;
+    const port = connectionOptions?.port?.secure?.[0] || QZ_DEFAULT_REMOTE_SECURE_PORT;
     return {
       mode: 'remote',
       host: connectionOptions.host,
       port,
-      secure: false,
-      debugMessage: `modo=remote host=${connectionOptions.host} port=${port} secure=false`,
+      secure: true,
+      debugDetails: {
+        mode: 'remote',
+        host: connectionOptions.host,
+        port,
+        secure: true
+      },
       errorMessage: `No se pudo conectar con QZ Tray en la computadora puente ${connectionOptions.host}:${port}.`
     };
   }
@@ -219,7 +246,7 @@ const describeQzConnectionOptions = (connectionOptions) => {
   return {
     mode: 'local',
     secure: true,
-    debugMessage: 'modo=local secure=true',
+    debugDetails: { mode: 'local', secure: true },
     errorMessage: 'No se pudo establecer conexion con QZ Tray.'
   };
 };
@@ -229,21 +256,34 @@ const ensureConnectedQz = async () => {
   await setupQzSecurity(qz);
   if (qz.websocket.isActive()) return qz;
 
-  const connectionOptions = resolveQzConnectionOptions();
-  const connectionContext = describeQzConnectionOptions(connectionOptions);
-  debugQz(connectionContext.debugMessage);
+  if (!qzConnectionPromise) {
+    qzConnectionPromise = (async () => {
+      if (qz.websocket.isActive()) return qz;
 
-  try {
-    await qz.websocket.connect(connectionOptions);
-  } catch (error) {
-    throw createQzError(
-      'QZ_NOT_CONNECTED',
-      connectionContext.errorMessage,
-      error
-    );
+      const connectionOptions = assertSecureQzConnectionOptions(resolveQzConnectionOptions());
+      const connectionContext = describeQzConnectionOptions(connectionOptions);
+      debugQz(connectionContext.debugDetails);
+
+      try {
+        await qz.websocket.connect(connectionOptions);
+      } catch (error) {
+        throw createQzError(
+          'QZ_NOT_CONNECTED',
+          connectionContext.errorMessage,
+          error
+        );
+      }
+
+      return qz;
+    })();
   }
 
-  return qz;
+  const pendingConnection = qzConnectionPromise;
+  try {
+    return await pendingConnection;
+  } finally {
+    if (qzConnectionPromise === pendingConnection) qzConnectionPromise = null;
+  }
 };
 
 const normalizePrinterName = (value) => String(value || '').trim();
