@@ -302,7 +302,11 @@ export const printComandaCocinaInWindow = async (comanda, printWindow, options =
 
 const resolveWidthMm = (value, fallback = 80) => Number(value) === 58 ? 58 : fallback;
 
-export const printVentaTicketWithQz = async (idFactura, printerConfig = {}) => {
+export const printVentaTicketWithQz = async (
+  idFactura,
+  printerConfig = {},
+  { idSucursal } = {}
+) => {
   const printerName = String(printerConfig?.nombre_impresora_sistema || '').trim();
   if (!printerName) {
     throw new Error('No hay una impresora FACTURA configurada para QZ Tray.');
@@ -310,6 +314,7 @@ export const printVentaTicketWithQz = async (idFactura, printerConfig = {}) => {
 
   const pdfBlob = await ventasService.getTicketPdf(idFactura);
   return qzPrintService.printPdfBlobToPrinter({
+    idSucursal,
     printerName,
     blob: pdfBlob,
     copies: 1,
@@ -317,7 +322,11 @@ export const printVentaTicketWithQz = async (idFactura, printerConfig = {}) => {
   });
 };
 
-export const printComandaCocinaWithQz = async (comanda, printerConfig = {}) => {
+export const printComandaCocinaWithQz = async (
+  comanda,
+  printerConfig = {},
+  { idSucursal } = {}
+) => {
   const printerName = String(printerConfig?.nombre_impresora_sistema || '').trim();
   if (!printerName) {
     throw new Error('No hay una impresora COCINA configurada para QZ Tray.');
@@ -332,6 +341,7 @@ export const printComandaCocinaWithQz = async (comanda, printerConfig = {}) => {
   }
 
   return qzPrintService.printHtmlToPrinter({
+    idSucursal,
     printerName,
     html,
     widthMm,

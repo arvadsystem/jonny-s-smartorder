@@ -208,7 +208,7 @@ export const detectPrintersForCaja = async ({
 
   let printers = [];
   try {
-    printers = await qzPrintService.getPrinters();
+    printers = await qzPrintService.getPrinters({ idSucursal: sucursalId });
   } catch {
     const payload = buildStoredPayload({
       idSucursal: sucursalId,

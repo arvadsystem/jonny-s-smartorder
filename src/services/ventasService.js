@@ -200,8 +200,14 @@ const ventasService = {
   getPedidoComanda: (id) => apiFetch(`/ventas/pedidos/${id}/comanda`, 'GET'),
   getPrintRuntimeConfig: (params = {}) => apiFetch(`/ventas/impresoras-config${buildQuery(params)}`, 'GET'),
   detectPrinterDevice: (payload) => apiFetch('/ventas/impresoras/dispositivo-deteccion', 'POST', payload),
-  getQzCertificate: () => apiFetch('/ventas/qz/certificate', 'GET'),
-  signQzRequest: (request) => apiFetch('/ventas/qz/sign', 'POST', { request }),
+  getQzCertificate: (idSucursal) => apiFetch(
+    `/ventas/qz/certificate?id_sucursal=${encodeURIComponent(idSucursal)}`,
+    'GET'
+  ),
+  signQzRequest: (request, idSucursal) => apiFetch('/ventas/qz/sign', 'POST', {
+    request,
+    id_sucursal: idSucursal
+  }),
   registerPrintEvent: (id, payload) => apiFetch(`/ventas/${id}/impresiones`, 'POST', payload),
   enqueuePrintJob: (id, payload, idempotencyKey) => apiFetch(
     `/ventas/${id}/print-jobs`,

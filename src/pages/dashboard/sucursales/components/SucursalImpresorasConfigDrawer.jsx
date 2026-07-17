@@ -155,6 +155,7 @@ const toPayload = (form = {}) => ({
 
 export default function SucursalImpresorasConfigDrawer({
   open,
+  idSucursal,
   sucursalNombre = '',
   form,
   saving = false,
@@ -195,7 +196,7 @@ export default function SucursalImpresorasConfigDrawer({
     setDetectError('');
     setQzStatus('detecting');
     try {
-      const response = await qzPrintService.testQzConnection();
+      const response = await qzPrintService.testQzConnection({ idSucursal });
       const printers = Array.isArray(response?.printers)
         ? response.printers.map((item) => String(item || '').trim()).filter(Boolean)
         : [];
@@ -231,6 +232,7 @@ export default function SucursalImpresorasConfigDrawer({
 
     try {
       await qzPrintService.printHtmlToPrinter({
+        idSucursal,
         printerName,
         html: buildQzTestHtml({
           title: tipo === 'COCINA' ? 'PRUEBA COCINA' : 'PRUEBA FACTURA',

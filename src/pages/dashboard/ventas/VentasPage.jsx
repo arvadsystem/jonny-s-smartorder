@@ -394,7 +394,9 @@ export default function VentasPage() {
 
     try {
       if (canUseQzFactura) {
-        await printVentaTicketWithQz(idFactura, facturaPrinterConfig);
+        await printVentaTicketWithQz(idFactura, facturaPrinterConfig, {
+          idSucursal: resolvedSucursalId
+        });
         if (facturaPrintWindow && !facturaPrintWindow.closed) facturaPrintWindow.close();
       } else {
         await printVentaTicketPdf(idFactura, facturaPrintWindow);
@@ -681,7 +683,9 @@ export default function VentasPage() {
 
     try {
       if (canUseQzFactura) {
-        await printVentaTicketWithQz(venta.id_factura, facturaPrinterConfig);
+        await printVentaTicketWithQz(venta.id_factura, facturaPrinterConfig, {
+          idSucursal: resolvedSucursalId
+        });
         if (facturaPrintWindow && !facturaPrintWindow.closed) facturaPrintWindow.close();
       } else {
         await printVentaTicketPdf(venta.id_factura, facturaPrintWindow);
@@ -894,7 +898,9 @@ export default function VentasPage() {
       }
 
       if (canUseQzComanda) {
-        await printComandaCocinaWithQz(comanda, cocinaPrinterConfig);
+        await printComandaCocinaWithQz(comanda, cocinaPrinterConfig, {
+          idSucursal: resolvedSucursalId
+        });
         if (comandaPrintWindow && !comandaPrintWindow.closed) comandaPrintWindow.close();
       } else {
         await printComandaCocinaInWindow(comanda, comandaPrintWindow, { widthMm: cocinaWidthMm });
