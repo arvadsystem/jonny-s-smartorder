@@ -1,6 +1,6 @@
 import { apiFetch } from './api';
 import importedQz from 'qz-tray';
-import { isAgentPrintMode, PRINT_MODE_BUILD_MARKER } from './printModeService';
+import { assertBrowserQzAllowed } from './printModeGuard.js';
 
 const QZ_LIBRARY_SOURCES = [
   import.meta.env.VITE_QZ_TRAY_SCRIPT_URL,
@@ -30,11 +30,8 @@ const createQzError = (code, message, cause = null) => {
 };
 
 export const assertQzDirectMode = () => {
-  if (isAgentPrintMode()) {
-    throw createQzError(
-      'QZ_DISABLED_IN_AGENT_MODE',
-      `QZ Tray esta deshabilitado en el navegador (${PRINT_MODE_BUILD_MARKER}).`
-    );
+  try { return assertBrowserQzAllowed(); } catch (error) {
+    throw createQzError(error.code || 'QZ_DISABLED_IN_AGENT_MODE', error.message, error);
   }
 };
 
