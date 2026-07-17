@@ -1,7 +1,9 @@
 import { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import authService from '../services/authService';
 import { perfilService } from '../services/perfilService';
+import { setQzAuthenticatedContext } from '../services/qzSessionContext.js';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext();
 
 const AUTH_SESSION_HINT_KEY = 'smartorder_auth_session_hint';
@@ -80,7 +82,7 @@ const normalizeAuthPayloadUser = (payload) => {
 
 const enrichUserWithPerfil = async (usuario) => {
   if (!usuario || typeof usuario !== 'object') return usuario ?? null;
-  if (Boolean(usuario?.must_change_password)) return usuario;
+  if (usuario?.must_change_password) return usuario;
 
   try {
     const perfilData = await perfilService.getPerfil({ timeoutMs: PERFIL_ENRICH_TIMEOUT_MS });
@@ -121,6 +123,13 @@ const resolveBootstrapErrorMessage = (error) => {
   return message || 'No se pudo validar la sesion.';
 };
 
+const syncQzAuthenticatedContext = (usuario, reason) =>
+  setQzAuthenticatedContext({
+    idUsuario: usuario?.id_usuario,
+    idSucursal: usuario?.id_sucursal,
+    reason,
+  });
+
 const AuthBootstrapScreen = () => (
   <div
     style={{
@@ -146,6 +155,8 @@ export const AuthProvider = ({ children }) => {
   const [bootstrapError, setBootstrapError] = useState('');
   const requestIdRef = useRef(0);
   const mountedRef = useRef(false);
+  const authenticatedUserId = user?.id_usuario ?? null;
+  const authenticatedSucursalId = user?.id_sucursal ?? null;
 
   const isCurrentRequest = useCallback(
     (requestId) => mountedRef.current && requestIdRef.current === requestId,
@@ -155,6 +166,7 @@ export const AuthProvider = ({ children }) => {
   const runBootstrap = useCallback(
     async ({ force = false } = {}) => {
       if (!force && !hasSessionHint()) {
+        await syncQzAuthenticatedContext(null, 'bootstrap-without-session');
         setBootstrapError('');
         setBootstrapState(BOOTSTRAP_STATES.ready);
         return;
@@ -171,6 +183,8 @@ export const AuthProvider = ({ children }) => {
         if (!isCurrentRequest(requestId)) return;
 
         const baseUser = normalizeAuthPayloadUser(data);
+        await syncQzAuthenticatedContext(baseUser, 'bootstrap-authenticated');
+        if (!isCurrentRequest(requestId)) return;
         setUser(baseUser);
         setSessionHint(Boolean(baseUser));
         setBootstrapState(BOOTSTRAP_STATES.ready);
@@ -191,6 +205,8 @@ export const AuthProvider = ({ children }) => {
         if (!isCurrentRequest(requestId)) return;
 
         if (isUnauthorizedError(error)) {
+          await syncQzAuthenticatedContext(null, 'bootstrap-unauthorized');
+          if (!isCurrentRequest(requestId)) return;
           setUser(null);
           setSessionHint(false);
           setBootstrapError('');
@@ -204,6 +220,8 @@ export const AuthProvider = ({ children }) => {
           return;
         }
 
+        await syncQzAuthenticatedContext(null, 'bootstrap-failed');
+        if (!isCurrentRequest(requestId)) return;
         setUser(null);
         setSessionHint(false);
         setBootstrapError(resolveBootstrapErrorMessage(error));
@@ -226,6 +244,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const handler = () => {
       requestIdRef.current += 1;
+      void syncQzAuthenticatedContext(null, 'auth-logout-event');
       setUser(null);
       setSessionHint(false);
       setBootstrapError('');
@@ -235,6 +254,14 @@ export const AuthProvider = ({ children }) => {
     window.addEventListener('auth:logout', handler);
     return () => window.removeEventListener('auth:logout', handler);
   }, []);
+
+  useEffect(() => {
+    void setQzAuthenticatedContext({
+      idUsuario: authenticatedUserId,
+      idSucursal: authenticatedSucursalId,
+      reason: 'authenticated-user-or-sucursal-changed',
+    });
+  }, [authenticatedSucursalId, authenticatedUserId]);
 
   const retryBootstrap = useCallback(() => {
     void runBootstrap({ force: true });
@@ -256,6 +283,7 @@ export const AuthProvider = ({ children }) => {
     const baseUser = normalizeAuthPayloadUser(authPayload);
     setSessionHint(Boolean(baseUser));
     setBootstrapError('');
+    await syncQzAuthenticatedContext(baseUser, 'login-authenticated');
 
     if (!baseUser || typeof baseUser !== 'object') {
       setUser(baseUser);
@@ -272,6 +300,8 @@ export const AuthProvider = ({ children }) => {
       if (!isCurrentRequest(requestId)) return baseUser;
 
       const hydratedUser = normalizeAuthPayloadUser(sessionData) || baseUser;
+      await syncQzAuthenticatedContext(hydratedUser, 'login-hydrated');
+      if (!isCurrentRequest(requestId)) return baseUser;
       setUser(hydratedUser);
       setSessionHint(Boolean(hydratedUser));
       setBootstrapState(BOOTSTRAP_STATES.ready);
@@ -290,6 +320,8 @@ export const AuthProvider = ({ children }) => {
     } catch {
       if (!isCurrentRequest(requestId)) return baseUser;
 
+      await syncQzAuthenticatedContext(baseUser, 'login-hydration-failed');
+      if (!isCurrentRequest(requestId)) return baseUser;
       setUser(baseUser);
       setBootstrapState(BOOTSTRAP_STATES.ready);
 
@@ -308,6 +340,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    await syncQzAuthenticatedContext(null, 'logout');
     try {
       await authService.logout();
     } catch {
