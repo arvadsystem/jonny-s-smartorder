@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import AppSelect from '../../../../components/common/AppSelect';
 import qzPrintService from '../../../../services/qzPrintService';
+import { isAgentPrintMode } from '../../../../services/printModeService';
 
 const WIDTH_OPTIONS = [58, 80].map((width) => ({
   value: String(width),
@@ -154,6 +155,7 @@ const toPayload = (form = {}) => ({
 
 export default function SucursalImpresorasConfigDrawer({
   open,
+  idSucursal,
   sucursalNombre = '',
   form,
   saving = false,
@@ -166,6 +168,7 @@ export default function SucursalImpresorasConfigDrawer({
   const [detectError, setDetectError] = useState('');
   const [qzStatus, setQzStatus] = useState('idle');
   const [testStatus, setTestStatus] = useState({});
+  const browserQzUnavailable = isAgentPrintMode();
 
   if (!open) return null;
 
@@ -183,11 +186,17 @@ export default function SucursalImpresorasConfigDrawer({
   };
 
   const handleDetectPrinters = async () => {
+    if (browserQzUnavailable) {
+      setQzStatus('error');
+      setDetectError('La deteccion QZ desde el navegador no esta disponible en modo agent.');
+      return;
+    }
+
     setDetectingPrinters(true);
     setDetectError('');
     setQzStatus('detecting');
     try {
-      const response = await qzPrintService.testQzConnection();
+      const response = await qzPrintService.testQzConnection({ idSucursal });
       const printers = Array.isArray(response?.printers)
         ? response.printers.map((item) => String(item || '').trim()).filter(Boolean)
         : [];
@@ -223,6 +232,7 @@ export default function SucursalImpresorasConfigDrawer({
 
     try {
       await qzPrintService.printHtmlToPrinter({
+        idSucursal,
         printerName,
         html: buildQzTestHtml({
           title: tipo === 'COCINA' ? 'PRUEBA COCINA' : 'PRUEBA FACTURA',
@@ -303,7 +313,7 @@ export default function SucursalImpresorasConfigDrawer({
                     type="button"
                     className="btn btn-outline-secondary btn-sm"
                     onClick={handleDetectPrinters}
-                    disabled={saving || detectingPrinters}
+                    disabled={saving || detectingPrinters || browserQzUnavailable}
                   >
                     <i className="bi bi-arrow-repeat me-1" />
                     {detectingPrinters ? 'Detectando...' : 'Detectar impresoras QZ'}
@@ -314,6 +324,11 @@ export default function SucursalImpresorasConfigDrawer({
                     </span>
                   ) : null}
                 </div>
+                {browserQzUnavailable ? (
+                  <div className="alert alert-info py-2 mt-3 mb-0">
+                    La deteccion QZ desde el navegador no esta disponible porque este build usa el modo agent.
+                  </div>
+                ) : null}
                 {detectError ? (
                   <div className="alert alert-warning py-2 mt-3 mb-0">{detectError}</div>
                 ) : null}
@@ -434,7 +449,7 @@ export default function SucursalImpresorasConfigDrawer({
                         {errors[`${tipo}.ip_impresora`] ? (
                           <div className="invalid-feedback">{errors[`${tipo}.ip_impresora`]}</div>
                         ) : (
-                          <div className="form-text">Opcional. Se guarda como referencia para soporte y futuras impresiones RAW o por red.</div>
+                          <div className="form-text">IP y puerto aplican únicamente a impresión RAW/TCP por red. No se utilizan para QZ Tray HTML con impresoras USB.</div>
                         )}
                       </div>
 
@@ -452,7 +467,7 @@ export default function SucursalImpresorasConfigDrawer({
                         {errors[`${tipo}.puerto_impresora`] ? (
                           <div className="invalid-feedback">{errors[`${tipo}.puerto_impresora`]}</div>
                         ) : (
-                          <div className="form-text">9100 es el valor recomendado para impresoras termicas en red.</div>
+                          <div className="form-text">9100 es el puerto TCP RAW habitual de la impresora; no es el puerto WSS de QZ Tray.</div>
                         )}
                       </div>
 

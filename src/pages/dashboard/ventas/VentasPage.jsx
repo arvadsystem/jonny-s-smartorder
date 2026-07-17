@@ -16,6 +16,7 @@ import { useVentas } from './hooks/useVentas';
 import { normalizeVentaDetail } from './utils/ventasHelpers';
 import ventasService from '../../../services/ventasService';
 import printerDeviceDetectionService from '../../../services/printerDeviceDetectionService';
+import { isAgentPrintMode } from '../../../services/printModeService';
 import {
   openPrintWindow,
   printComandaCocinaInWindow,
@@ -42,6 +43,7 @@ const hasCreateVentaDetailPayload = (response) =>
   response.items.length > 0;
 
 const QZ_PRINT_MODES = new Set(['QZ_HTML', 'QZ_RAW']);
+const AGENT_PRINT_MODE = isAgentPrintMode();
 
 const resolvePrinterByType = (configPayload, printerType) =>
   (Array.isArray(configPayload?.impresoras) ? configPayload.impresoras : [])
@@ -277,11 +279,34 @@ export default function VentasPage() {
     }
   };
 
+  const monitorAgentPrintJob = (jobId, label = 'IMPRESION') => {
+    const normalizedId = Number(jobId || 0);
+    if (!AGENT_PRINT_MODE || !normalizedId || typeof window === 'undefined') return;
+    const poll = async (attempt = 1) => {
+      try {
+        const response = await ventasService.getPrintJob(normalizedId);
+        const state = String(response?.job?.estado || '').toLowerCase();
+        if (state === 'impreso') {
+          openToast(label, 'Documento impreso correctamente por el agente de la sucursal.', 'success');
+          return;
+        }
+        if (['fallido', 'cancelado'].includes(state)) {
+          openToast(label, 'El agente reporto un error de impresion. La venta permanece registrada.', 'warning');
+          return;
+        }
+      } catch {
+        // El monitoreo es informativo y nunca altera la venta confirmada.
+      }
+      if (attempt < 10) window.setTimeout(() => void poll(attempt + 1), 3000);
+    };
+    window.setTimeout(() => void poll(), 1500);
+  };
+
   const printFacturaAfterSuccessfulPayment = async ({
     response,
     payload = null,
     ventaDetail: providedVentaDetail = null,
-    facturaPrintWindow = openPrintWindow('Preparando factura'),
+    facturaPrintWindow = AGENT_PRINT_MODE ? null : openPrintWindow('Preparando factura'),
     origin = 'POST_PAYMENT',
     failureMessage = 'La venta se creo, pero no se pudo imprimir la factura automaticamente ni abrir la impresion manual.',
     qzFallbackMessage = 'La factura no se pudo imprimir automaticamente con QZ Tray, pero se abrio la impresion manual.',
@@ -300,6 +325,23 @@ export default function VentasPage() {
         ventaDetail = await getVentaDetail(idFactura);
       } catch {
         // El detalle completo mejora el ticket, pero la impresion puede resolverse por id_factura.
+      }
+    }
+
+    if (AGENT_PRINT_MODE) {
+      if (facturaPrintWindow && !facturaPrintWindow.closed) facturaPrintWindow.close();
+      try {
+        const queued = await ventasService.enqueuePrintJob(
+          idFactura,
+          { tipo_documento: 'factura', es_reimpresion: false },
+          `factura:${idFactura}:inicial`
+        );
+        openToast('IMPRESION FACTURA', 'Venta confirmada y enviada a la cola de impresion.', 'success');
+        monitorAgentPrintJob(queued?.job?.id_trabajo, 'IMPRESION FACTURA');
+        return { ok: true, queued: true, printJob: queued?.job || null, ventaDetail };
+      } catch (error) {
+        openToast('IMPRESION PENDIENTE', 'La venta se registro, pero no se pudo enviar a impresion. Puede reintentarse desde el detalle.', 'warning');
+        return { ok: false, queued: false, ventaDetail, error };
       }
     }
 
@@ -352,7 +394,9 @@ export default function VentasPage() {
 
     try {
       if (canUseQzFactura) {
-        await printVentaTicketWithQz(idFactura, facturaPrinterConfig);
+        await printVentaTicketWithQz(idFactura, facturaPrinterConfig, {
+          idSucursal: resolvedSucursalId
+        });
         if (facturaPrintWindow && !facturaPrintWindow.closed) facturaPrintWindow.close();
       } else {
         await printVentaTicketPdf(idFactura, facturaPrintWindow);
@@ -493,7 +537,7 @@ export default function VentasPage() {
   };
 
   const handleCreateVenta = async (payload, options) => {
-    const facturaPrintWindow = openPrintWindow();
+    const facturaPrintWindow = AGENT_PRINT_MODE ? null : openPrintWindow();
     let response;
     try {
       response = await createVenta(payload, options);
@@ -596,6 +640,24 @@ export default function VentasPage() {
   const handleDetailTicketPrint = async (venta, options = {}) => {
     if (!venta?.id_factura) return;
 
+    if (AGENT_PRINT_MODE) {
+      try {
+        const idempotencyKey = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? `reprint:${crypto.randomUUID()}`
+          : `reprint:${venta.id_factura}:${Date.now()}`;
+        const queued = await ventasService.enqueuePrintJob(
+          venta.id_factura,
+          { tipo_documento: 'factura', es_reimpresion: true, motivo: String(options?.motivo || 'REIMPRESION_MANUAL').slice(0, 120) },
+          idempotencyKey
+        );
+        openToast('REIMPRESION FACTURA', 'Reimpresion enviada a la cola de la sucursal.', 'success');
+        monitorAgentPrintJob(queued?.job?.id_trabajo, 'REIMPRESION FACTURA');
+      } catch {
+        openToast('REIMPRESION FACTURA', 'No se pudo enviar la reimpresion. Intenta nuevamente.', 'warning');
+      }
+      return;
+    }
+
     const facturaPrintWindow = openPrintWindow('Preparando factura');
     const resolvedSucursalId = Number.parseInt(String(venta?.id_sucursal ?? ''), 10);
     const resolvedCajaId = Number.parseInt(String(venta?.id_caja ?? ''), 10);
@@ -621,7 +683,9 @@ export default function VentasPage() {
 
     try {
       if (canUseQzFactura) {
-        await printVentaTicketWithQz(venta.id_factura, facturaPrinterConfig);
+        await printVentaTicketWithQz(venta.id_factura, facturaPrinterConfig, {
+          idSucursal: resolvedSucursalId
+        });
         if (facturaPrintWindow && !facturaPrintWindow.closed) facturaPrintWindow.close();
       } else {
         await printVentaTicketPdf(venta.id_factura, facturaPrintWindow);
@@ -774,6 +838,26 @@ export default function VentasPage() {
       error: ''
     }));
 
+    if (AGENT_PRINT_MODE) {
+      if (isPendingOrderComanda || !venta?.id_factura) {
+        setComandaPrompt((current) => ({ ...current, loading: false, error: 'La comanda del pedido pendiente se enviara al agente despues de confirmar la venta.' }));
+        return;
+      }
+      try {
+        const queued = await ventasService.enqueuePrintJob(
+          venta.id_factura,
+          { tipo_documento: 'comanda', es_reimpresion: mode === 'reprint' },
+          mode === 'reprint' ? `comanda-reprint:${venta.id_factura}:${Date.now()}` : `comanda:${venta.id_factura}:inicial`
+        );
+        openToast('COMANDA COCINA', 'Comanda enviada a la cola de impresion.', 'success');
+        monitorAgentPrintJob(queued?.job?.id_trabajo, 'COMANDA COCINA');
+        await closeComandaPrompt({ markAsCancelled: false });
+      } catch {
+        setComandaPrompt((current) => ({ ...current, loading: false, error: 'No se pudo enviar la comanda a la cola.' }));
+      }
+      return;
+    }
+
     let comandaForPrint = venta;
     let cocinaPrinterConfig = null;
     let cocinaWidthMm = 80;
@@ -814,7 +898,9 @@ export default function VentasPage() {
       }
 
       if (canUseQzComanda) {
-        await printComandaCocinaWithQz(comanda, cocinaPrinterConfig);
+        await printComandaCocinaWithQz(comanda, cocinaPrinterConfig, {
+          idSucursal: resolvedSucursalId
+        });
         if (comandaPrintWindow && !comandaPrintWindow.closed) comandaPrintWindow.close();
       } else {
         await printComandaCocinaInWindow(comanda, comandaPrintWindow, { widthMm: cocinaWidthMm });

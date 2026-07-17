@@ -640,6 +640,7 @@ export default function SucursalFacturacionTab({
 
       <SucursalImpresorasConfigDrawer
         open={printerDrawerOpen}
+        idSucursal={selectedSucursal?.id_sucursal}
         sucursalNombre={selectedSucursal?.nombre_sucursal || ''}
         form={printerForm || normalizePrinterConfig()}
         saving={printerSaving}
