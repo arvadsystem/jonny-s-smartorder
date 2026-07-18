@@ -8408,7 +8408,10 @@
   }
 
   .ventas-finalizar-modal__workspace {
-    grid-template-columns: 1fr;
+    flex: 0 0 auto;
+    min-height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
     overflow: visible;
   }
 
@@ -8418,6 +8421,8 @@
   }
 
   .ventas-finalizar-modal__form-column {
+    height: auto;
+    min-height: auto;
     padding-right: 0;
     overflow: visible;
   }
@@ -8656,9 +8661,9 @@
   }
 
   .ventas-finalizar-modal .ventas-modal-footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 2;
+    position: static;
+    bottom: auto;
+    z-index: auto;
     background: rgba(255, 253, 249, 0.98);
     border-top: 1px solid rgba(157, 150, 112, 0.16);
     box-shadow: 0 -12px 26px rgba(82, 44, 34, 0.08);

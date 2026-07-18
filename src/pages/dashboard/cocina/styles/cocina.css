@@ -2360,6 +2360,11 @@
   align-content: start;
 }
 
+.cocina-page--tv-mode .kds-column.is-pending .kds-column__empty {
+  width: 100%;
+  align-self: stretch;
+}
+
 .cocina-page--tv-mode .kds-card,
 .cocina-page--tv-mode .kds-column.is-pending .kds-card,
 .cocina-page--tv-mode .kds-column.is-prep .kds-card {
