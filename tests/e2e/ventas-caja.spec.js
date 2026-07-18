@@ -2,6 +2,8 @@
 import { test, expect } from '@playwright/test';
 
 const QA_HOST_PATTERN = /(^|\.)qa\.jonnyshn\.com$/i;
+const LOCAL_E2E_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+const GEOMETRY_TOLERANCE_PX = 4;
 
 const ensureQaOnly = (baseURL) => {
   const url = new URL(baseURL);
@@ -9,6 +11,52 @@ const ensureQaOnly = (baseURL) => {
     throw new Error(`E2E de Caja bloqueado: E2E_BASE_URL debe apuntar a QA, recibido ${url.hostname}.`);
   }
 };
+
+const ensureLocalOnly = (baseURL) => {
+  const url = new URL(baseURL);
+  if (!LOCAL_E2E_HOSTS.has(url.hostname)) {
+    throw new Error(`E2E responsive de Caja bloqueado: E2E_BASE_URL debe apuntar a localhost, recibido ${url.hostname}.`);
+  }
+};
+
+const rectanglesIntersect = (first, second, tolerance = GEOMETRY_TOLERANCE_PX) => {
+  const overlapWidth = Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x);
+  const overlapHeight = Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y);
+  return overlapWidth > tolerance && overlapHeight > tolerance;
+};
+
+const requireBoundingBox = async (locator, label) => {
+  const box = await locator.boundingBox();
+  expect(box, `${label} debe tener geometria renderizada.`).not.toBeNull();
+  return box;
+};
+
+const expectNoIntersection = async (firstLocator, secondLocator, label, tolerance = GEOMETRY_TOLERANCE_PX) => {
+  const [first, second] = await Promise.all([
+    requireBoundingBox(firstLocator, `${label} - primer elemento`),
+    requireBoundingBox(secondLocator, `${label} - segundo elemento`)
+  ]);
+  expect(rectanglesIntersect(first, second, tolerance), label).toBe(false);
+};
+
+const expectVerticalOrder = async (firstLocator, secondLocator, label, tolerance = GEOMETRY_TOLERANCE_PX) => {
+  const [first, second] = await Promise.all([
+    requireBoundingBox(firstLocator, `${label} - primer elemento`),
+    requireBoundingBox(secondLocator, `${label} - segundo elemento`)
+  ]);
+  expect(first.y + first.height, label).toBeLessThanOrEqual(second.y + tolerance);
+};
+
+const readScrollMetrics = (locator) => locator.evaluate((element) => {
+  const style = getComputedStyle(element);
+  return {
+    clientHeight: element.clientHeight,
+    clientWidth: element.clientWidth,
+    overflowY: style.overflowY,
+    scrollHeight: element.scrollHeight,
+    scrollWidth: element.scrollWidth
+  };
+});
 
 const parseMoney = (value) => {
   const normalized = String(value || '')
@@ -319,5 +367,116 @@ test.describe.serial('Caja: combos y recetas independientes', () => {
 
     await addCatalogItem(page, 'RECETA', getEnvText('E2E_RECETA_NAME') || recetaName);
     await expect(await cartLines(page, 'RECETA')).toHaveCount(1);
+  });
+});
+
+test.describe('Caja: Finalizar operacion responsive', () => {
+  test.beforeAll(async ({ baseURL }) => {
+    ensureLocalOnly(baseURL);
+  });
+
+  test('Caja - Finalizar operacion mantiene estructura responsive sin superposiciones en 425x1024', async ({ page }) => {
+    await page.setViewportSize({ width: 425, height: 1024 });
+    await openCaja(page);
+    await addCatalogItem(page, 'PRODUCTO');
+
+    const modal = await openFinalize(page);
+    const body = modal.locator('.ventas-modal-body');
+    const workspace = modal.locator('.ventas-finalizar-modal__workspace');
+    const formColumn = modal.locator('.ventas-finalizar-modal__form-column');
+    const clientSelect = formColumn.locator('.app-select.ventas-finalizar-modal__field-wide');
+    const contactDetails = formColumn.locator('details.ventas-finalizar-modal__optional').filter({
+      hasText: 'Agregar datos de contacto'
+    });
+    const channelHeading = formColumn.locator('.ventas-finalizar-modal__subsection-title');
+    const clientSection = formColumn.locator('.ventas-finalizar-modal__section:has(.ventas-finalizar-modal__subsection-title)');
+    const amountInput = formColumn.getByTestId('ventas-pago-monto-recibido');
+    const amountField = amountInput.locator('..').locator('..');
+    const paymentSection = formColumn.locator('.ventas-finalizar-modal__section:has([data-testid="ventas-pago-monto-recibido"])');
+    const paymentMethodLabel = formColumn.locator('.app-select__label').filter({ hasText: /^Metodo de pago$/i });
+    const paymentMethod = paymentMethodLabel.locator('..');
+    const paymentSummary = formColumn.locator('.ventas-finalizar-modal__payment-summary');
+    const saleSummary = modal.locator('.ventas-finalizar-modal__sale-summary');
+    const statusMessage = saleSummary.locator('.ventas-finalizar-modal__status');
+    const footer = modal.locator('.ventas-modal-footer');
+    const confirmButton = modal.getByTestId('ventas-confirmar-pago');
+    const cancelButton = modal.getByRole('button', { name: /^Cancelar$/i });
+
+    await expect(modal.getByRole('heading', { name: /Finalizar operacion/i })).toBeVisible();
+    await expect(modal.getByTestId('ventas-finalizar-tab-pagar')).toBeVisible();
+    await expect(modal.getByTestId('ventas-finalizar-tab-pendiente')).toBeVisible();
+    await expect(clientSelect).toBeVisible();
+    await expect(channelHeading).toContainText('Canal y modalidad');
+    await expect(saleSummary).toContainText('Resumen de la venta');
+    await expect(paymentMethod).toBeVisible();
+    await expect(amountInput).toBeVisible();
+    await expect(paymentSummary).toContainText('Cambio:');
+    await expect(confirmButton).toBeVisible();
+    await expect(cancelButton).toBeVisible();
+
+    const modalBox = await requireBoundingBox(modal, 'Modal Finalizar operacion');
+    expect(modalBox.x).toBeGreaterThanOrEqual(-GEOMETRY_TOLERANCE_PX);
+    expect(modalBox.x + modalBox.width).toBeLessThanOrEqual(425 + GEOMETRY_TOLERANCE_PX);
+    expect(modalBox.width).toBeLessThanOrEqual(425 + GEOMETRY_TOLERANCE_PX);
+
+    await expectVerticalOrder(clientSelect, channelHeading, 'Cliente debe terminar antes de Canal y modalidad');
+    await expectVerticalOrder(clientSection, paymentSection, 'Cliente y canal deben terminar antes de Pago');
+    await expectVerticalOrder(paymentSection, saleSummary, 'Formulario debe terminar antes del resumen movil');
+    await expectNoIntersection(clientSection, saleSummary, 'Canal y modalidad no deben intersectar el resumen');
+    await expectNoIntersection(paymentMethod, saleSummary, 'Metodo de pago no debe intersectar el resumen');
+    await expectNoIntersection(paymentMethod, amountField, 'Metodo de pago no debe intersectar Monto recibido');
+    await expectNoIntersection(amountField, paymentSummary, 'Monto recibido no debe intersectar Cambio');
+
+    const bodyMetrics = await readScrollMetrics(body);
+    expect(['auto', 'scroll']).toContain(bodyMetrics.overflowY);
+    expect(bodyMetrics.scrollHeight).toBeGreaterThan(bodyMetrics.clientHeight);
+
+    for (const [label, locator] of [
+      ['workspace', workspace],
+      ['form-column', formColumn],
+      ['sale-summary', saleSummary]
+    ]) {
+      const metrics = await readScrollMetrics(locator);
+      const hasPermanentVerticalScroll = ['auto', 'scroll'].includes(metrics.overflowY)
+        && metrics.scrollHeight > metrics.clientHeight + GEOMETRY_TOLERANCE_PX;
+      expect(hasPermanentVerticalScroll, `${label} no debe tener scroll vertical permanente.`).toBe(false);
+    }
+
+    const modalMetrics = await readScrollMetrics(modal);
+    expect(modalMetrics.scrollWidth).toBeLessThanOrEqual(modalMetrics.clientWidth + GEOMETRY_TOLERANCE_PX);
+    expect(bodyMetrics.scrollWidth).toBeLessThanOrEqual(bodyMetrics.clientWidth + GEOMETRY_TOLERANCE_PX);
+    const documentWidth = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth
+    }));
+    expect(documentWidth.scrollWidth).toBeLessThanOrEqual(documentWidth.clientWidth + GEOMETRY_TOLERANCE_PX);
+
+    const initialBodyScrollHeight = bodyMetrics.scrollHeight;
+    expect(await contactDetails.evaluate((element) => element.open)).toBe(false);
+    await contactDetails.getByText('Agregar datos de contacto', { exact: true }).click();
+    await expect(formColumn.getByTestId('ventas-pendiente-nombre-contacto')).toBeVisible();
+    await expect(formColumn.getByTestId('ventas-contacto-telefono')).toBeVisible();
+    await expect.poll(async () => (await readScrollMetrics(body)).scrollHeight).toBeGreaterThan(initialBodyScrollHeight);
+    await expectVerticalOrder(contactDetails, channelHeading, 'Contacto expandido debe terminar antes de Canal y modalidad');
+    await expectNoIntersection(contactDetails, channelHeading, 'Contacto expandido no debe invadir Canal y modalidad');
+
+    const totalText = await saleSummary.locator('.is-total strong').innerText();
+    await amountInput.fill(parseMoney(totalText).toFixed(2));
+    await expect(statusMessage).toHaveClass(/is-ready/);
+    await amountInput.fill('0.01');
+    await expect(statusMessage).toHaveClass(/is-pending/);
+    await expect(statusMessage).toContainText('Completa los datos requeridos');
+
+    await body.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect.poll(async () => body.evaluate((element) => (
+      Math.ceil(element.scrollTop + element.clientHeight) >= element.scrollHeight - GEOMETRY_TOLERANCE_PX
+    ))).toBe(true);
+    await expectVerticalOrder(statusMessage, footer, 'El ultimo contenido debe terminar antes del footer');
+    await expectNoIntersection(statusMessage, footer, 'El footer no debe cubrir el mensaje final');
+
+    await cancelButton.click();
+    await expect(modal).toBeHidden();
   });
 });

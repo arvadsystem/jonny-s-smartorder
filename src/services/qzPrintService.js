@@ -1,6 +1,13 @@
 import { apiFetch } from './api';
 import importedQz from 'qz-tray';
 import { assertBrowserQzAllowed } from './printModeGuard.js';
+import {
+  createQzContextKey,
+  getQzAuthenticatedContext,
+  getQzAuthenticatedIdentityKey,
+  resolveQzApiErrorCode,
+  subscribeQzAuthenticatedContext,
+} from './qzSessionContext.js';
 
 const QZ_LIBRARY_SOURCES = [...new Set([
   '/vendor/qz-tray.js',
@@ -12,8 +19,13 @@ const QZ_LIBRARY_SOURCES = [...new Set([
 let qzLoadPromise = null;
 let qzSecuritySetupPromise = null;
 let qzSecuritySucursalId = null;
+let qzSecurityContextKey = null;
 let qzConnectionPromise = null;
 let qzConnectionSucursalId = null;
+let qzConnectionContextKey = null;
+let qzActiveContextKey = null;
+let qzActiveAuthenticatedIdentityKey = null;
+let qzContextGeneration = 0;
 let qzOperationQueue = Promise.resolve();
 
 const QZ_DEBUG_ENABLED = String(import.meta.env.DEV || '').trim() === 'true'
@@ -33,6 +45,27 @@ const createQzError = (code, message, cause = null) => {
   return error;
 };
 
+const QZ_API_ERROR_MESSAGES = {
+  QZ_SESSION_UNAUTHORIZED: 'La sesion actual no esta autorizada para usar QZ Tray.',
+  QZ_CSRF_INVALID: 'La sesion de seguridad cambio. Inicia sesion nuevamente antes de imprimir.',
+  QZ_SUCURSAL_FORBIDDEN: 'El usuario actual no tiene acceso para imprimir en esta sucursal.',
+  QZ_PERMISSION_FORBIDDEN: 'El usuario actual no tiene permiso para imprimir.',
+  QZ_CERTIFICATE_UNAVAILABLE: 'El certificado de QZ Tray no esta disponible para esta sucursal.',
+  QZ_CERTIFICATE_ERROR: 'No se pudo obtener el certificado de QZ Tray desde el backend.',
+  QZ_SIGNATURE_ERROR: 'No se pudo firmar la solicitud de QZ Tray en el backend.',
+};
+
+const toMappedQzApiError = (error, operation) => {
+  const code = resolveQzApiErrorCode(error, operation);
+  return createQzError(code, QZ_API_ERROR_MESSAGES[code], error);
+};
+
+const normalizeQzResetReason = (value) =>
+  String(value || 'manual')
+    .trim()
+    .replace(/[^a-z0-9:_-]+/gi, '-')
+    .slice(0, 80) || 'manual';
+
 const requireQzSucursalId = (value) => {
   const parsed = typeof value === 'number'
     ? value
@@ -44,6 +77,23 @@ const requireQzSucursalId = (value) => {
     );
   }
   return parsed;
+};
+
+const requireQzAuthenticatedUser = () => {
+  const authenticatedContext = getQzAuthenticatedContext();
+  const idUsuario = Number(authenticatedContext.idUsuario);
+
+  if (!Number.isSafeInteger(idUsuario) || idUsuario <= 0) {
+    throw createQzError(
+      'QZ_SESSION_UNAUTHORIZED',
+      'Debes iniciar sesion antes de usar QZ Tray.'
+    );
+  }
+
+  return {
+    idUsuario,
+    authenticatedIdentityKey: getQzAuthenticatedIdentityKey(authenticatedContext),
+  };
 };
 
 const enqueueQzOperation = (operation) => {
@@ -139,9 +189,39 @@ const ensureQzLibrary = async () => {
   return qzLoadPromise;
 };
 
-const setupQzSecurity = async (qz, { idSucursal } = {}) => {
+const assertQzCallbackContext = ({
+  contextKey,
+  authenticatedIdentityKey,
+  generation,
+}) => {
+  const currentAuthenticatedIdentityKey = getQzAuthenticatedIdentityKey(
+    getQzAuthenticatedContext()
+  );
+
+  if (
+    qzContextGeneration !== generation
+    || qzActiveContextKey !== contextKey
+    || currentAuthenticatedIdentityKey !== authenticatedIdentityKey
+  ) {
+    throw createQzError(
+      'QZ_SESSION_UNAUTHORIZED',
+      'La sesion de QZ Tray cambio. Vuelve a intentar con la sesion actual.'
+    );
+  }
+};
+
+const setupQzSecurity = async (qz, {
+  idSucursal,
+  contextKey,
+  authenticatedIdentityKey,
+  generation = qzContextGeneration,
+} = {}) => {
   const normalizedSucursalId = requireQzSucursalId(idSucursal);
-  if (qzSecuritySetupPromise && qzSecuritySucursalId === normalizedSucursalId) {
+  if (
+    qzSecuritySetupPromise
+    && qzSecuritySucursalId === normalizedSucursalId
+    && qzSecurityContextKey === contextKey
+  ) {
     return qzSecuritySetupPromise;
   }
   if (qzSecuritySetupPromise) {
@@ -161,11 +241,7 @@ const setupQzSecurity = async (qz, { idSucursal } = {}) => {
         'GET'
       );
     } catch (error) {
-      throw createQzError(
-        'QZ_CERTIFICATE_ERROR',
-        'No se pudo obtener el certificado de QZ Tray desde el backend.',
-        error
-      );
+      throw toMappedQzApiError(error, 'certificate');
     }
 
     const certificate = String(
@@ -179,14 +255,33 @@ const setupQzSecurity = async (qz, { idSucursal } = {}) => {
       );
     }
 
-    qz.security.setCertificatePromise((resolve) => resolve(certificate));
+    const callbackContext = {
+      contextKey,
+      authenticatedIdentityKey,
+      generation,
+    };
+
+    qzActiveContextKey = contextKey;
+    qzActiveAuthenticatedIdentityKey = authenticatedIdentityKey;
+    assertQzCallbackContext(callbackContext);
+
+    qz.security.setCertificatePromise((resolve, reject) => {
+      try {
+        assertQzCallbackContext(callbackContext);
+        resolve(certificate);
+      } catch (error) {
+        reject(error);
+      }
+    }, { rejectOnFailure: true });
     qz.security.setSignatureAlgorithm(configuredAlgorithm);
     qz.security.setSignaturePromise((toSign) => async (resolve, reject) => {
       try {
+        assertQzCallbackContext(callbackContext);
         const response = await apiFetch('/ventas/qz/sign', 'POST', {
           request: toSign,
           id_sucursal: normalizedSucursalId
         });
+        assertQzCallbackContext(callbackContext);
         const signature = String(response?.signature || '').trim();
         if (!signature) {
           reject(createQzError('QZ_SIGNATURE_ERROR', 'El backend devolvio una firma vacia para QZ Tray.'));
@@ -194,11 +289,11 @@ const setupQzSecurity = async (qz, { idSucursal } = {}) => {
         }
         resolve(signature);
       } catch (error) {
-        reject(createQzError(
-          'QZ_SIGNATURE_ERROR',
-          'No se pudo firmar la solicitud de QZ Tray en el backend.',
-          error
-        ));
+        if (error?.name === 'QzPrintError') {
+          reject(error);
+          return;
+        }
+        reject(toMappedQzApiError(error, 'sign'));
       }
     });
 
@@ -206,6 +301,7 @@ const setupQzSecurity = async (qz, { idSucursal } = {}) => {
   })();
 
   qzSecuritySucursalId = normalizedSucursalId;
+  qzSecurityContextKey = contextKey;
   qzSecuritySetupPromise = pendingSetup;
   try {
     return await pendingSetup;
@@ -213,6 +309,9 @@ const setupQzSecurity = async (qz, { idSucursal } = {}) => {
     if (qzSecuritySetupPromise === pendingSetup) {
       qzSecuritySetupPromise = null;
       qzSecuritySucursalId = null;
+      qzSecurityContextKey = null;
+      qzActiveContextKey = null;
+      qzActiveAuthenticatedIdentityKey = null;
     }
     throw error;
   }
@@ -300,6 +399,8 @@ const describeQzConnectionOptions = (connectionOptions) => {
 
   return {
     mode: 'local',
+    host: 'localhost',
+    port: QZ_DEFAULT_REMOTE_SECURE_PORT,
     secure: true,
     debugDetails: { mode: 'local', secure: true },
     errorMessage: 'No se pudo establecer conexion con QZ Tray.'
@@ -312,66 +413,165 @@ const waitForPendingQzConnection = async () => {
   try {
     await pendingConnection;
   } catch {
-    // El cambio de sucursal debe continuar aunque el intento anterior haya fallado.
+    // El cambio de contexto debe continuar aunque el intento anterior haya fallado.
   }
 };
 
-const prepareQzSecurityForSucursal = async (qz, idSucursal) => {
-  if (qzSecuritySucursalId !== idSucursal) {
-    await waitForPendingQzConnection();
-    if (qzSecuritySetupPromise) {
-      try {
-        await qzSecuritySetupPromise;
-      } catch {
-        // El estado fallido se limpia antes de configurar la nueva sucursal.
-      }
+const isQzWebsocketActive = (qz) => {
+  try {
+    return Boolean(qz?.websocket?.isActive?.());
+  } catch {
+    return false;
+  }
+};
+
+const invalidateQzSecurityCallbacks = (qz) => {
+  const rejectStaleContext = () => createQzError(
+    'QZ_SESSION_UNAUTHORIZED',
+    'El contexto anterior de QZ Tray ya no es valido.'
+  );
+
+  try {
+    qz?.security?.setCertificatePromise?.((_resolve, reject) => {
+      reject(rejectStaleContext());
+    }, { rejectOnFailure: true });
+  } catch {
+    // QZ Tray puede estar cerrado durante un logout.
+  }
+
+  try {
+    qz?.security?.setSignaturePromise?.(() => (_resolve, reject) => {
+      reject(rejectStaleContext());
+    });
+  } catch {
+    // QZ Tray puede estar cerrado durante un logout.
+  }
+};
+
+const clearQzRuntimeState = () => {
+  qzContextGeneration += 1;
+  qzConnectionPromise = null;
+  qzConnectionSucursalId = null;
+  qzConnectionContextKey = null;
+  qzSecuritySetupPromise = null;
+  qzSecuritySucursalId = null;
+  qzSecurityContextKey = null;
+  qzActiveContextKey = null;
+  qzActiveAuthenticatedIdentityKey = null;
+};
+
+const resetQzRuntime = async ({
+  qz = toImportedQz() || toBrowserQz(),
+  reason = 'manual',
+  tolerateDisconnectFailure = true,
+} = {}) => {
+  await waitForPendingQzConnection();
+
+  const pendingSecuritySetup = qzSecuritySetupPromise;
+  if (pendingSecuritySetup) {
+    try {
+      await pendingSecuritySetup;
+    } catch {
+      // El estado fallido tambien debe invalidarse.
     }
-    if (qz.websocket.isActive()) {
-      try {
-        await qz.websocket.disconnect();
-      } catch (error) {
+  }
+
+  const wasActive = isQzWebsocketActive(qz);
+  if (wasActive) {
+    try {
+      await qz.websocket.disconnect();
+    } catch (error) {
+      if (!tolerateDisconnectFailure) {
         throw createQzError(
-          'QZ_SUCURSAL_SWITCH_FAILED',
-          'No se pudo desconectar QZ Tray para cambiar de sucursal.',
+          'QZ_CONNECTION_FAILED',
+          'No se pudo desconectar la conexion anterior de QZ Tray.',
           error
         );
       }
     }
-    qzConnectionPromise = null;
-    qzConnectionSucursalId = null;
-    qzSecuritySetupPromise = null;
-    qzSecuritySucursalId = null;
   }
 
-  await setupQzSecurity(qz, { idSucursal });
+  invalidateQzSecurityCallbacks(qz);
+  clearQzRuntimeState();
+  debugQz('Sesion reiniciada:', {
+    reason: normalizeQzResetReason(reason),
+    disconnected: wasActive,
+  });
+  return wasActive;
+};
+
+const prepareQzSecurityForContext = async (qz, context) => {
+  const hasDifferentSecurityContext = Boolean(qzSecurityContextKey)
+    && qzSecurityContextKey !== context.contextKey;
+  const hasDifferentActiveContext = Boolean(qzActiveContextKey)
+    && qzActiveContextKey !== context.contextKey;
+  const hasUnboundActiveConnection = isQzWebsocketActive(qz) && !qzActiveContextKey;
+
+  if (hasDifferentSecurityContext || hasDifferentActiveContext || hasUnboundActiveConnection) {
+    await resetQzRuntime({
+      qz,
+      reason: 'connection-context-changed',
+      tolerateDisconnectFailure: false,
+    });
+  }
+
+  const callbackContext = {
+    ...context,
+    generation: qzContextGeneration,
+  };
+
+  await setupQzSecurity(qz, callbackContext);
+  return callbackContext;
 };
 
 const ensureConnectedQz = async (idSucursal) => {
+  const { idUsuario, authenticatedIdentityKey } = requireQzAuthenticatedUser();
+  const connectionOptions = assertSecureQzConnectionOptions(resolveQzConnectionOptions());
+  const connectionContext = describeQzConnectionOptions(connectionOptions);
+  const contextKey = createQzContextKey({
+    idUsuario,
+    idSucursal,
+    host: connectionContext.host,
+    port: connectionContext.port,
+  });
   const qz = await ensureQzLibrary();
-  await prepareQzSecurityForSucursal(qz, idSucursal);
-  if (qz.websocket.isActive()) return qz;
+  const callbackContext = await prepareQzSecurityForContext(qz, {
+    idUsuario,
+    idSucursal,
+    contextKey,
+    authenticatedIdentityKey,
+  });
 
-  if (qzConnectionPromise && qzConnectionSucursalId !== idSucursal) {
+  if (isQzWebsocketActive(qz)) {
+    assertQzCallbackContext(callbackContext);
+    return qz;
+  }
+
+  if (
+    qzConnectionPromise
+    && (qzConnectionSucursalId !== idSucursal || qzConnectionContextKey !== contextKey)
+  ) {
     throw createQzError(
       'QZ_SUCURSAL_SWITCH_IN_PROGRESS',
-      'QZ Tray ya esta conectando otra sucursal.'
+      'QZ Tray ya esta conectando otro contexto autenticado.'
     );
   }
 
   if (!qzConnectionPromise) {
     qzConnectionSucursalId = idSucursal;
+    qzConnectionContextKey = contextKey;
     qzConnectionPromise = (async () => {
-      if (qz.websocket.isActive()) return qz;
+      if (isQzWebsocketActive(qz)) return qz;
 
-      const connectionOptions = assertSecureQzConnectionOptions(resolveQzConnectionOptions());
-      const connectionContext = describeQzConnectionOptions(connectionOptions);
       debugQz(connectionContext.debugDetails);
 
       try {
         await qz.websocket.connect(connectionOptions);
+        assertQzCallbackContext(callbackContext);
       } catch (error) {
+        if (error?.name === 'QzPrintError') throw error;
         throw createQzError(
-          'QZ_NOT_CONNECTED',
+          'QZ_CONNECTION_FAILED',
           connectionContext.errorMessage,
           error
         );
@@ -388,6 +588,7 @@ const ensureConnectedQz = async (idSucursal) => {
     if (qzConnectionPromise === pendingConnection) {
       qzConnectionPromise = null;
       qzConnectionSucursalId = null;
+      qzConnectionContextKey = null;
     }
   }
 };
@@ -417,7 +618,7 @@ const listPrintersFromQz = async (qz) => {
 const findPrinterFromQz = async (qz, printerName) => {
   const exactName = normalizePrinterName(printerName);
   if (!exactName) {
-    throw createQzError('PRINTER_NOT_FOUND', 'No se configuro un nombre de impresora.');
+    throw createQzError('QZ_PRINTER_NOT_FOUND', 'No se configuro un nombre de impresora.');
   }
 
   const printers = await listPrintersFromQz(qz);
@@ -436,7 +637,7 @@ const findPrinterFromQz = async (qz, printerName) => {
   if (containsMatch) return containsMatch;
 
   throw createQzError(
-    'PRINTER_NOT_FOUND',
+    'QZ_PRINTER_NOT_FOUND',
     `No se encontro la impresora "${exactName}". Detectadas: ${printers.join(', ') || 'ninguna'}.`
   );
 };
@@ -449,6 +650,13 @@ const buildPixelConfig = (qz, printerName, options = {}) =>
     scaleContent: false,
     units: 'mm'
   });
+
+const rethrowQzErrorOrPrintFailure = (error, message) => {
+  if (error?.name === 'QzPrintError' || String(error?.code || '').startsWith('QZ_')) {
+    throw error;
+  }
+  throw createQzError('PRINT_FAILED', message, error);
+};
 
 const arrayBufferToBase64 = (buffer) => {
   const globalBuffer = typeof globalThis !== 'undefined' ? globalThis.Buffer : undefined;
@@ -478,7 +686,10 @@ export const isQzAvailable = async () => {
 export const isQzConnected = async () => {
   try {
     const qz = await ensureQzLibrary();
-    return Boolean(qz.websocket.isActive());
+    const currentIdentityKey = getQzAuthenticatedIdentityKey(getQzAuthenticatedContext());
+    return isQzWebsocketActive(qz)
+      && Boolean(qzActiveContextKey)
+      && qzActiveAuthenticatedIdentityKey === currentIdentityKey;
   } catch {
     return false;
   }
@@ -488,18 +699,16 @@ export const connectQz = async ({ idSucursal } = {}) =>
   runQzSucursalOperation(idSucursal, (normalizedSucursalId) =>
     ensureConnectedQz(normalizedSucursalId));
 
-export const disconnectQz = async () => enqueueQzOperation(async () => {
+export const resetQzSession = ({ reason = 'manual' } = {}) =>
+  enqueueQzOperation(() => resetQzRuntime({ reason }));
+
+export const disconnectQz = async () => {
   assertQzDirectMode();
-  await waitForPendingQzConnection();
-  const qz = toImportedQz() || toBrowserQz();
-  const wasActive = Boolean(qz?.websocket?.isActive?.());
-  if (wasActive) await qz.websocket.disconnect();
-  qzConnectionPromise = null;
-  qzConnectionSucursalId = null;
-  qzSecuritySetupPromise = null;
-  qzSecuritySucursalId = null;
-  return wasActive;
-});
+  return resetQzSession({ reason: 'manual-disconnect' });
+};
+
+subscribeQzAuthenticatedContext(({ reason }) =>
+  resetQzSession({ reason: `auth:${normalizeQzResetReason(reason)}` }));
 
 export const getPrinters = async ({ idSucursal } = {}) =>
   runQzSucursalOperation(idSucursal, async (normalizedSucursalId) => {
@@ -566,7 +775,7 @@ export const printHtmlToPrinter = async ({
       mode: 'QZ_HTML'
     };
   } catch (error) {
-    throw createQzError('PRINT_FAILED', 'No se pudo imprimir el HTML con QZ Tray.', error);
+    rethrowQzErrorOrPrintFailure(error, 'No se pudo imprimir el HTML con QZ Tray.');
   }
 });
 
@@ -603,7 +812,7 @@ export const printPdfBlobToPrinter = async ({
       mode: 'QZ_PDF'
     };
   } catch (error) {
-    throw createQzError('PRINT_FAILED', 'No se pudo imprimir el PDF con QZ Tray.', error);
+    rethrowQzErrorOrPrintFailure(error, 'No se pudo imprimir el PDF con QZ Tray.');
   }
 });
 
@@ -634,13 +843,14 @@ export const printRawEscPos = async ({
       mode: 'QZ_RAW'
     };
   } catch (error) {
-    throw createQzError('PRINT_FAILED', 'No se pudo imprimir en modo RAW con QZ Tray.', error);
+    rethrowQzErrorOrPrintFailure(error, 'No se pudo imprimir en modo RAW con QZ Tray.');
   }
 });
 
 const qzPrintService = {
   connectQz,
   disconnectQz,
+  resetQzSession,
   isQzAvailable,
   isQzConnected,
   getPrinters,
