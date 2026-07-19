@@ -222,6 +222,8 @@ export default function PedidosView({
   scopeInfo = null,
   selectedSessionId = null,
   canPrintVenta = false,
+  onPrintFactura,
+  onPrintComanda,
   onSuccessfulPendingOrderPaymentPrint
 }) {
   const [search, setSearch] = useState('');
@@ -830,6 +832,9 @@ export default function PedidosView({
         canReversion={false}
         canExport={false}
         canPrint={canPrintVenta}
+        printSourceType={ventaDetailModal.venta?.id_factura ? 'factura' : 'pedido'}
+        onPrintFactura={onPrintFactura}
+        onPrintComanda={onPrintComanda}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />

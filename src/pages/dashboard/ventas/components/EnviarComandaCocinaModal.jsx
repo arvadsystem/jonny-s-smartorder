@@ -3,7 +3,9 @@ export default function EnviarComandaCocinaModal({
   venta,
   loading = false,
   error = '',
-  mode = 'post-sale',
+  sourceType = 'factura',
+  action = 'initial',
+  origin = 'post-sale',
   onAccept,
   onCancel
 }) {
@@ -12,18 +14,20 @@ export default function EnviarComandaCocinaModal({
   const totalProductos = Array.isArray(venta?.items)
     ? venta.items.reduce((sum, item) => sum + (Number(item?.cantidad ?? 0) || 0), 0)
     : Number(venta?.total_productos || 0) || 0;
-  const isReprint = mode === 'reprint';
-  const isPendingOrder = mode === 'pending-order';
+  const isReprint = action === 'reprint';
+  const isPendingOrder = sourceType === 'pedido';
   const title = isReprint ? 'Reimprimir comanda de cocina' : 'Enviar comanda a cocina';
-  const message = isPendingOrder
-    ? '¿Deseas imprimir la comanda de este pedido en cocina?'
+  const message = isPendingOrder && isReprint
+    ? '¿Deseas reimprimir la comanda de este pedido en cocina?'
+    : isPendingOrder
+      ? '¿Deseas imprimir la comanda de este pedido en cocina?'
     : isReprint
-      ? 'La factura ya se abrio para impresion. ¿Deseas imprimir tambien la comanda de cocina?'
+      ? '¿Deseas reimprimir la comanda de cocina?'
       : '¿Deseas enviar la comanda de este pedido a cocina?';
   const acceptLabel = loading
     ? (isReprint || isPendingOrder ? 'Imprimiendo...' : 'Enviando...')
     : (isReprint || isPendingOrder ? 'Imprimir comanda' : 'Aceptar');
-  const cancelLabel = isPendingOrder ? 'Ahora no' : isReprint ? 'Solo factura' : 'Cancelar';
+  const cancelLabel = origin === 'pending-order' && !isReprint ? 'Ahora no' : 'Cancelar';
 
   return (
     <div className="ventas-finalizar-error-backdrop ventas-comanda-cocina-backdrop" role="presentation">

@@ -2443,7 +2443,22 @@
 .ventas-detail-modal__footer-actions {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+.ventas-detail-modal__print-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ventas-detail-modal__print-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
 }
 
 .ventas-detail-modal__footer-actions .btn {
@@ -3754,6 +3769,12 @@
   .ventas-detail-modal__footer-actions .form-select {
     width: 100%;
     max-width: none !important;
+  }
+
+  .ventas-detail-modal__print-group {
+    display: grid;
+    grid-template-columns: 94px minmax(0, 1fr);
+    width: 100%;
   }
 
   .ventas-reversion-modal__footer-actions {
