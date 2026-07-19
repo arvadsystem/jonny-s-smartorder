@@ -839,16 +839,20 @@ export default function VentasPage() {
     }));
 
     if (AGENT_PRINT_MODE) {
-      if (isPendingOrderComanda || !venta?.id_factura) {
-        setComandaPrompt((current) => ({ ...current, loading: false, error: 'La comanda del pedido pendiente se enviara al agente despues de confirmar la venta.' }));
-        return;
-      }
       try {
-        const queued = await ventasService.enqueuePrintJob(
-          venta.id_factura,
-          { tipo_documento: 'comanda', es_reimpresion: mode === 'reprint' },
-          mode === 'reprint' ? `comanda-reprint:${venta.id_factura}:${Date.now()}` : `comanda:${venta.id_factura}:inicial`
-        );
+        const queued = isPendingOrderComanda
+          ? await ventasService.enqueuePedidoPrintJob(
+            venta.id_pedido,
+            { tipo_documento: 'comanda', es_reimpresion: mode === 'reprint' },
+            mode === 'reprint'
+              ? `comanda:pedido-reprint:${venta.id_pedido}:${Date.now()}`
+              : `comanda:pedido:${venta.id_pedido}:inicial`
+          )
+          : await ventasService.enqueuePrintJob(
+            venta.id_factura,
+            { tipo_documento: 'comanda', es_reimpresion: mode === 'reprint' },
+            mode === 'reprint' ? `comanda-reprint:${venta.id_factura}:${Date.now()}` : `comanda:${venta.id_factura}:inicial`
+          );
         openToast('COMANDA COCINA', 'Comanda enviada a la cola de impresion.', 'success');
         monitorAgentPrintJob(queued?.job?.id_trabajo, 'COMANDA COCINA');
         await closeComandaPrompt({ markAsCancelled: false });
