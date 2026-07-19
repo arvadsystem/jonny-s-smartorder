@@ -7,6 +7,7 @@ import {
   buildComandaIdempotencyKey,
   buildFacturaReprintIdempotencyKey,
   createComandaPrompt,
+  createDetailOperationController,
   createDocumentPrintGuard,
   createEmptyPrintErrors,
   enqueueAgentPrintAction,
@@ -29,6 +30,49 @@ const pendingPedido = {
   id_sucursal: 2,
   numero_pedido: 'PED-00012',
   items: [{ id_detalle: 1, cantidad: 1, nombre_item: 'Alitas' }]
+};
+
+const createDeferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
+const createRecoveryHarness = ({ idPedido = 12, sucursalId = 2 } = {}) => {
+  const controller = createDetailOperationController();
+  controller.openDetail({ idPedido, sucursalId });
+  const calls = { pedidos: 0, modal: 0, toast: 0, print: 0 };
+  const state = { venta: pendingPedido, pedidos: [] };
+
+  const runRecovery = ({ fetchPedidos, fetchVenta }) => {
+    const operation = controller.beginOperation({ idPedido, sucursalId });
+    return recoverFacturedPedidoPrintSource({
+      error: { code: 'PRINT_PEDIDO_SOURCE_INVALID' },
+      idPedido,
+      fetchPedidos,
+      fetchVenta,
+      isCurrent: () => controller.isCurrent(operation),
+      applyRecovery(result) {
+        if (!controller.complete(operation)) return false;
+        calls.pedidos += 1;
+        calls.modal += 1;
+        calls.toast += 1;
+        state.pedidos = result.pedidos;
+        state.venta = {
+          ...result.venta,
+          id_pedido: idPedido,
+          id_factura: result.idFactura
+        };
+        return true;
+      }
+    });
+  };
+
+  return { calls, controller, runRecovery, state };
 };
 
 const findElement = (node, predicate) => {
@@ -339,41 +383,152 @@ describe('acciones independientes de impresion en ventas', () => {
   });
 
   it('recupera un pedido recien facturado sin reintento automatico y el segundo clic usa id_factura', async () => {
-    const calls = { pedidos: 0, venta: 0, pedidoPrint: 1, facturaPrint: 0 };
-    const recovery = await recoverFacturedPedidoPrintSource({
-      error: { data: { code: 'PRINT_PEDIDO_SOURCE_INVALID' } },
-      idPedido: 12,
-      async fetchPedidos() {
-        calls.pedidos += 1;
-        return [{ ...pendingPedido, id_factura: 41 }];
-      },
-      async fetchVenta(idFactura) {
-        calls.venta += 1;
-        assert.equal(idFactura, 41);
-        return paidVenta;
-      }
+    const harness = createRecoveryHarness();
+    const recovery = await harness.runRecovery({
+      async fetchPedidos() { return [{ ...pendingPedido, id_factura: 41 }]; },
+      async fetchVenta(idFactura) { assert.equal(idFactura, 41); return paidVenta; }
     });
 
     assert.equal(recovery.recovered, true);
     assert.equal(recovery.idFactura, 41);
-    assert.deepEqual(calls, { pedidos: 1, venta: 1, pedidoPrint: 1, facturaPrint: 0 });
+    assert.deepEqual(harness.calls, { pedidos: 1, modal: 1, toast: 1, print: 0 });
+    assert.equal(harness.state.venta.id_factura, 41);
 
+    const sourceType = harness.state.venta.id_factura ? 'factura' : 'pedido';
     await enqueueAgentPrintAction({
       ventasApi: {
         async enqueuePrintJob(idFactura, payload) {
-          calls.facturaPrint += 1;
+          harness.calls.print += 1;
           assert.equal(idFactura, 41);
           assert.equal(payload.tipo_documento, 'comanda');
         },
         async enqueuePedidoPrintJob() { throw new Error('No debe reusar el endpoint de pedido.'); }
       },
       documentType: 'comanda',
-      venta: recovery.venta,
-      sourceType: 'factura',
+      venta: harness.state.venta,
+      sourceType,
       action: 'reprint',
       createUniqueValue: () => 'segundo-clic'
     });
-    assert.deepEqual(calls, { pedidos: 1, venta: 1, pedidoPrint: 1, facturaPrint: 1 });
+    assert.deepEqual(harness.calls, { pedidos: 1, modal: 1, toast: 1, print: 1 });
+  });
+
+  it('ignora la recuperacion si el modal se cierra antes de resolver pedidos', async () => {
+    const harness = createRecoveryHarness();
+    const pedidosDeferred = createDeferred();
+    const recoveryPromise = harness.runRecovery({
+      fetchPedidos: () => pedidosDeferred.promise,
+      async fetchVenta() { throw new Error('No debe cargar factura.'); }
+    });
+
+    harness.controller.closeDetail();
+    pedidosDeferred.resolve([{ ...pendingPedido, id_factura: 41 }]);
+    const recovery = await recoveryPromise;
+
+    assert.equal(recovery.stale, true);
+    assert.equal(harness.controller.getState().open, false);
+    assert.deepEqual(harness.calls, { pedidos: 0, modal: 0, toast: 0, print: 0 });
+  });
+
+  it('mantiene el pedido B cuando termina tarde la recuperacion del pedido A', async () => {
+    const harness = createRecoveryHarness();
+    const pedidosDeferred = createDeferred();
+    const recoveryPromise = harness.runRecovery({
+      fetchPedidos: () => pedidosDeferred.promise,
+      async fetchVenta() { throw new Error('No debe cargar factura.'); }
+    });
+
+    harness.controller.openDetail({ idPedido: 99, sucursalId: 2 });
+    harness.state.venta = { id_pedido: 99, id_factura: null };
+    pedidosDeferred.resolve([{ ...pendingPedido, id_factura: 41 }]);
+    const recovery = await recoveryPromise;
+
+    assert.equal(recovery.stale, true);
+    assert.equal(harness.state.venta.id_pedido, 99);
+    assert.deepEqual(harness.calls, { pedidos: 0, modal: 0, toast: 0, print: 0 });
+  });
+
+  it('descarta resultados de la sucursal anterior y mantiene cerrado el detalle', async () => {
+    const harness = createRecoveryHarness({ sucursalId: 1 });
+    const pedidosDeferred = createDeferred();
+    const recoveryPromise = harness.runRecovery({
+      fetchPedidos: () => pedidosDeferred.promise,
+      async fetchVenta() { throw new Error('No debe cargar factura.'); }
+    });
+
+    harness.controller.changeSucursal(2);
+    pedidosDeferred.resolve([{ ...pendingPedido, id_sucursal: 1, id_factura: 41 }]);
+    const recovery = await recoveryPromise;
+
+    assert.equal(recovery.stale, true);
+    assert.deepEqual(
+      harness.controller.getState(),
+      { mounted: true, version: 3, open: false, idPedido: null, sucursalId: 2 }
+    );
+    assert.deepEqual(harness.calls, { pedidos: 0, modal: 0, toast: 0, print: 0 });
+  });
+
+  it('solo permite aplicar la ultima de dos recuperaciones consecutivas', async () => {
+    const harness = createRecoveryHarness();
+    const first = createDeferred();
+    const second = createDeferred();
+    const firstPromise = harness.runRecovery({
+      fetchPedidos: () => first.promise,
+      async fetchVenta() { throw new Error('R1 no debe cargar factura.'); }
+    });
+    const secondPromise = harness.runRecovery({
+      fetchPedidos: () => second.promise,
+      async fetchVenta() { return paidVenta; }
+    });
+
+    second.resolve([{ ...pendingPedido, id_factura: 41 }]);
+    const secondResult = await secondPromise;
+    first.resolve([{ ...pendingPedido, id_factura: 41 }]);
+    const firstResult = await firstPromise;
+
+    assert.equal(secondResult.recovered, true);
+    assert.equal(firstResult.stale, true);
+    assert.deepEqual(harness.calls, { pedidos: 1, modal: 1, toast: 1, print: 0 });
+  });
+
+  it('impide que una carga getById atrasada reemplace otro pedido', async () => {
+    const controller = createDetailOperationController();
+    const detailDeferred = createDeferred();
+    const state = { venta: { id_pedido: 12 } };
+    const operationA = controller.openDetail({ idPedido: 12, sucursalId: 2 });
+    const loadA = detailDeferred.promise.then((venta) => {
+      if (!controller.complete(operationA)) return false;
+      state.venta = venta;
+      return true;
+    });
+
+    controller.openDetail({ idPedido: 99, sucursalId: 2 });
+    state.venta = { id_pedido: 99 };
+    detailDeferred.resolve({ id_pedido: 12, id_factura: 41 });
+
+    assert.equal(await loadA, false);
+    assert.equal(state.venta.id_pedido, 99);
+  });
+
+  it('ignora la recuperacion al desmontar el componente', async () => {
+    const harness = createRecoveryHarness();
+    const ventaDeferred = createDeferred();
+    const ventaStarted = createDeferred();
+    const recoveryPromise = harness.runRecovery({
+      async fetchPedidos() { return [{ ...pendingPedido, id_factura: 41 }]; },
+      fetchVenta() {
+        ventaStarted.resolve();
+        return ventaDeferred.promise;
+      }
+    });
+
+    await ventaStarted.promise;
+    harness.controller.unmount();
+    ventaDeferred.resolve(paidVenta);
+    const recovery = await recoveryPromise;
+
+    assert.equal(recovery.stale, true);
+    assert.deepEqual(harness.calls, { pedidos: 0, modal: 0, toast: 0, print: 0 });
   });
 
   it('mantiene fallo cerrado cuando el pedido actualizado no tiene factura', async () => {

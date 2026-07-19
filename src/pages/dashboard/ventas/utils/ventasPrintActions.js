@@ -113,11 +113,84 @@ export const prepareComandaPrintWindow = ({ agentPrintMode, sourceType, openWind
 export const getPrintErrorCode = (error) =>
   String(error?.code || error?.data?.code || '').trim();
 
+export const createDetailOperationController = () => {
+  let mounted = true;
+  let version = 0;
+  let context = { open: false, idPedido: null, sucursalId: null };
+
+  const createSnapshot = () => ({ version, ...context });
+  const normalizeSucursalId = (value) => toPositiveId(value);
+  const isSnapshotCurrent = (snapshot) => Boolean(
+    mounted
+    && snapshot
+    && snapshot.version === version
+    && context.open
+    && snapshot.open
+    && snapshot.idPedido === context.idPedido
+    && snapshot.sucursalId === context.sucursalId
+  );
+
+  return {
+    mount() {
+      mounted = true;
+      version += 1;
+    },
+    openDetail({ idPedido, sucursalId }) {
+      version += 1;
+      context = {
+        open: true,
+        idPedido: toPositiveId(idPedido),
+        sucursalId: normalizeSucursalId(sucursalId)
+      };
+      return createSnapshot();
+    },
+    beginOperation({ idPedido, sucursalId }) {
+      version += 1;
+      return {
+        version,
+        open: true,
+        idPedido: toPositiveId(idPedido),
+        sucursalId: normalizeSucursalId(sucursalId)
+      };
+    },
+    closeDetail() {
+      version += 1;
+      context = { ...context, open: false, idPedido: null };
+    },
+    changeSucursal(sucursalId) {
+      version += 1;
+      context = {
+        open: false,
+        idPedido: null,
+        sucursalId: normalizeSucursalId(sucursalId)
+      };
+    },
+    isCurrent(snapshot) {
+      return isSnapshotCurrent(snapshot);
+    },
+    complete(snapshot) {
+      if (!isSnapshotCurrent(snapshot)) return false;
+      version += 1;
+      return true;
+    },
+    unmount() {
+      mounted = false;
+      version += 1;
+      context = { ...context, open: false, idPedido: null };
+    },
+    getState() {
+      return { mounted, version, ...context };
+    }
+  };
+};
+
 export const recoverFacturedPedidoPrintSource = async ({
   error,
   idPedido,
   fetchPedidos,
-  fetchVenta
+  fetchVenta,
+  isCurrent = () => true,
+  applyRecovery
 }) => {
   if (getPrintErrorCode(error) !== 'PRINT_PEDIDO_SOURCE_INVALID') {
     return { handled: false };
@@ -128,7 +201,10 @@ export const recoverFacturedPedidoPrintSource = async ({
     return { handled: true, recovered: false, pedidos: [] };
   }
 
+  if (!isCurrent()) return { handled: true, stale: true };
+
   const pedidosPayload = await fetchPedidos();
+  if (!isCurrent()) return { handled: true, stale: true };
   const pedidos = Array.isArray(pedidosPayload) ? pedidosPayload : [];
   const pedido = pedidos.find((item) => toPositiveId(item?.id_pedido) === normalizedIdPedido) || null;
   const idFactura = toPositiveId(pedido?.id_factura);
@@ -137,7 +213,12 @@ export const recoverFacturedPedidoPrintSource = async ({
   }
 
   const venta = await fetchVenta(idFactura);
-  return { handled: true, recovered: true, pedidos, pedido, idFactura, venta };
+  if (!isCurrent()) return { handled: true, stale: true };
+  const recovery = { handled: true, recovered: true, pedidos, pedido, idFactura, venta };
+  if (typeof applyRecovery === 'function' && applyRecovery(recovery) === false) {
+    return { handled: true, stale: true };
+  }
+  return recovery;
 };
 
 export const createEmptyPrintErrors = () => ({ factura: '', comanda: '' });
