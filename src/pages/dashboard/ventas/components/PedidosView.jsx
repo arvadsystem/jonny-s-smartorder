@@ -9,6 +9,7 @@ import {
   createDetailOperationController,
   createPedidosStateCoordinator,
   getPrintErrorCode,
+  reconcilePedidoDetailPrintSource,
   reconcileRecoveredFacturaDetail,
   recoverFacturedPedidoPrintSource
 } from '../utils/ventasPrintActions';
@@ -591,7 +592,45 @@ export default function PedidosView({
       sucursalId: effectiveSucursalId
     });
     try {
-      await onPrintComanda?.(venta, options);
+      const liveSource = await reconcilePedidoDetailPrintSource({
+        coordinator: pedidosCoordinatorRef.current,
+        idPedido,
+        modalIdFactura: venta?.id_factura,
+        fetchVenta: (idFactura) => ventasService.getById(idFactura),
+        isCurrent: () => detailOperationControllerRef.current.isCurrent(actionOperation)
+      });
+      if (liveSource.status === 'stale') return;
+
+      if (liveSource.status === 'refresh') {
+        const refreshedVenta = {
+          ...normalizeVentaDetail(liveSource.venta),
+          id_pedido: idPedido,
+          id_factura: liveSource.effectiveIdFactura
+        };
+        setVentaDetailModal({ open: true, venta: refreshedVenta });
+        const refreshMessage = 'El pedido cambió y el detalle fue actualizado. Vuelve a intentar la impresión de la comanda.';
+        openToast('PEDIDO ACTUALIZADO', refreshMessage, 'warning');
+        const refreshError = new Error(refreshMessage);
+        refreshError.publicMessage = refreshMessage;
+        throw refreshError;
+      }
+
+      if (liveSource.status !== 'ready') {
+        const changedMessage = 'El pedido cambió mientras se actualizaba el detalle. Actualiza el tablero e intenta nuevamente.';
+        const changedError = new Error(changedMessage);
+        changedError.publicMessage = changedMessage;
+        throw changedError;
+      }
+
+      const liveVenta = {
+        ...venta,
+        id_factura: liveSource.effectiveIdFactura
+      };
+      const liveOptions = {
+        ...options,
+        sourceType: liveSource.effectiveIdFactura ? 'factura' : 'pedido'
+      };
+      await onPrintComanda?.(liveVenta, liveOptions);
       detailOperationControllerRef.current.complete(actionOperation);
     } catch (error) {
       if (!detailOperationControllerRef.current.isCurrent(actionOperation)) return;

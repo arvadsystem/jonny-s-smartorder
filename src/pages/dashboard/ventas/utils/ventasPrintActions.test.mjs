@@ -15,6 +15,7 @@ import {
   createPedidosStateCoordinator,
   enqueueAgentPrintAction,
   prepareComandaPrintWindow,
+  reconcilePedidoDetailPrintSource,
   reconcileRecoveredFacturaDetail,
   recoverFacturedPedidoPrintSource,
   resolveRecoveredFacturaAgainstCurrentBoard,
@@ -144,25 +145,56 @@ const createRecoveryHarness = ({
     return { ...recovery, reconciliation, liveResolution };
   };
 
-  const secondClick = async () => {
-    if (!state.venta?.id_factura) return null;
-    const sourceType = state.venta.id_factura ? 'factura' : 'pedido';
-    return enqueueAgentPrintAction({
+  const secondClick = async ({ fetchVenta } = {}) => {
+    if (!state.venta) return null;
+    const operation = controller.beginOperation({ idPedido, sucursalId });
+    const liveSource = await reconcilePedidoDetailPrintSource({
+      coordinator,
+      idPedido,
+      modalIdFactura: state.venta.id_factura,
+      fetchVenta: async (idFactura) => {
+        calls.getByIdCalls.push(idFactura);
+        return fetchVenta?.(idFactura);
+      },
+      isCurrent: () => controller.isCurrent(operation)
+    });
+    if (liveSource.status === 'stale') return liveSource;
+    if (liveSource.status === 'refresh') {
+      if (!controller.complete(operation)) return { status: 'stale' };
+      state.venta = {
+        ...liveSource.venta,
+        id_pedido: idPedido,
+        id_factura: liveSource.effectiveIdFactura
+      };
+      calls.modalUpdates.push(state.venta);
+      calls.toastCalls.push({ title: 'PEDIDO ACTUALIZADO', variant: 'warning' });
+      return liveSource;
+    }
+    if (liveSource.status !== 'ready') {
+      controller.complete(operation);
+      return liveSource;
+    }
+
+    const sourceType = liveSource.effectiveIdFactura ? 'factura' : 'pedido';
+    const result = await enqueueAgentPrintAction({
       ventasApi: {
         async enqueuePrintJob(idFactura, payload, idempotencyKey) {
           calls.printCalls.push({ idFactura, payload, idempotencyKey });
           return { job: { id_trabajo: 77 } };
         },
-        async enqueuePedidoPrintJob() {
-          throw new Error('No debe reusar el endpoint de pedido.');
+        async enqueuePedidoPrintJob(idPedidoValue, payload, idempotencyKey) {
+          calls.printCalls.push({ idPedido: idPedidoValue, payload, idempotencyKey });
+          return { job: { id_trabajo: 78 } };
         }
       },
       documentType: 'comanda',
-      venta: state.venta,
+      venta: { ...state.venta, id_factura: liveSource.effectiveIdFactura },
       sourceType,
       action: 'reprint',
       createUniqueValue: () => 'segundo-clic'
     });
+    controller.complete(operation);
+    return { status: 'printed', result };
   };
 
   return { calls, controller, coordinator, runRecovery, secondClick, state };
@@ -757,6 +789,109 @@ describe('acciones independientes de impresion en ventas', () => {
     const printCall = harness.calls.printCalls[0];
     assert.equal(printCall.idFactura, 58);
     assert.notEqual(printCall.idFactura, 41);
+  });
+
+  it('revalida el segundo clic tardio y reemplaza 58 por 77 sin imprimir automaticamente', async () => {
+    const harness = createRecoveryHarness({
+      initialPedidos: [{ id_pedido: 12, id_factura: 58, estado: 'EN_PREPARACION' }]
+    });
+    await harness.runRecovery({
+      async fetchPedidos() { return [{ ...pendingPedido, id_factura: 41 }]; },
+      async fetchVenta(idFactura) {
+        return idFactura === 58 ? { ...paidVenta, id_factura: 58 } : paidVenta;
+      }
+    });
+    harness.coordinator.commit([
+      { id_pedido: 12, id_factura: 77, estado: 'EN_PREPARACION' }
+    ]);
+
+    const refresh = await harness.secondClick({
+      async fetchVenta(idFactura) {
+        assert.equal(idFactura, 77);
+        return { ...paidVenta, id_factura: 77, numero_venta: 'VTA-00077' };
+      }
+    });
+
+    assert.equal(refresh.status, 'refresh');
+    assert.deepEqual(harness.calls.getByIdCalls, [41, 58, 77]);
+    assert.equal(harness.state.pedidos[0].id_factura, 77);
+    assert.equal(harness.state.venta.id_factura, 77);
+    assert.equal(harness.calls.modalUpdates.at(-1).id_factura, 77);
+    assert.equal(harness.calls.printCalls.length, 0);
+
+    const manualRetry = await harness.secondClick();
+    assert.equal(manualRetry.status, 'printed');
+    assert.equal(harness.calls.printCalls.length, 1);
+    assert.equal(harness.calls.printCalls[0].idFactura, 77);
+    assert.notEqual(harness.calls.printCalls[0].idFactura, 58);
+  });
+
+  it('falla cerrado si la factura cambia otra vez mientras el segundo clic carga 77', async () => {
+    const harness = createRecoveryHarness({
+      initialPedidos: [{ id_pedido: 12, id_factura: 58 }]
+    });
+    await harness.runRecovery({
+      async fetchPedidos() { return [{ ...pendingPedido, id_factura: 41 }]; },
+      async fetchVenta(idFactura) {
+        return idFactura === 58 ? { ...paidVenta, id_factura: 58 } : paidVenta;
+      }
+    });
+    harness.coordinator.commit([{ id_pedido: 12, id_factura: 77 }]);
+    const factura77 = createDeferred();
+    const factura77Started = createDeferred();
+    const secondClickPromise = harness.secondClick({
+      fetchVenta(idFactura) {
+        assert.equal(idFactura, 77);
+        factura77Started.resolve();
+        return factura77.promise;
+      }
+    });
+
+    await factura77Started.promise;
+    harness.coordinator.commit([{ id_pedido: 12, id_factura: 88 }]);
+    factura77.resolve({ ...paidVenta, id_factura: 77 });
+    const result = await secondClickPromise;
+
+    assert.equal(result.status, 'changed');
+    assert.equal(harness.state.pedidos[0].id_factura, 88);
+    assert.equal(harness.state.venta.id_factura, 58);
+    assert.equal(harness.calls.printCalls.length, 0);
+  });
+
+  it('falla cerrado si el pedido desaparece despues de abrir el modal recuperado', async () => {
+    const harness = createRecoveryHarness({
+      initialPedidos: [{ id_pedido: 12, id_factura: 58 }]
+    });
+    await harness.runRecovery({
+      async fetchPedidos() { return [{ ...pendingPedido, id_factura: 41 }]; },
+      async fetchVenta(idFactura) {
+        return idFactura === 58 ? { ...paidVenta, id_factura: 58 } : paidVenta;
+      }
+    });
+    harness.coordinator.commit([{ id_pedido: 99, id_factura: null }]);
+
+    const result = await harness.secondClick();
+    assert.equal(result.status, 'missing');
+    assert.equal(harness.calls.printCalls.length, 0);
+    assert.equal(harness.state.pedidos.some((pedido) => pedido.id_pedido === 12), false);
+  });
+
+  it('falla cerrado si el pedido vuelve a quedar sin factura antes del segundo clic', async () => {
+    const harness = createRecoveryHarness({
+      initialPedidos: [{ id_pedido: 12, id_factura: 58 }]
+    });
+    await harness.runRecovery({
+      async fetchPedidos() { return [{ ...pendingPedido, id_factura: 41 }]; },
+      async fetchVenta(idFactura) {
+        return idFactura === 58 ? { ...paidVenta, id_factura: 58 } : paidVenta;
+      }
+    });
+    harness.coordinator.commit([{ id_pedido: 12, id_factura: null }]);
+
+    const result = await harness.secondClick();
+    assert.equal(result.status, 'changed');
+    assert.equal(harness.calls.printCalls.length, 0);
+    assert.equal(harness.state.pedidos[0].id_factura, null);
   });
 
   it('falla cerrado si el pedido recuperado ya no existe en el tablero', async () => {

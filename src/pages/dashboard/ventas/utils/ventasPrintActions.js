@@ -220,6 +220,60 @@ export const commitRecoveredFacturaToLiveBoard = ({
   return resolution;
 };
 
+export const reconcilePedidoDetailPrintSource = async ({
+  coordinator,
+  idPedido,
+  modalIdFactura,
+  fetchVenta,
+  isCurrent = () => true
+}) => {
+  if (!isCurrent()) return { status: 'stale' };
+  const normalizedIdPedido = toPositiveId(idPedido);
+  const currentPedidos = coordinator?.getCurrent?.();
+  if (!normalizedIdPedido || !Array.isArray(currentPedidos)) {
+    return { status: 'invalid' };
+  }
+
+  const currentPedido = currentPedidos.find(
+    (pedido) => toPositiveId(pedido?.id_pedido) === normalizedIdPedido
+  );
+  if (!currentPedido) return { status: 'missing' };
+
+  const normalizedModalId = toPositiveId(modalIdFactura);
+  const normalizedBoardId = toPositiveId(currentPedido?.id_factura);
+  if (modalIdFactura != null && !normalizedModalId) return { status: 'invalid' };
+  if (currentPedido.id_factura != null && !normalizedBoardId) return { status: 'invalid' };
+
+  if (normalizedModalId === normalizedBoardId) {
+    return {
+      status: 'ready',
+      effectiveIdFactura: normalizedBoardId
+    };
+  }
+  if (!normalizedBoardId || typeof fetchVenta !== 'function') {
+    return { status: 'changed' };
+  }
+
+  const venta = await fetchVenta(normalizedBoardId);
+  if (!isCurrent()) return { status: 'stale' };
+  if (!venta || typeof venta !== 'object') return { status: 'invalid' };
+
+  const latestPedidos = coordinator?.getCurrent?.();
+  const latestPedido = Array.isArray(latestPedidos)
+    ? latestPedidos.find((pedido) => toPositiveId(pedido?.id_pedido) === normalizedIdPedido)
+    : null;
+  if (!latestPedido) return { status: 'missing' };
+  if (toPositiveId(latestPedido?.id_factura) !== normalizedBoardId) {
+    return { status: 'changed' };
+  }
+
+  return {
+    status: 'refresh',
+    effectiveIdFactura: normalizedBoardId,
+    venta
+  };
+};
+
 export const reconcileRecoveredFacturaDetail = async ({
   getCurrentPedidos,
   idPedido,
