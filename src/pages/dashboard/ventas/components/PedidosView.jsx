@@ -7,6 +7,7 @@ import { formatCurrency, normalizeVentaDetail } from '../utils/ventasHelpers';
 import {
   createDetailOperationController,
   getPrintErrorCode,
+  mergeRecoveredFacturaIntoPedidos,
   recoverFacturedPedidoPrintSource
 } from '../utils/ventasPrintActions';
 import PedidosEmptyState from './PedidosEmptyState';
@@ -604,7 +605,10 @@ export default function PedidosView({
               id_pedido: idPedido,
               id_factura: result.idFactura
             };
-            setPedidos(result.pedidos);
+            setPedidos((currentPedidos) => mergeRecoveredFacturaIntoPedidos(currentPedidos, {
+              idPedido,
+              idFactura: result.idFactura
+            }));
             setVentaDetailModal({ open: true, venta: refreshedVenta });
             const message = 'El pedido ya fue facturado. El detalle fue actualizado; vuelve a intentar la impresión de la comanda.';
             openToast('PEDIDO ACTUALIZADO', message, 'warning');

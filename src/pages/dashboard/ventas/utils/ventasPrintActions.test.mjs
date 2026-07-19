@@ -11,6 +11,7 @@ import {
   createDocumentPrintGuard,
   createEmptyPrintErrors,
   enqueueAgentPrintAction,
+  mergeRecoveredFacturaIntoPedidos,
   prepareComandaPrintWindow,
   recoverFacturedPedidoPrintSource,
   setDocumentPrintError
@@ -46,7 +47,7 @@ const createRecoveryHarness = ({ idPedido = 12, sucursalId = 2 } = {}) => {
   const controller = createDetailOperationController();
   controller.openDetail({ idPedido, sucursalId });
   const calls = { pedidos: 0, modal: 0, toast: 0, print: 0 };
-  const state = { venta: pendingPedido, pedidos: [] };
+  const state = { venta: pendingPedido, pedidos: [{ ...pendingPedido }] };
 
   const runRecovery = ({ fetchPedidos, fetchVenta }) => {
     const operation = controller.beginOperation({ idPedido, sucursalId });
@@ -61,7 +62,10 @@ const createRecoveryHarness = ({ idPedido = 12, sucursalId = 2 } = {}) => {
         calls.pedidos += 1;
         calls.modal += 1;
         calls.toast += 1;
-        state.pedidos = result.pedidos;
+        state.pedidos = mergeRecoveredFacturaIntoPedidos(state.pedidos, {
+          idPedido,
+          idFactura: result.idFactura
+        });
         state.venta = {
           ...result.venta,
           id_pedido: idPedido,
@@ -411,6 +415,60 @@ describe('acciones independientes de impresion en ventas', () => {
       createUniqueValue: () => 'segundo-clic'
     });
     assert.deepEqual(harness.calls, { pedidos: 1, modal: 1, toast: 1, print: 1 });
+  });
+
+  it('preserva pedidos nuevos y estados recientes cuando el polling gana la carrera', async () => {
+    const harness = createRecoveryHarness();
+    const ventaDeferred = createDeferred();
+    const ventaStarted = createDeferred();
+    const recoveryPromise = harness.runRecovery({
+      async fetchPedidos() {
+        return [{ id_pedido: 12, id_factura: 41, estado: 'PENDIENTE' }];
+      },
+      fetchVenta() {
+        ventaStarted.resolve();
+        return ventaDeferred.promise;
+      }
+    });
+
+    await ventaStarted.promise;
+    const recentPedido = { id_pedido: 12, id_factura: null, estado: 'EN_PREPARACION' };
+    const newPedido = { id_pedido: 99, id_factura: null, estado: 'PENDIENTE' };
+    harness.state.pedidos = [recentPedido, newPedido];
+    ventaDeferred.resolve(paidVenta);
+    await recoveryPromise;
+
+    assert.deepEqual(harness.state.pedidos, [
+      { id_pedido: 12, id_factura: 41, estado: 'EN_PREPARACION' },
+      newPedido
+    ]);
+    assert.equal(harness.state.pedidos[1], newPedido);
+  });
+
+  it('preserva LISTO_PARA_ENTREGA aunque la lista de recuperacion contenga PENDIENTE', async () => {
+    const currentPedidos = [{ id_pedido: 12, id_factura: null, estado: 'LISTO_PARA_ENTREGA' }];
+    const result = mergeRecoveredFacturaIntoPedidos(currentPedidos, { idPedido: 12, idFactura: 41 });
+    assert.deepEqual(result, [{ id_pedido: 12, id_factura: 41, estado: 'LISTO_PARA_ENTREGA' }]);
+  });
+
+  it('no reinserta un pedido eliminado del tablero', () => {
+    const currentPedidos = [{ id_pedido: 99 }];
+    const result = mergeRecoveredFacturaIntoPedidos(currentPedidos, { idPedido: 12, idFactura: 41 });
+    assert.equal(result, currentPedidos);
+    assert.deepEqual(result, [{ id_pedido: 99 }]);
+  });
+
+  it('no sobrescribe una factura mas reciente', () => {
+    const currentPedidos = [{ id_pedido: 12, id_factura: 58, estado: 'PENDIENTE' }];
+    const result = mergeRecoveredFacturaIntoPedidos(currentPedidos, { idPedido: 12, idFactura: 41 });
+    assert.equal(result, currentPedidos);
+    assert.equal(result[0].id_factura, 58);
+  });
+
+  it('conserva la referencia del tablero cuando la factura ya coincide', () => {
+    const currentPedidos = [{ id_pedido: 12, id_factura: 41, estado: 'EN_PREPARACION' }];
+    const result = mergeRecoveredFacturaIntoPedidos(currentPedidos, { idPedido: 12, idFactura: 41 });
+    assert.equal(result, currentPedidos);
   });
 
   it('ignora la recuperacion si el modal se cierra antes de resolver pedidos', async () => {

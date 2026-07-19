@@ -113,6 +113,24 @@ export const prepareComandaPrintWindow = ({ agentPrintMode, sourceType, openWind
 export const getPrintErrorCode = (error) =>
   String(error?.code || error?.data?.code || '').trim();
 
+export const mergeRecoveredFacturaIntoPedidos = (currentPedidos, { idPedido, idFactura }) => {
+  if (!Array.isArray(currentPedidos)) return currentPedidos;
+  const normalizedIdPedido = toPositiveId(idPedido);
+  const recoveredIdFactura = toPositiveId(idFactura);
+  if (!normalizedIdPedido || !recoveredIdFactura) return currentPedidos;
+
+  let changed = false;
+  const nextPedidos = currentPedidos.map((pedido) => {
+    if (toPositiveId(pedido?.id_pedido) !== normalizedIdPedido) return pedido;
+    const currentIdFactura = toPositiveId(pedido?.id_factura);
+    if (currentIdFactura) return pedido;
+    changed = true;
+    return { ...pedido, id_factura: recoveredIdFactura };
+  });
+
+  return changed ? nextPedidos : currentPedidos;
+};
+
 export const createDetailOperationController = () => {
   let mounted = true;
   let version = 0;
