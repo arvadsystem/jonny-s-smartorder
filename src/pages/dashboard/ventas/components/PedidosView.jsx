@@ -7,7 +7,7 @@ import { formatCurrency, normalizeVentaDetail } from '../utils/ventasHelpers';
 import {
   createDetailOperationController,
   getPrintErrorCode,
-  mergeRecoveredFacturaIntoPedidos,
+  reconcileRecoveredFacturaDetail,
   recoverFacturedPedidoPrintSource
 } from '../utils/ventasPrintActions';
 import PedidosEmptyState from './PedidosEmptyState';
@@ -235,6 +235,7 @@ export default function PedidosView({
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [pedidos, setPedidos] = useState([]);
+  const pedidosRef = useRef([]);
   const [loading, setLoading] = useState(true);
   const [actionBusyId, setActionBusyId] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -261,6 +262,16 @@ export default function PedidosView({
   if (!detailOperationControllerRef.current) {
     detailOperationControllerRef.current = createDetailOperationController();
   }
+
+  const commitPedidos = useCallback((valueOrUpdater) => {
+    setPedidos((currentPedidos) => {
+      const nextPedidos = typeof valueOrUpdater === 'function'
+        ? valueOrUpdater(currentPedidos)
+        : valueOrUpdater;
+      pedidosRef.current = nextPedidos;
+      return nextPedidos;
+    });
+  }, []);
 
   const sucursalOptions = useMemo(() => buildSucursalOptions(sucursales), [sucursales]);
   const selectedSucursalIsValid = useMemo(
@@ -348,7 +359,7 @@ export default function PedidosView({
     async ({ silent = false, source = 'manual' } = {}) => {
       if (source !== 'action' && actionBusyRef.current !== null) return;
       if (isSuperAdmin && !effectiveSucursalId) {
-        setPedidos([]);
+        commitPedidos([]);
         setLoading(false);
         return;
       }
@@ -373,42 +384,41 @@ export default function PedidosView({
         forbiddenErrorKeyRef.current = '';
         const nextPedidos = Array.isArray(data) ? data : [];
 
-        setPedidos((prevPedidos) => {
-          if (source !== 'initial' && source !== 'manual' && source !== 'action') {
-            const prevReadyIds = new Set(
-              (Array.isArray(prevPedidos) ? prevPedidos : [])
-                .filter((pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA')
-                .map((pedido) => Number(pedido?.id_pedido ?? 0))
-                .filter(Boolean)
-            );
+        const prevPedidos = pedidosRef.current;
+        if (source !== 'initial' && source !== 'manual' && source !== 'action') {
+          const prevReadyIds = new Set(
+            (Array.isArray(prevPedidos) ? prevPedidos : [])
+              .filter((pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA')
+              .map((pedido) => Number(pedido?.id_pedido ?? 0))
+              .filter(Boolean)
+          );
 
-            const nextReadyPedidos = nextPedidos.filter(
-              (pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA'
-            );
-            const nextReadyIds = new Set(
-              nextReadyPedidos
-                .map((pedido) => Number(pedido?.id_pedido ?? 0))
-                .filter(Boolean)
-            );
+          const nextReadyPedidos = nextPedidos.filter(
+            (pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA'
+          );
+          const nextReadyIds = new Set(
+            nextReadyPedidos
+              .map((pedido) => Number(pedido?.id_pedido ?? 0))
+              .filter(Boolean)
+          );
 
-            notifiedReadyIdsRef.current.forEach((idPedido) => {
-              if (nextReadyIds.has(idPedido)) return;
-              notifiedReadyIdsRef.current.delete(idPedido);
-            });
+          notifiedReadyIdsRef.current.forEach((idPedido) => {
+            if (nextReadyIds.has(idPedido)) return;
+            notifiedReadyIdsRef.current.delete(idPedido);
+          });
 
-            nextReadyPedidos.forEach((pedido) => {
-              const idPedido = Number(pedido?.id_pedido ?? 0);
-              if (!idPedido) return;
-              if (prevReadyIds.has(idPedido)) return;
-              if (notifiedReadyIdsRef.current.has(idPedido)) return;
+          nextReadyPedidos.forEach((pedido) => {
+            const idPedido = Number(pedido?.id_pedido ?? 0);
+            if (!idPedido) return;
+            if (prevReadyIds.has(idPedido)) return;
+            if (notifiedReadyIdsRef.current.has(idPedido)) return;
 
-              notifiedReadyIdsRef.current.add(idPedido);
-              void audioManagerRef.current?.playPedidoListo?.();
-              openToast('PEDIDO LISTO', `Pedido ${buildPedidoVisibleCode(pedido)} listo para entrega.`, 'success');
-            });
-          }
-          return nextPedidos;
-        });
+            notifiedReadyIdsRef.current.add(idPedido);
+            void audioManagerRef.current?.playPedidoListo?.();
+            openToast('PEDIDO LISTO', `Pedido ${buildPedidoVisibleCode(pedido)} listo para entrega.`, 'success');
+          });
+        }
+        commitPedidos(nextPedidos);
       } catch (err) {
         if (requestId !== requestIdRef.current) return;
         const status = Number(err?.status || err?.data?.status || 0);
@@ -417,7 +427,7 @@ export default function PedidosView({
           forbiddenErrorKeyRef.current = requestKey;
         }
         setErrorMessage((current) => (current === message ? current : message));
-        setPedidos([]);
+        commitPedidos([]);
       } finally {
         if (inFlightKeyRef.current === requestKey) {
           inFlightKeyRef.current = '';
@@ -425,7 +435,7 @@ export default function PedidosView({
         if (requestId === requestIdRef.current && !silent) setLoading(false);
       }
     },
-    [effectiveSucursalId, isSuperAdmin, openToast]
+    [commitPedidos, effectiveSucursalId, isSuperAdmin, openToast]
   );
 
   useEffect(() => {
@@ -597,23 +607,7 @@ export default function PedidosView({
           idPedido,
           fetchPedidos: () => ventasService.getPedidosMenu(params),
           fetchVenta: (idFactura) => ventasService.getById(idFactura),
-          isCurrent: () => detailOperationControllerRef.current.isCurrent(recoveryOperation),
-          applyRecovery: (result) => {
-            if (!detailOperationControllerRef.current.complete(recoveryOperation)) return false;
-            const refreshedVenta = {
-              ...normalizeVentaDetail(result.venta),
-              id_pedido: idPedido,
-              id_factura: result.idFactura
-            };
-            setPedidos((currentPedidos) => mergeRecoveredFacturaIntoPedidos(currentPedidos, {
-              idPedido,
-              idFactura: result.idFactura
-            }));
-            setVentaDetailModal({ open: true, venta: refreshedVenta });
-            const message = 'El pedido ya fue facturado. El detalle fue actualizado; vuelve a intentar la impresión de la comanda.';
-            openToast('PEDIDO ACTUALIZADO', message, 'warning');
-            return true;
-          }
+          isCurrent: () => detailOperationControllerRef.current.isCurrent(recoveryOperation)
         });
       } catch {
         if (!detailOperationControllerRef.current.isCurrent(recoveryOperation)) return;
@@ -624,10 +618,47 @@ export default function PedidosView({
       if (!recovery?.handled) throw error;
 
       if (recovery.recovered) {
-        const message = 'El pedido ya fue facturado. El detalle fue actualizado; vuelve a intentar la impresión de la comanda.';
-        const publicError = new Error(message);
-        publicError.publicMessage = message;
-        throw publicError;
+        let reconciliation;
+        try {
+          reconciliation = await reconcileRecoveredFacturaDetail({
+            getCurrentPedidos: () => pedidosRef.current,
+            idPedido,
+            recoveredIdFactura: recovery.idFactura,
+            recoveredVenta: recovery.venta,
+            fetchVenta: (idFactura) => ventasService.getById(idFactura),
+            isCurrent: () => detailOperationControllerRef.current.isCurrent(recoveryOperation)
+          });
+        } catch {
+          if (!detailOperationControllerRef.current.isCurrent(recoveryOperation)) return;
+          reconciliation = { status: 'invalid' };
+        }
+
+        if (reconciliation.status === 'stale') return;
+        if (reconciliation.status === 'changed') {
+          if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
+          const changedMessage = 'El pedido cambió mientras se actualizaba el detalle. Actualiza el tablero e intenta nuevamente.';
+          const changedError = new Error(changedMessage);
+          changedError.publicMessage = changedMessage;
+          throw changedError;
+        }
+
+        if (['apply-recovered', 'same', 'conflict'].includes(reconciliation.status)) {
+          if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
+          if (reconciliation.status === 'apply-recovered') {
+            commitPedidos(reconciliation.nextPedidos);
+          }
+          const refreshedVenta = {
+            ...normalizeVentaDetail(reconciliation.venta),
+            id_pedido: idPedido,
+            id_factura: reconciliation.effectiveIdFactura
+          };
+          setVentaDetailModal({ open: true, venta: refreshedVenta });
+          const message = 'El pedido ya fue facturado. El detalle fue actualizado; vuelve a intentar la impresión de la comanda.';
+          openToast('PEDIDO ACTUALIZADO', message, 'warning');
+          const publicError = new Error(message);
+          publicError.publicMessage = message;
+          throw publicError;
+        }
       }
 
       if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
@@ -636,7 +667,7 @@ export default function PedidosView({
       publicError.publicMessage = message;
       throw publicError;
     }
-  }, [effectiveSucursalId, onPrintComanda, openToast]);
+  }, [commitPedidos, effectiveSucursalId, onPrintComanda, openToast]);
 
   const handleRegistrarPagoPedido = useCallback(
     async (idPedido, payload) => {
@@ -836,7 +867,7 @@ export default function PedidosView({
                   forbiddenErrorKeyRef.current = '';
                   inFlightKeyRef.current = '';
                   setErrorMessage('');
-                  setPedidos([]);
+                  commitPedidos([]);
                   setSelectedSucursalId(nextId);
                 }}
                 placeholder="Selecciona sucursal"

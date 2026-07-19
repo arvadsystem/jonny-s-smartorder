@@ -113,22 +113,104 @@ export const prepareComandaPrintWindow = ({ agentPrintMode, sourceType, openWind
 export const getPrintErrorCode = (error) =>
   String(error?.code || error?.data?.code || '').trim();
 
-export const mergeRecoveredFacturaIntoPedidos = (currentPedidos, { idPedido, idFactura }) => {
-  if (!Array.isArray(currentPedidos)) return currentPedidos;
+export const resolveRecoveredFacturaAgainstCurrentBoard = ({
+  currentPedidos,
+  idPedido,
+  recoveredIdFactura
+}) => {
   const normalizedIdPedido = toPositiveId(idPedido);
-  const recoveredIdFactura = toPositiveId(idFactura);
-  if (!normalizedIdPedido || !recoveredIdFactura) return currentPedidos;
+  const normalizedRecoveredId = toPositiveId(recoveredIdFactura);
+  if (!Array.isArray(currentPedidos) || !normalizedIdPedido || !normalizedRecoveredId) {
+    return {
+      status: 'invalid',
+      effectiveIdFactura: null,
+      nextPedidos: currentPedidos
+    };
+  }
 
-  let changed = false;
+  const currentPedido = currentPedidos.find(
+    (pedido) => toPositiveId(pedido?.id_pedido) === normalizedIdPedido
+  );
+  if (!currentPedido) {
+    return {
+      status: 'missing',
+      effectiveIdFactura: null,
+      nextPedidos: currentPedidos
+    };
+  }
+
+  const currentIdFactura = toPositiveId(currentPedido?.id_factura);
+  if (currentIdFactura === normalizedRecoveredId) {
+    return {
+      status: 'same',
+      effectiveIdFactura: currentIdFactura,
+      nextPedidos: currentPedidos
+    };
+  }
+  if (currentIdFactura) {
+    return {
+      status: 'conflict',
+      effectiveIdFactura: currentIdFactura,
+      nextPedidos: currentPedidos
+    };
+  }
+
   const nextPedidos = currentPedidos.map((pedido) => {
     if (toPositiveId(pedido?.id_pedido) !== normalizedIdPedido) return pedido;
-    const currentIdFactura = toPositiveId(pedido?.id_factura);
-    if (currentIdFactura) return pedido;
-    changed = true;
-    return { ...pedido, id_factura: recoveredIdFactura };
+    return { ...pedido, id_factura: normalizedRecoveredId };
   });
 
-  return changed ? nextPedidos : currentPedidos;
+  return {
+    status: 'apply-recovered',
+    effectiveIdFactura: normalizedRecoveredId,
+    nextPedidos
+  };
+};
+
+export const mergeRecoveredFacturaIntoPedidos = (currentPedidos, { idPedido, idFactura }) =>
+  resolveRecoveredFacturaAgainstCurrentBoard({
+    currentPedidos,
+    idPedido,
+    recoveredIdFactura: idFactura
+  }).nextPedidos;
+
+export const reconcileRecoveredFacturaDetail = async ({
+  getCurrentPedidos,
+  idPedido,
+  recoveredIdFactura,
+  recoveredVenta,
+  fetchVenta,
+  isCurrent = () => true
+}) => {
+  if (!isCurrent()) return { status: 'stale' };
+  const initial = resolveRecoveredFacturaAgainstCurrentBoard({
+    currentPedidos: getCurrentPedidos?.(),
+    idPedido,
+    recoveredIdFactura
+  });
+
+  if (initial.status !== 'conflict') {
+    return { ...initial, venta: recoveredVenta };
+  }
+  if (typeof fetchVenta !== 'function') return { status: 'invalid' };
+
+  const effectiveVenta = await fetchVenta(initial.effectiveIdFactura);
+  if (!isCurrent()) return { status: 'stale' };
+
+  const verified = resolveRecoveredFacturaAgainstCurrentBoard({
+    currentPedidos: getCurrentPedidos?.(),
+    idPedido,
+    recoveredIdFactura: initial.effectiveIdFactura
+  });
+  if (verified.status !== 'same') {
+    return {
+      status: 'changed',
+      effectiveIdFactura: verified.effectiveIdFactura,
+      nextPedidos: verified.nextPedidos
+    };
+  }
+
+  return { ...verified, status: 'conflict', venta: effectiveVenta };
 };
 
 export const createDetailOperationController = () => {
