@@ -113,6 +113,30 @@ export const prepareComandaPrintWindow = ({ agentPrintMode, sourceType, openWind
 export const getPrintErrorCode = (error) =>
   String(error?.code || error?.data?.code || '').trim();
 
+export const createPedidosStateCoordinator = ({
+  initialPedidos = [],
+  commitState
+} = {}) => {
+  let currentPedidos = Array.isArray(initialPedidos) ? initialPedidos : [];
+
+  return {
+    getCurrent() {
+      return currentPedidos;
+    },
+    commit(valueOrUpdater) {
+      const nextPedidos = typeof valueOrUpdater === 'function'
+        ? valueOrUpdater(currentPedidos)
+        : valueOrUpdater;
+
+      currentPedidos = Array.isArray(nextPedidos) ? nextPedidos : [];
+      if (typeof commitState === 'function') {
+        commitState(currentPedidos);
+      }
+      return currentPedidos;
+    }
+  };
+};
+
 export const resolveRecoveredFacturaAgainstCurrentBoard = ({
   currentPedidos,
   idPedido,
@@ -167,12 +191,34 @@ export const resolveRecoveredFacturaAgainstCurrentBoard = ({
   };
 };
 
-export const mergeRecoveredFacturaIntoPedidos = (currentPedidos, { idPedido, idFactura }) =>
-  resolveRecoveredFacturaAgainstCurrentBoard({
-    currentPedidos,
-    idPedido,
-    recoveredIdFactura: idFactura
-  }).nextPedidos;
+export const commitRecoveredFacturaToLiveBoard = ({
+  coordinator,
+  idPedido,
+  effectiveIdFactura,
+  allowedStatuses
+}) => {
+  let resolution = {
+    status: 'invalid',
+    effectiveIdFactura: null,
+    nextPedidos: coordinator?.getCurrent?.()
+  };
+  const allowed = Array.isArray(allowedStatuses) ? new Set(allowedStatuses) : null;
+
+  coordinator?.commit?.((currentPedidos) => {
+    resolution = resolveRecoveredFacturaAgainstCurrentBoard({
+      currentPedidos,
+      idPedido,
+      recoveredIdFactura: effectiveIdFactura
+    });
+
+    if (resolution.status === 'apply-recovered' && (!allowed || allowed.has(resolution.status))) {
+      return resolution.nextPedidos;
+    }
+    return currentPedidos;
+  });
+
+  return resolution;
+};
 
 export const reconcileRecoveredFacturaDetail = async ({
   getCurrentPedidos,
@@ -190,7 +236,14 @@ export const reconcileRecoveredFacturaDetail = async ({
   });
 
   if (initial.status !== 'conflict') {
-    return { ...initial, venta: recoveredVenta };
+    if (!['apply-recovered', 'same'].includes(initial.status)) {
+      return { status: initial.status };
+    }
+    return {
+      status: initial.status,
+      effectiveIdFactura: initial.effectiveIdFactura,
+      venta: recoveredVenta
+    };
   }
   if (typeof fetchVenta !== 'function') return { status: 'invalid' };
 
@@ -203,14 +256,14 @@ export const reconcileRecoveredFacturaDetail = async ({
     recoveredIdFactura: initial.effectiveIdFactura
   });
   if (verified.status !== 'same') {
-    return {
-      status: 'changed',
-      effectiveIdFactura: verified.effectiveIdFactura,
-      nextPedidos: verified.nextPedidos
-    };
+    return { status: 'changed' };
   }
 
-  return { ...verified, status: 'conflict', venta: effectiveVenta };
+  return {
+    status: 'conflict',
+    effectiveIdFactura: initial.effectiveIdFactura,
+    venta: effectiveVenta
+  };
 };
 
 export const createDetailOperationController = () => {

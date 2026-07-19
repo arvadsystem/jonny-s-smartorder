@@ -5,7 +5,9 @@ import ventasService from '../../../../services/ventasService';
 import { createCocinaAudioManager } from '../../cocina/utils/cocinaAudio';
 import { formatCurrency, normalizeVentaDetail } from '../utils/ventasHelpers';
 import {
+  commitRecoveredFacturaToLiveBoard,
   createDetailOperationController,
+  createPedidosStateCoordinator,
   getPrintErrorCode,
   reconcileRecoveredFacturaDetail,
   recoverFacturedPedidoPrintSource
@@ -235,7 +237,13 @@ export default function PedidosView({
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [pedidos, setPedidos] = useState([]);
-  const pedidosRef = useRef([]);
+  const pedidosCoordinatorRef = useRef(null);
+  if (!pedidosCoordinatorRef.current) {
+    pedidosCoordinatorRef.current = createPedidosStateCoordinator({
+      initialPedidos: [],
+      commitState: setPedidos
+    });
+  }
   const [loading, setLoading] = useState(true);
   const [actionBusyId, setActionBusyId] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -264,13 +272,11 @@ export default function PedidosView({
   }
 
   const commitPedidos = useCallback((valueOrUpdater) => {
-    setPedidos((currentPedidos) => {
-      const nextPedidos = typeof valueOrUpdater === 'function'
-        ? valueOrUpdater(currentPedidos)
-        : valueOrUpdater;
-      pedidosRef.current = nextPedidos;
-      return nextPedidos;
-    });
+    return pedidosCoordinatorRef.current.commit(valueOrUpdater);
+  }, []);
+
+  const getCurrentPedidos = useCallback(() => {
+    return pedidosCoordinatorRef.current.getCurrent();
   }, []);
 
   const sucursalOptions = useMemo(() => buildSucursalOptions(sucursales), [sucursales]);
@@ -384,7 +390,7 @@ export default function PedidosView({
         forbiddenErrorKeyRef.current = '';
         const nextPedidos = Array.isArray(data) ? data : [];
 
-        const prevPedidos = pedidosRef.current;
+        const prevPedidos = getCurrentPedidos();
         if (source !== 'initial' && source !== 'manual' && source !== 'action') {
           const prevReadyIds = new Set(
             (Array.isArray(prevPedidos) ? prevPedidos : [])
@@ -435,7 +441,7 @@ export default function PedidosView({
         if (requestId === requestIdRef.current && !silent) setLoading(false);
       }
     },
-    [commitPedidos, effectiveSucursalId, isSuperAdmin, openToast]
+    [commitPedidos, effectiveSucursalId, getCurrentPedidos, isSuperAdmin, openToast]
   );
 
   useEffect(() => {
@@ -621,7 +627,7 @@ export default function PedidosView({
         let reconciliation;
         try {
           reconciliation = await reconcileRecoveredFacturaDetail({
-            getCurrentPedidos: () => pedidosRef.current,
+            getCurrentPedidos,
             idPedido,
             recoveredIdFactura: recovery.idFactura,
             recoveredVenta: recovery.venta,
@@ -643,10 +649,24 @@ export default function PedidosView({
         }
 
         if (['apply-recovered', 'same', 'conflict'].includes(reconciliation.status)) {
-          if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
-          if (reconciliation.status === 'apply-recovered') {
-            commitPedidos(reconciliation.nextPedidos);
+          if (!detailOperationControllerRef.current.isCurrent(recoveryOperation)) return;
+          const allowedLiveStatuses = reconciliation.status === 'apply-recovered'
+            ? ['apply-recovered', 'same']
+            : ['same'];
+          const liveResolution = commitRecoveredFacturaToLiveBoard({
+            coordinator: pedidosCoordinatorRef.current,
+            idPedido,
+            effectiveIdFactura: reconciliation.effectiveIdFactura,
+            allowedStatuses: allowedLiveStatuses
+          });
+          if (!allowedLiveStatuses.includes(liveResolution.status)) {
+            if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
+            const changedMessage = 'El pedido cambió mientras se actualizaba el detalle. Actualiza el tablero e intenta nuevamente.';
+            const changedError = new Error(changedMessage);
+            changedError.publicMessage = changedMessage;
+            throw changedError;
           }
+          if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
           const refreshedVenta = {
             ...normalizeVentaDetail(reconciliation.venta),
             id_pedido: idPedido,
@@ -667,7 +687,7 @@ export default function PedidosView({
       publicError.publicMessage = message;
       throw publicError;
     }
-  }, [commitPedidos, effectiveSucursalId, onPrintComanda, openToast]);
+  }, [effectiveSucursalId, getCurrentPedidos, onPrintComanda, openToast]);
 
   const handleRegistrarPagoPedido = useCallback(
     async (idPedido, payload) => {
