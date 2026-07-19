@@ -271,6 +271,10 @@ export default function PedidosView({
   if (!detailOperationControllerRef.current) {
     detailOperationControllerRef.current = createDetailOperationController();
   }
+  const facturaDetailOperationControllerRef = useRef(null);
+  if (!facturaDetailOperationControllerRef.current) {
+    facturaDetailOperationControllerRef.current = createDetailOperationController();
+  }
 
   const commitPedidos = useCallback((valueOrUpdater) => {
     return pedidosCoordinatorRef.current.commit(valueOrUpdater);
@@ -319,8 +323,10 @@ export default function PedidosView({
   useEffect(() => {
     audioManagerRef.current = createCocinaAudioManager();
     detailOperationControllerRef.current.mount();
+    facturaDetailOperationControllerRef.current.mount();
     return () => {
       detailOperationControllerRef.current.unmount();
+      facturaDetailOperationControllerRef.current.unmount();
       audioManagerRef.current?.dispose?.();
       audioManagerRef.current = null;
     };
@@ -328,6 +334,7 @@ export default function PedidosView({
 
   useEffect(() => {
     detailOperationControllerRef.current.changeSucursal(effectiveSucursalId);
+    facturaDetailOperationControllerRef.current.changeSucursal(effectiveSucursalId);
     setVentaDetailModal({ open: false, venta: null });
     setVentaDetailLoading(false);
   }, [effectiveSucursalId]);
@@ -552,6 +559,10 @@ export default function PedidosView({
       idPedido,
       sucursalId: effectiveSucursalId
     });
+    facturaDetailOperationControllerRef.current.openDetail({
+      idPedido,
+      sucursalId: effectiveSucursalId
+    });
 
     setVentaDetailModal({ open: true, venta: fallbackDetail });
     setVentaDetailLoading(false);
@@ -581,9 +592,60 @@ export default function PedidosView({
 
   const closePedidoDetail = useCallback(() => {
     detailOperationControllerRef.current.closeDetail();
+    facturaDetailOperationControllerRef.current.closeDetail();
     setVentaDetailModal({ open: false, venta: null });
     setVentaDetailLoading(false);
   }, []);
+
+  const handlePrintFacturaFromDetail = useCallback(async (venta, options) => {
+    const idPedido = toPositiveId(venta?.id_pedido);
+    const actionOperation = facturaDetailOperationControllerRef.current.beginOperation({
+      idPedido,
+      sucursalId: effectiveSucursalId
+    });
+    try {
+      const liveSource = await reconcilePedidoDetailPrintSource({
+        coordinator: pedidosCoordinatorRef.current,
+        idPedido,
+        modalIdFactura: venta?.id_factura,
+        fetchVenta: (idFactura) => ventasService.getById(idFactura),
+        isCurrent: () => facturaDetailOperationControllerRef.current.isCurrent(actionOperation)
+      });
+      if (liveSource.status === 'stale') return;
+
+      if (liveSource.status === 'refresh') {
+        const refreshedVenta = {
+          ...normalizeVentaDetail(liveSource.venta),
+          id_pedido: idPedido,
+          id_factura: liveSource.effectiveIdFactura
+        };
+        setVentaDetailModal({ open: true, venta: refreshedVenta });
+        const refreshMessage = 'El pedido cambió y el detalle fue actualizado. Vuelve a intentar la impresión de la factura.';
+        openToast('PEDIDO ACTUALIZADO', refreshMessage, 'warning');
+        const refreshError = new Error(refreshMessage);
+        refreshError.publicMessage = refreshMessage;
+        throw refreshError;
+      }
+
+      if (liveSource.status !== 'ready') {
+        const changedMessage = 'El pedido cambió mientras se actualizaba el detalle. Actualiza el tablero e intenta nuevamente.';
+        const changedError = new Error(changedMessage);
+        changedError.publicMessage = changedMessage;
+        throw changedError;
+      }
+
+      const liveVenta = {
+        ...venta,
+        id_factura: liveSource.effectiveIdFactura
+      };
+      await onPrintFactura?.(liveVenta, options);
+      facturaDetailOperationControllerRef.current.complete(actionOperation);
+    } catch (error) {
+      if (!facturaDetailOperationControllerRef.current.isCurrent(actionOperation)) return;
+      facturaDetailOperationControllerRef.current.complete(actionOperation);
+      throw error;
+    }
+  }, [effectiveSucursalId, onPrintFactura, openToast]);
 
   const handlePrintComandaFromDetail = useCallback(async (venta, options) => {
     const idPedido = toPositiveId(venta?.id_pedido);
@@ -1028,7 +1090,7 @@ export default function PedidosView({
         canExport={false}
         canPrint={canPrintVenta}
         printSourceType={ventaDetailModal.venta?.id_factura ? 'factura' : 'pedido'}
-        onPrintFactura={onPrintFactura}
+        onPrintFactura={handlePrintFacturaFromDetail}
         onPrintComanda={handlePrintComandaFromDetail}
       />
 

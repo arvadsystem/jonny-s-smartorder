@@ -145,7 +145,7 @@ const createRecoveryHarness = ({
     return { ...recovery, reconciliation, liveResolution };
   };
 
-  const secondClick = async ({ fetchVenta } = {}) => {
+  const secondClick = async ({ fetchVenta, documentType = 'comanda' } = {}) => {
     if (!state.venta) return null;
     const operation = controller.beginOperation({ idPedido, sucursalId });
     const liveSource = await reconcilePedidoDetailPrintSource({
@@ -187,7 +187,7 @@ const createRecoveryHarness = ({
           return { job: { id_trabajo: 78 } };
         }
       },
-      documentType: 'comanda',
+      documentType,
       venta: { ...state.venta, id_factura: liveSource.effectiveIdFactura },
       sourceType,
       action: 'reprint',
@@ -286,6 +286,16 @@ describe('acciones independientes de impresion en ventas', () => {
       'utf8'
     );
     assert.doesNotMatch(source, /setPedidos\s*\(\s*\(/);
+  });
+
+  it('PedidosView conecta factura y comanda a manejadores con revalidacion viva', async () => {
+    const source = await readFile(
+      new URL('../components/PedidosView.jsx', import.meta.url),
+      'utf8'
+    );
+    assert.match(source, /onPrintFactura=\{handlePrintFacturaFromDetail\}/);
+    assert.match(source, /onPrintComanda=\{handlePrintComandaFromDetail\}/);
+    assert.doesNotMatch(source, /onPrintFactura=\{onPrintFactura\}/);
   });
 
   it('renderiza factura y comanda pagada como acciones separadas y respeta permisos', () => {
@@ -824,6 +834,73 @@ describe('acciones independientes de impresion en ventas', () => {
     assert.equal(harness.calls.printCalls.length, 1);
     assert.equal(harness.calls.printCalls[0].idFactura, 77);
     assert.notEqual(harness.calls.printCalls[0].idFactura, 58);
+  });
+
+  it('revalida factura antes del dispatch y exige otro clic cuando el tablero cambia de 58 a 77', async () => {
+    const harness = createRecoveryHarness({
+      initialPedidos: [{ id_pedido: 12, id_factura: 58, estado: 'EN_PREPARACION' }]
+    });
+    await harness.runRecovery({
+      async fetchPedidos() { return [{ ...pendingPedido, id_factura: 41 }]; },
+      async fetchVenta(idFactura) {
+        return idFactura === 58 ? { ...paidVenta, id_factura: 58 } : paidVenta;
+      }
+    });
+    harness.coordinator.commit([
+      { id_pedido: 12, id_factura: 77, estado: 'EN_PREPARACION' }
+    ]);
+
+    const refresh = await harness.secondClick({
+      documentType: 'factura',
+      async fetchVenta(idFactura) {
+        assert.equal(idFactura, 77);
+        return { ...paidVenta, id_factura: 77, numero_venta: 'VTA-00077' };
+      }
+    });
+
+    assert.equal(refresh.status, 'refresh');
+    assert.equal(harness.state.venta.id_factura, 77);
+    assert.equal(harness.calls.printCalls.length, 0);
+
+    const manualRetry = await harness.secondClick({ documentType: 'factura' });
+    assert.equal(manualRetry.status, 'printed');
+    assert.equal(harness.calls.printCalls.length, 1);
+    assert.equal(harness.calls.printCalls[0].idFactura, 77);
+    assert.equal(harness.calls.printCalls[0].payload.tipo_documento, 'factura');
+    assert.equal(harness.calls.printCalls[0].payload.es_reimpresion, true);
+    assert.notEqual(harness.calls.printCalls[0].idFactura, 58);
+  });
+
+  it('factura falla cerrado si 77 cambia a 88 mientras carga el detalle vigente', async () => {
+    const harness = createRecoveryHarness({
+      initialPedidos: [{ id_pedido: 12, id_factura: 58 }]
+    });
+    await harness.runRecovery({
+      async fetchPedidos() { return [{ ...pendingPedido, id_factura: 41 }]; },
+      async fetchVenta(idFactura) {
+        return idFactura === 58 ? { ...paidVenta, id_factura: 58 } : paidVenta;
+      }
+    });
+    harness.coordinator.commit([{ id_pedido: 12, id_factura: 77 }]);
+    const factura77 = createDeferred();
+    const factura77Started = createDeferred();
+    const printPromise = harness.secondClick({
+      documentType: 'factura',
+      fetchVenta(idFactura) {
+        assert.equal(idFactura, 77);
+        factura77Started.resolve();
+        return factura77.promise;
+      }
+    });
+
+    await factura77Started.promise;
+    harness.coordinator.commit([{ id_pedido: 12, id_factura: 88 }]);
+    factura77.resolve({ ...paidVenta, id_factura: 77 });
+    const result = await printPromise;
+
+    assert.equal(result.status, 'changed');
+    assert.equal(harness.state.pedidos[0].id_factura, 88);
+    assert.equal(harness.calls.printCalls.length, 0);
   });
 
   it('falla cerrado si la factura cambia otra vez mientras el segundo clic carga 77', async () => {
