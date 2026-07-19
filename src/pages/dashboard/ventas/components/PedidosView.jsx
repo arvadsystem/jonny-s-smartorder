@@ -4,6 +4,7 @@ import { supabase } from '../../../../lib/supabaseClient';
 import ventasService from '../../../../services/ventasService';
 import { createCocinaAudioManager } from '../../cocina/utils/cocinaAudio';
 import { formatCurrency, normalizeVentaDetail } from '../utils/ventasHelpers';
+import { recoverFacturedPedidoPrintSource } from '../utils/ventasPrintActions';
 import PedidosEmptyState from './PedidosEmptyState';
 import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import VentaDetalleModal from './VentaDetalleModal';
@@ -533,6 +534,49 @@ export default function PedidosView({
     setVentaDetailLoading(false);
   }, []);
 
+  const handlePrintComandaFromDetail = useCallback(async (venta, options) => {
+    try {
+      await onPrintComanda?.(venta, options);
+    } catch (error) {
+      const idPedido = toPositiveId(venta?.id_pedido);
+      const params = effectiveSucursalId ? { id_sucursal: effectiveSucursalId } : {};
+      let recovery;
+
+      try {
+        recovery = await recoverFacturedPedidoPrintSource({
+          error,
+          idPedido,
+          fetchPedidos: () => ventasService.getPedidosMenu(params),
+          fetchVenta: (idFactura) => ventasService.getById(idFactura)
+        });
+      } catch {
+        recovery = { handled: true, recovered: false };
+      }
+
+      if (!recovery?.handled) throw error;
+
+      if (recovery.recovered) {
+        const refreshedVenta = {
+          ...normalizeVentaDetail(recovery.venta),
+          id_pedido: idPedido,
+          id_factura: recovery.idFactura
+        };
+        setPedidos(recovery.pedidos);
+        setVentaDetailModal({ open: true, venta: refreshedVenta });
+        const message = 'El pedido ya fue facturado. El detalle fue actualizado; vuelve a intentar la impresión de la comanda.';
+        openToast('PEDIDO ACTUALIZADO', message, 'warning');
+        const publicError = new Error(message);
+        publicError.publicMessage = message;
+        throw publicError;
+      }
+
+      const message = 'El pedido ya no puede imprimirse como pendiente y no fue posible recuperar su factura. Actualiza el tablero e intenta nuevamente.';
+      const publicError = new Error(message);
+      publicError.publicMessage = message;
+      throw publicError;
+    }
+  }, [effectiveSucursalId, onPrintComanda, openToast]);
+
   const handleRegistrarPagoPedido = useCallback(
     async (idPedido, payload) => {
       try {
@@ -834,7 +878,7 @@ export default function PedidosView({
         canPrint={canPrintVenta}
         printSourceType={ventaDetailModal.venta?.id_factura ? 'factura' : 'pedido'}
         onPrintFactura={onPrintFactura}
-        onPrintComanda={onPrintComanda}
+        onPrintComanda={handlePrintComandaFromDetail}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />

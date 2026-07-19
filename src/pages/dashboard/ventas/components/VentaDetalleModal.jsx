@@ -13,8 +13,10 @@ import VentaTicketPrint from './VentaTicketPrint';
 import './VentaTicketPrint.css';
 import { printVentaTicketPdf } from '../utils/ventaPrintUtils';
 import {
+  createEmptyPrintErrors,
   createDocumentPrintGuard,
-  getSafePrintErrorContext
+  getSafePrintErrorContext,
+  setDocumentPrintError
 } from '../utils/ventasPrintActions';
 
 const DEFAULT_TICKET_WIDTH_MM = 80;
@@ -111,6 +113,23 @@ export const VentaDetallePrintActions = ({
   </>
 );
 
+export const VentaDetallePrintErrors = ({ errors }) => (
+  <>
+    {errors?.factura ? (
+      <div className="alert alert-warning ventas-detail-modal__print-error" role="alert" aria-label="Error de factura">
+        <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+        <span><strong>Factura:</strong> {errors.factura}</span>
+      </div>
+    ) : null}
+    {errors?.comanda ? (
+      <div className="alert alert-warning ventas-detail-modal__print-error" role="alert" aria-label="Error de comanda">
+        <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+        <span><strong>Comanda:</strong> {errors.comanda}</span>
+      </div>
+    ) : null}
+  </>
+);
+
 export default function VentaDetalleModal({
   open,
   venta,
@@ -126,7 +145,7 @@ export default function VentaDetalleModal({
 }) {
   const [ticketWidthMm, setTicketWidthMm] = useState(DEFAULT_TICKET_WIDTH_MM);
   const [printingDocuments, setPrintingDocuments] = useState({ factura: false, comanda: false });
-  const [printError, setPrintError] = useState('');
+  const [printErrors, setPrintErrors] = useState(createEmptyPrintErrors);
   const printGuardRef = useRef(null);
   if (!printGuardRef.current) printGuardRef.current = createDocumentPrintGuard();
 
@@ -136,7 +155,7 @@ export default function VentaDetalleModal({
     const widthFromLegacy = Number(venta?.ancho_ticket_mm);
     const resolvedWidth = widthFromFacturacion === 58 || widthFromLegacy === 58 ? 58 : 80;
     setTicketWidthMm(resolvedWidth);
-    setPrintError('');
+    setPrintErrors(createEmptyPrintErrors());
   }, [open, venta]);
 
   useEffect(() => {
@@ -198,12 +217,16 @@ export default function VentaDetalleModal({
   const runPrintAction = async (documentType, action, fallbackMessage) => {
     if (typeof window === 'undefined' || !venta || printGuardRef.current.isActive(documentType)) return;
     setPrintingDocuments((current) => ({ ...current, [documentType]: true }));
-    setPrintError('');
+    setPrintErrors((current) => setDocumentPrintError(current, documentType, ''));
     try {
       await printGuardRef.current.run(documentType, action);
     } catch (error) {
       console.error('[Ventas] Fallo una accion de impresion desde el detalle.', getSafePrintErrorContext(documentType, error));
-      setPrintError(String(error?.publicMessage || fallbackMessage));
+      setPrintErrors((current) => setDocumentPrintError(
+        current,
+        documentType,
+        String(error?.publicMessage || fallbackMessage)
+      ));
     } finally {
       setPrintingDocuments((current) => ({ ...current, [documentType]: false }));
     }
@@ -503,12 +526,7 @@ export default function VentaDetalleModal({
                 ) : null}
               </div>
 
-              {printError ? (
-                <div className="alert alert-warning ventas-detail-modal__print-error" role="alert">
-                  <i className="bi bi-exclamation-triangle" aria-hidden="true" />
-                  <span>{printError}</span>
-                </div>
-              ) : null}
+              <VentaDetallePrintErrors errors={printErrors} />
 
               <footer className="ventas-detail-modal__footer">
                 <div className="ventas-detail-modal__served-by">

@@ -11,13 +11,17 @@ const toPositiveId = (value) => {
 const resolveUniqueValue = (createUniqueValue) => {
   if (typeof createUniqueValue === 'function') {
     const provided = String(createUniqueValue() || '').trim();
-    if (provided) return provided;
+    return provided || null;
   }
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
   }
-  return String(Date.now());
+  return null;
 };
+
+const resolveFallbackTimestamp = (now) => String(
+  typeof now === 'function' ? now() : Date.now()
+);
 
 export const createClosedComandaPrompt = () => ({
   open: false,
@@ -86,16 +90,65 @@ export const buildComandaIdempotencyKey = ({
       : `comanda:${sourceId}:inicial`;
   }
 
-  const uniqueValue = resolveUniqueValue(createUniqueValue);
+  const uniqueValue = resolveUniqueValue(createUniqueValue) || resolveFallbackTimestamp();
   return sourceType === 'pedido'
     ? `comanda:pedido-reprint:${sourceId}:${uniqueValue}`
     : `comanda-reprint:${sourceId}:${uniqueValue}`;
 };
 
-export const buildFacturaReprintIdempotencyKey = ({ idFactura, createUniqueValue }) => {
+export const buildFacturaReprintIdempotencyKey = ({ idFactura, createUniqueValue, now }) => {
   const normalizedId = toPositiveId(idFactura);
   if (!normalizedId) throw new Error('Factura invalida para reimpresion.');
-  return `factura-reprint:${normalizedId}:${resolveUniqueValue(createUniqueValue)}`;
+  const uuid = resolveUniqueValue(createUniqueValue);
+  return uuid
+    ? `reprint:${uuid}`
+    : `reprint:${normalizedId}:${resolveFallbackTimestamp(now)}`;
+};
+
+export const prepareComandaPrintWindow = ({ agentPrintMode, sourceType, openWindow }) => {
+  if (agentPrintMode || sourceType === 'pedido') return null;
+  return typeof openWindow === 'function' ? openWindow('Preparando comanda') : null;
+};
+
+export const getPrintErrorCode = (error) =>
+  String(error?.code || error?.data?.code || '').trim();
+
+export const recoverFacturedPedidoPrintSource = async ({
+  error,
+  idPedido,
+  fetchPedidos,
+  fetchVenta
+}) => {
+  if (getPrintErrorCode(error) !== 'PRINT_PEDIDO_SOURCE_INVALID') {
+    return { handled: false };
+  }
+
+  const normalizedIdPedido = toPositiveId(idPedido);
+  if (!normalizedIdPedido || typeof fetchPedidos !== 'function' || typeof fetchVenta !== 'function') {
+    return { handled: true, recovered: false, pedidos: [] };
+  }
+
+  const pedidosPayload = await fetchPedidos();
+  const pedidos = Array.isArray(pedidosPayload) ? pedidosPayload : [];
+  const pedido = pedidos.find((item) => toPositiveId(item?.id_pedido) === normalizedIdPedido) || null;
+  const idFactura = toPositiveId(pedido?.id_factura);
+  if (!idFactura) {
+    return { handled: true, recovered: false, pedidos, pedido };
+  }
+
+  const venta = await fetchVenta(idFactura);
+  return { handled: true, recovered: true, pedidos, pedido, idFactura, venta };
+};
+
+export const createEmptyPrintErrors = () => ({ factura: '', comanda: '' });
+
+export const setDocumentPrintError = (current, documentType, message) => {
+  if (!DOCUMENT_TYPES.has(documentType)) return { ...current };
+  return {
+    ...createEmptyPrintErrors(),
+    ...(current || {}),
+    [documentType]: String(message || '')
+  };
 };
 
 export const enqueueAgentPrintAction = async ({
@@ -104,7 +157,9 @@ export const enqueueAgentPrintAction = async ({
   venta,
   sourceType = 'factura',
   action = 'reprint',
-  createUniqueValue
+  createUniqueValue,
+  now,
+  motivo
 }) => {
   if (!ventasApi || !DOCUMENT_TYPES.has(documentType)) {
     throw new Error('Accion de impresion invalida.');
@@ -119,11 +174,17 @@ export const enqueueAgentPrintAction = async ({
     }
     const idempotencyKey = buildFacturaReprintIdempotencyKey({
       idFactura,
-      createUniqueValue
+      createUniqueValue,
+      now
     });
+    const sanitizedMotivo = String(motivo || 'REIMPRESION_MANUAL').slice(0, 120);
     const response = await ventasApi.enqueuePrintJob(
       idFactura,
-      { tipo_documento: 'factura', es_reimpresion: true },
+      {
+        tipo_documento: 'factura',
+        es_reimpresion: true,
+        motivo: sanitizedMotivo
+      },
       idempotencyKey
     );
     return { response, idempotencyKey, documentType, sourceType: 'factura', action };

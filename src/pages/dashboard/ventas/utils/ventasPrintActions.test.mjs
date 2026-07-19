@@ -5,9 +5,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import {
   buildComandaIdempotencyKey,
+  buildFacturaReprintIdempotencyKey,
   createComandaPrompt,
   createDocumentPrintGuard,
-  enqueueAgentPrintAction
+  createEmptyPrintErrors,
+  enqueueAgentPrintAction,
+  prepareComandaPrintWindow,
+  recoverFacturedPedidoPrintSource,
+  setDocumentPrintError
 } from './ventasPrintActions.js';
 
 const paidVenta = {
@@ -43,6 +48,7 @@ describe('acciones independientes de impresion en ventas', () => {
   let viteServer;
   let VentaDetalleModal;
   let VentaDetallePrintActions;
+  let VentaDetallePrintErrors;
 
   before(async () => {
     viteServer = await createServer({
@@ -56,6 +62,7 @@ describe('acciones independientes de impresion en ventas', () => {
     const module = await viteServer.ssrLoadModule('/src/pages/dashboard/ventas/components/VentaDetalleModal.jsx');
     VentaDetalleModal = module.default;
     VentaDetallePrintActions = module.VentaDetallePrintActions;
+    VentaDetallePrintErrors = module.VentaDetallePrintErrors;
   });
 
   after(async () => {
@@ -198,7 +205,11 @@ describe('acciones independientes de impresion en ventas', () => {
     assert.deepEqual(calls, [
       {
         method: 'factura',
-        args: [41, { tipo_documento: 'factura', es_reimpresion: true }, 'factura-reprint:41:uuid-factura']
+        args: [
+          41,
+          { tipo_documento: 'factura', es_reimpresion: true, motivo: 'REIMPRESION_MANUAL' },
+          'reprint:uuid-factura'
+        ]
       },
       {
         method: 'factura',
@@ -247,5 +258,151 @@ describe('acciones independientes de impresion en ventas', () => {
     ]);
     assert.equal(buildComandaIdempotencyKey({ sourceType: 'factura', action: 'initial', idFactura: 41 }), 'comanda:41:inicial');
     assert.equal(buildComandaIdempotencyKey({ sourceType: 'pedido', action: 'initial', idPedido: 12 }), 'comanda:pedido:12:inicial');
+  });
+
+  it('restaura las claves y el payload historicos de reimpresion de factura', async () => {
+    assert.equal(
+      buildFacturaReprintIdempotencyKey({ idFactura: 41, createUniqueValue: () => 'uuid-prueba' }),
+      'reprint:uuid-prueba'
+    );
+    assert.equal(
+      buildFacturaReprintIdempotencyKey({
+        idFactura: 41,
+        createUniqueValue: () => null,
+        now: () => 1700000000000
+      }),
+      'reprint:41:1700000000000'
+    );
+    assert.equal(
+      buildComandaIdempotencyKey({
+        sourceType: 'factura',
+        action: 'reprint',
+        idFactura: 41,
+        createUniqueValue: () => 'uuid-prueba'
+      }),
+      'comanda-reprint:41:uuid-prueba'
+    );
+    assert.equal(
+      buildComandaIdempotencyKey({
+        sourceType: 'pedido',
+        action: 'reprint',
+        idPedido: 12,
+        createUniqueValue: () => 'uuid-prueba'
+      }),
+      'comanda:pedido-reprint:12:uuid-prueba'
+    );
+
+    const calls = [];
+    await enqueueAgentPrintAction({
+      ventasApi: {
+        async enqueuePrintJob(...args) { calls.push(args); }
+      },
+      documentType: 'factura',
+      venta: paidVenta,
+      action: 'reprint',
+      createUniqueValue: () => 'uuid-prueba'
+    });
+    assert.deepEqual(calls, [[
+      41,
+      { tipo_documento: 'factura', es_reimpresion: true, motivo: 'REIMPRESION_MANUAL' },
+      'reprint:uuid-prueba'
+    ]]);
+  });
+
+  it('en modo agente encola una sola comanda pagada sin abrir navegador ni invocar impresion local', async () => {
+    const calls = { open: 0, enqueue: 0, browser: 0, qz: 0, pdf: 0 };
+    const printWindow = prepareComandaPrintWindow({
+      agentPrintMode: true,
+      sourceType: 'factura',
+      openWindow() { calls.open += 1; return {}; }
+    });
+    assert.equal(printWindow, null);
+
+    await enqueueAgentPrintAction({
+      ventasApi: {
+        async enqueuePrintJob(idFactura, payload) {
+          calls.enqueue += 1;
+          assert.equal(idFactura, 41);
+          assert.deepEqual(payload, { tipo_documento: 'comanda', es_reimpresion: true });
+          return { job: { id_trabajo: 77 } };
+        },
+        async enqueuePedidoPrintJob() { throw new Error('No debe usar id_pedido.'); }
+      },
+      documentType: 'comanda',
+      venta: paidVenta,
+      sourceType: 'factura',
+      action: 'reprint',
+      createUniqueValue: () => 'uuid-prueba'
+    });
+
+    assert.deepEqual(calls, { open: 0, enqueue: 1, browser: 0, qz: 0, pdf: 0 });
+  });
+
+  it('recupera un pedido recien facturado sin reintento automatico y el segundo clic usa id_factura', async () => {
+    const calls = { pedidos: 0, venta: 0, pedidoPrint: 1, facturaPrint: 0 };
+    const recovery = await recoverFacturedPedidoPrintSource({
+      error: { data: { code: 'PRINT_PEDIDO_SOURCE_INVALID' } },
+      idPedido: 12,
+      async fetchPedidos() {
+        calls.pedidos += 1;
+        return [{ ...pendingPedido, id_factura: 41 }];
+      },
+      async fetchVenta(idFactura) {
+        calls.venta += 1;
+        assert.equal(idFactura, 41);
+        return paidVenta;
+      }
+    });
+
+    assert.equal(recovery.recovered, true);
+    assert.equal(recovery.idFactura, 41);
+    assert.deepEqual(calls, { pedidos: 1, venta: 1, pedidoPrint: 1, facturaPrint: 0 });
+
+    await enqueueAgentPrintAction({
+      ventasApi: {
+        async enqueuePrintJob(idFactura, payload) {
+          calls.facturaPrint += 1;
+          assert.equal(idFactura, 41);
+          assert.equal(payload.tipo_documento, 'comanda');
+        },
+        async enqueuePedidoPrintJob() { throw new Error('No debe reusar el endpoint de pedido.'); }
+      },
+      documentType: 'comanda',
+      venta: recovery.venta,
+      sourceType: 'factura',
+      action: 'reprint',
+      createUniqueValue: () => 'segundo-clic'
+    });
+    assert.deepEqual(calls, { pedidos: 1, venta: 1, pedidoPrint: 1, facturaPrint: 1 });
+  });
+
+  it('mantiene fallo cerrado cuando el pedido actualizado no tiene factura', async () => {
+    let fetchVentaCalls = 0;
+    const recovery = await recoverFacturedPedidoPrintSource({
+      error: { code: 'PRINT_PEDIDO_SOURCE_INVALID' },
+      idPedido: 12,
+      async fetchPedidos() { return [pendingPedido]; },
+      async fetchVenta() { fetchVentaCalls += 1; }
+    });
+    assert.equal(recovery.handled, true);
+    assert.equal(recovery.recovered, false);
+    assert.equal(fetchVentaCalls, 0);
+    assert.equal(recovery.idFactura, undefined);
+  });
+
+  it('mantiene errores independientes de factura y comanda durante fallos y reintentos', () => {
+    let errors = createEmptyPrintErrors();
+    errors = setDocumentPrintError(errors, 'factura', 'Fallo factura');
+    errors = setDocumentPrintError(errors, 'comanda', '');
+    assert.deepEqual(errors, { factura: 'Fallo factura', comanda: '' });
+
+    errors = setDocumentPrintError(errors, 'comanda', 'Fallo comanda');
+    assert.deepEqual(errors, { factura: 'Fallo factura', comanda: 'Fallo comanda' });
+    const html = renderToStaticMarkup(React.createElement(VentaDetallePrintErrors, { errors }));
+    assert.match(html, /aria-label="Error de factura"/);
+    assert.match(html, /aria-label="Error de comanda"/);
+
+    errors = setDocumentPrintError(errors, 'factura', '');
+    assert.deepEqual(errors, { factura: '', comanda: 'Fallo comanda' });
   });
 });

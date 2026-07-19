@@ -29,7 +29,8 @@ import {
   createClosedComandaPrompt,
   createComandaPrompt,
   enqueueAgentPrintAction,
-  getSafePrintErrorContext
+  getSafePrintErrorContext,
+  prepareComandaPrintWindow
 } from './utils/ventasPrintActions';
 import {
   getAllowedTabs,
@@ -646,7 +647,8 @@ export default function VentasPage() {
           ventasApi: ventasService,
           documentType: 'factura',
           venta,
-          action: 'reprint'
+          action: 'reprint',
+          motivo: options?.motivo
         });
         openToast('REIMPRESION FACTURA', 'Reimpresion enviada a la cola de la sucursal.', 'success');
         monitorAgentPrintJob(queued?.job?.id_trabajo, 'REIMPRESION FACTURA');
@@ -828,19 +830,25 @@ export default function VentasPage() {
     const { sourceType, action, origin } = printContext;
     const isPendingOrderComanda = sourceType === 'pedido';
     const isReprint = action === 'reprint';
-    const failPrint = (message) => {
+    const failPrint = (message, cause = null) => {
       if (usePromptState) {
         setComandaPrompt((current) => ({ ...current, loading: false, error: message }));
         return;
       }
       const publicError = new Error(message);
       publicError.publicMessage = message;
+      publicError.code = String(cause?.code || cause?.data?.code || '').trim() || undefined;
+      publicError.status = Number(cause?.status || cause?.data?.status || 0) || undefined;
       throw publicError;
     };
     if ((isPendingOrderComanda ? !venta?.id_pedido : !venta?.id_factura)
       || (usePromptState && printContext.loading)) return;
 
-    const comandaPrintWindow = isPendingOrderComanda ? null : openPrintWindow('Preparando comanda');
+    const comandaPrintWindow = prepareComandaPrintWindow({
+      agentPrintMode: AGENT_PRINT_MODE,
+      sourceType,
+      openWindow: openPrintWindow
+    });
 
     if (usePromptState) {
       setComandaPrompt((current) => ({
@@ -868,7 +876,7 @@ export default function VentasPage() {
         const message = isPendingOrderComanda && isReprint
           ? 'No se pudo reimprimir la comanda del pedido.'
           : 'No se pudo enviar la comanda a impresión.';
-        failPrint(message);
+        failPrint(message, error);
       }
       return;
     }
@@ -958,7 +966,8 @@ export default function VentasPage() {
         failPrint(
           isReprint || comandaForPrint === venta
             ? pendingOrderErrorMessage
-            : `${pendingOrderErrorMessage} ${printErrorMessage}`.trim()
+            : `${pendingOrderErrorMessage} ${printErrorMessage}`.trim(),
+          error
         );
         return;
       }
@@ -1073,7 +1082,7 @@ export default function VentasPage() {
           }
         }).catch(() => undefined);
       }
-      failPrint(isReprint ? 'No se pudo enviar la comanda a impresión.' : printErrorMessage);
+      failPrint(isReprint ? 'No se pudo enviar la comanda a impresión.' : printErrorMessage, error);
     }
   };
 
