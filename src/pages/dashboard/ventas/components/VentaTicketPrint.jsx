@@ -6,6 +6,7 @@ import {
   getLineDiscountPercent,
   roundMoney
 } from '../utils/ventasHelpers';
+import { buildVentaDetailSummary } from '../utils/ventasDetailSummary';
 
 const DEFAULT_BUSINESS_NAME = "JONNY'S WINGS";
 const CONSUMIDOR_FINAL = 'Consumidor final';
@@ -82,22 +83,15 @@ const resolveFacturaDateTime = (venta) =>
 
 const resolveTotals = (venta) => {
   const descuento = toNumber(venta?.descuento_total);
-  const baseSubtotal = Array.isArray(venta?.items)
-    ? venta.items.reduce((sum, item) => sum + toNumber(item?.sub_total), 0)
-    : 0;
-  const extrasSubtotal = Array.isArray(venta?.items)
-    ? venta.items.reduce((sum, item) => sum + getItemExtrasSubtotal(item), 0)
-    : 0;
-  const itemsSubtotal = baseSubtotal + extrasSubtotal;
-  const subtotal = itemsSubtotal || toNumber(venta?.subtotal_bruto || (toNumber(venta?.sub_total) + descuento));
-  const total = toNumber(venta?.total);
+  const summary = buildVentaDetailSummary({ items: venta?.items, total: venta?.total });
+  const fallbackSubtotal = toNumber(venta?.subtotal_bruto || (toNumber(venta?.sub_total) + descuento));
 
   return {
-    baseSubtotal,
-    extrasSubtotal,
-    subtotal,
+    baseSubtotal: summary.base_items,
+    extrasSubtotal: summary.extras,
+    subtotal: summary.subtotal_bruto || fallbackSubtotal,
     descuento,
-    total
+    total: summary.total
   };
 };
 

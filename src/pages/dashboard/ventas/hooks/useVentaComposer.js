@@ -35,6 +35,7 @@ import { formatCurrency, roundMoney } from '../../../../modules/ventas/utils/ven
 import ventasService from '../../../../services/ventasService';
 import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
 import { buildCajaSucursalStorageKey } from '../utils/ventasCajaSucursalStorage';
+import { getVentaItemSummaryParts } from '../utils/ventasDetailSummary';
 
 export { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 
@@ -834,14 +835,17 @@ export const useVentaComposer = ({
     () =>
       roundMoney(
         state.cart.reduce(
-          (total, line) => total + Number(line.precio_unitario ?? 0) * Number(line.cantidad ?? 0),
+          (total, line) => total + getVentaItemSummaryParts(line).base,
           0
         )
     ),
     [state.cart]
   );
   const extrasSubtotal = useMemo(
-    () => roundMoney(state.cart.reduce((total, line) => total + getLineExtrasSubtotal(line), 0)),
+    () => roundMoney(state.cart.reduce(
+      (total, line) => total + getVentaItemSummaryParts(line).extras,
+      0
+    )),
     [state.cart]
   );
   const subtotal = roundMoney(baseSubtotal + extrasSubtotal);
