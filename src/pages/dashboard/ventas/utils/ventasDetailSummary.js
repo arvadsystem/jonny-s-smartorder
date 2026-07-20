@@ -25,10 +25,18 @@ const getAttachedExtrasSubtotal = (item) => {
 
 const getStoredLineSubtotal = (item) => toMoneyNumber(item?.sub_total ?? item?.subtotal_linea);
 
+// Solo productos/recetas cuentan como "base items". Las lineas de extra
+// independiente se clasifican como extras (no como base), sin alterar el total.
+const getBaseLineSubtotal = (item) => (isStandaloneExtraItem(item) ? 0 : getStoredLineSubtotal(item));
+const getStandaloneExtraSubtotal = (item) => (isStandaloneExtraItem(item) ? getStoredLineSubtotal(item) : 0);
+
 export const buildVentaDetailSummary = ({ items = [], total = null } = {}) => {
   const detailItems = Array.isArray(items) ? items : [];
-  const base_items = roundMoney(detailItems.reduce((sum, item) => sum + getStoredLineSubtotal(item), 0));
-  const extras = roundMoney(detailItems.reduce((sum, item) => sum + getAttachedExtrasSubtotal(item), 0));
+  const base_items = roundMoney(detailItems.reduce((sum, item) => sum + getBaseLineSubtotal(item), 0));
+  const extras = roundMoney(detailItems.reduce(
+    (sum, item) => sum + getAttachedExtrasSubtotal(item) + getStandaloneExtraSubtotal(item),
+    0
+  ));
   const subtotal_bruto = roundMoney(base_items + extras);
   const storedTotal = toMoneyNumber(total);
 
