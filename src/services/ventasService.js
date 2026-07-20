@@ -215,6 +215,12 @@ const ventasService = {
     payload,
     withIdempotencyKey({}, idempotencyKey)
   ),
+  enqueuePedidoPrintJob: (idPedido, payload, idempotencyKey) => apiFetch(
+    `/ventas/pedidos/${idPedido}/print-jobs`,
+    'POST',
+    payload,
+    withIdempotencyKey({}, idempotencyKey)
+  ),
   getPrintJob: (id) => apiFetch(`/ventas/print-jobs/${id}`, 'GET'),
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload, withIdempotencyKey()),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),

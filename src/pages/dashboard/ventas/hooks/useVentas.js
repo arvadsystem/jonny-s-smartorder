@@ -1247,7 +1247,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         const response = await ventasService.createPedidoPendiente(payload);
         openToast(
           'PEDIDO PENDIENTE',
-          'Pedido pendiente creado y enviado a cocina.',
+          'Pedido pendiente creado correctamente.',
           'success'
         );
         void refreshVentas({ suppressErrors: true }).catch(() => undefined);

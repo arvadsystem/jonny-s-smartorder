@@ -4,6 +4,15 @@ import { supabase } from '../../../../lib/supabaseClient';
 import ventasService from '../../../../services/ventasService';
 import { createCocinaAudioManager } from '../../cocina/utils/cocinaAudio';
 import { formatCurrency, normalizeVentaDetail } from '../utils/ventasHelpers';
+import {
+  commitRecoveredFacturaToLiveBoard,
+  createDetailOperationController,
+  createPedidosStateCoordinator,
+  getPrintErrorCode,
+  reconcilePedidoDetailPrintSource,
+  reconcileRecoveredFacturaDetail,
+  recoverFacturedPedidoPrintSource
+} from '../utils/ventasPrintActions';
 import PedidosEmptyState from './PedidosEmptyState';
 import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import VentaDetalleModal from './VentaDetalleModal';
@@ -222,11 +231,20 @@ export default function PedidosView({
   scopeInfo = null,
   selectedSessionId = null,
   canPrintVenta = false,
+  onPrintFactura,
+  onPrintComanda,
   onSuccessfulPendingOrderPaymentPrint
 }) {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [pedidos, setPedidos] = useState([]);
+  const pedidosCoordinatorRef = useRef(null);
+  if (!pedidosCoordinatorRef.current) {
+    pedidosCoordinatorRef.current = createPedidosStateCoordinator({
+      initialPedidos: [],
+      commitState: setPedidos
+    });
+  }
   const [loading, setLoading] = useState(true);
   const [actionBusyId, setActionBusyId] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -249,6 +267,22 @@ export default function PedidosView({
   const lastActionRefreshAtRef = useRef(0);
   const requestIdRef = useRef(0);
   const forbiddenErrorKeyRef = useRef('');
+  const detailOperationControllerRef = useRef(null);
+  if (!detailOperationControllerRef.current) {
+    detailOperationControllerRef.current = createDetailOperationController();
+  }
+  const facturaDetailOperationControllerRef = useRef(null);
+  if (!facturaDetailOperationControllerRef.current) {
+    facturaDetailOperationControllerRef.current = createDetailOperationController();
+  }
+
+  const commitPedidos = useCallback((valueOrUpdater) => {
+    return pedidosCoordinatorRef.current.commit(valueOrUpdater);
+  }, []);
+
+  const getCurrentPedidos = useCallback(() => {
+    return pedidosCoordinatorRef.current.getCurrent();
+  }, []);
 
   const sucursalOptions = useMemo(() => buildSucursalOptions(sucursales), [sucursales]);
   const selectedSucursalIsValid = useMemo(
@@ -288,11 +322,22 @@ export default function PedidosView({
 
   useEffect(() => {
     audioManagerRef.current = createCocinaAudioManager();
+    detailOperationControllerRef.current.mount();
+    facturaDetailOperationControllerRef.current.mount();
     return () => {
+      detailOperationControllerRef.current.unmount();
+      facturaDetailOperationControllerRef.current.unmount();
       audioManagerRef.current?.dispose?.();
       audioManagerRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    detailOperationControllerRef.current.changeSucursal(effectiveSucursalId);
+    facturaDetailOperationControllerRef.current.changeSucursal(effectiveSucursalId);
+    setVentaDetailModal({ open: false, venta: null });
+    setVentaDetailLoading(false);
+  }, [effectiveSucursalId]);
 
   useEffect(() => {
     actionBusyRef.current = actionBusyId;
@@ -328,7 +373,7 @@ export default function PedidosView({
     async ({ silent = false, source = 'manual' } = {}) => {
       if (source !== 'action' && actionBusyRef.current !== null) return;
       if (isSuperAdmin && !effectiveSucursalId) {
-        setPedidos([]);
+        commitPedidos([]);
         setLoading(false);
         return;
       }
@@ -353,42 +398,41 @@ export default function PedidosView({
         forbiddenErrorKeyRef.current = '';
         const nextPedidos = Array.isArray(data) ? data : [];
 
-        setPedidos((prevPedidos) => {
-          if (source !== 'initial' && source !== 'manual' && source !== 'action') {
-            const prevReadyIds = new Set(
-              (Array.isArray(prevPedidos) ? prevPedidos : [])
-                .filter((pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA')
-                .map((pedido) => Number(pedido?.id_pedido ?? 0))
-                .filter(Boolean)
-            );
+        const prevPedidos = getCurrentPedidos();
+        if (source !== 'initial' && source !== 'manual' && source !== 'action') {
+          const prevReadyIds = new Set(
+            (Array.isArray(prevPedidos) ? prevPedidos : [])
+              .filter((pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA')
+              .map((pedido) => Number(pedido?.id_pedido ?? 0))
+              .filter(Boolean)
+          );
 
-            const nextReadyPedidos = nextPedidos.filter(
-              (pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA'
-            );
-            const nextReadyIds = new Set(
-              nextReadyPedidos
-                .map((pedido) => Number(pedido?.id_pedido ?? 0))
-                .filter(Boolean)
-            );
+          const nextReadyPedidos = nextPedidos.filter(
+            (pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA'
+          );
+          const nextReadyIds = new Set(
+            nextReadyPedidos
+              .map((pedido) => Number(pedido?.id_pedido ?? 0))
+              .filter(Boolean)
+          );
 
-            notifiedReadyIdsRef.current.forEach((idPedido) => {
-              if (nextReadyIds.has(idPedido)) return;
-              notifiedReadyIdsRef.current.delete(idPedido);
-            });
+          notifiedReadyIdsRef.current.forEach((idPedido) => {
+            if (nextReadyIds.has(idPedido)) return;
+            notifiedReadyIdsRef.current.delete(idPedido);
+          });
 
-            nextReadyPedidos.forEach((pedido) => {
-              const idPedido = Number(pedido?.id_pedido ?? 0);
-              if (!idPedido) return;
-              if (prevReadyIds.has(idPedido)) return;
-              if (notifiedReadyIdsRef.current.has(idPedido)) return;
+          nextReadyPedidos.forEach((pedido) => {
+            const idPedido = Number(pedido?.id_pedido ?? 0);
+            if (!idPedido) return;
+            if (prevReadyIds.has(idPedido)) return;
+            if (notifiedReadyIdsRef.current.has(idPedido)) return;
 
-              notifiedReadyIdsRef.current.add(idPedido);
-              void audioManagerRef.current?.playPedidoListo?.();
-              openToast('PEDIDO LISTO', `Pedido ${buildPedidoVisibleCode(pedido)} listo para entrega.`, 'success');
-            });
-          }
-          return nextPedidos;
-        });
+            notifiedReadyIdsRef.current.add(idPedido);
+            void audioManagerRef.current?.playPedidoListo?.();
+            openToast('PEDIDO LISTO', `Pedido ${buildPedidoVisibleCode(pedido)} listo para entrega.`, 'success');
+          });
+        }
+        commitPedidos(nextPedidos);
       } catch (err) {
         if (requestId !== requestIdRef.current) return;
         const status = Number(err?.status || err?.data?.status || 0);
@@ -397,7 +441,7 @@ export default function PedidosView({
           forbiddenErrorKeyRef.current = requestKey;
         }
         setErrorMessage((current) => (current === message ? current : message));
-        setPedidos([]);
+        commitPedidos([]);
       } finally {
         if (inFlightKeyRef.current === requestKey) {
           inFlightKeyRef.current = '';
@@ -405,7 +449,7 @@ export default function PedidosView({
         if (requestId === requestIdRef.current && !silent) setLoading(false);
       }
     },
-    [effectiveSucursalId, isSuperAdmin, openToast]
+    [commitPedidos, effectiveSucursalId, getCurrentPedidos, isSuperAdmin, openToast]
   );
 
   useEffect(() => {
@@ -508,28 +552,243 @@ export default function PedidosView({
   const openPedidoDetail = useCallback(async (pedido) => {
     if (!pedido) return;
     const fallbackDetail = normalizePedidoVentaDetail(pedido);
+    const idPedido = toPositiveId(pedido?.id_pedido);
     const idFactura = toPositiveId(pedido?.id_factura);
+    if (!idPedido) return;
+    const operation = detailOperationControllerRef.current.openDetail({
+      idPedido,
+      sucursalId: effectiveSucursalId
+    });
+    facturaDetailOperationControllerRef.current.openDetail({
+      idPedido,
+      sucursalId: effectiveSucursalId
+    });
 
     setVentaDetailModal({ open: true, venta: fallbackDetail });
+    setVentaDetailLoading(false);
     if (!idFactura) return;
 
     try {
       setVentaDetailLoading(true);
       const response = await ventasService.getById(idFactura);
-      setVentaDetailModal({ open: true, venta: normalizeVentaDetail(response) });
+      if (!detailOperationControllerRef.current.complete(operation)) return;
+      setVentaDetailModal({
+        open: true,
+        venta: {
+          ...normalizeVentaDetail(response),
+          id_pedido: idPedido,
+          id_factura: idFactura
+        }
+      });
+      setVentaDetailLoading(false);
     } catch (error) {
+      if (!detailOperationControllerRef.current.complete(operation)) return;
       const message = extractUiMessage(error, 'No se pudo cargar el detalle de la venta.');
       setErrorMessage(message);
       openToast('ERROR', message, 'danger');
-    } finally {
       setVentaDetailLoading(false);
     }
-  }, [openToast]);
+  }, [effectiveSucursalId, openToast]);
 
   const closePedidoDetail = useCallback(() => {
+    detailOperationControllerRef.current.closeDetail();
+    facturaDetailOperationControllerRef.current.closeDetail();
     setVentaDetailModal({ open: false, venta: null });
     setVentaDetailLoading(false);
   }, []);
+
+  const handlePrintFacturaFromDetail = useCallback(async (venta, options) => {
+    const idPedido = toPositiveId(venta?.id_pedido);
+    const actionOperation = facturaDetailOperationControllerRef.current.beginOperation({
+      idPedido,
+      sucursalId: effectiveSucursalId
+    });
+    try {
+      const liveSource = await reconcilePedidoDetailPrintSource({
+        coordinator: pedidosCoordinatorRef.current,
+        idPedido,
+        modalIdFactura: venta?.id_factura,
+        fetchVenta: (idFactura) => ventasService.getById(idFactura),
+        isCurrent: () => facturaDetailOperationControllerRef.current.isCurrent(actionOperation)
+      });
+      if (liveSource.status === 'stale') return;
+
+      if (liveSource.status === 'refresh') {
+        const refreshedVenta = {
+          ...normalizeVentaDetail(liveSource.venta),
+          id_pedido: idPedido,
+          id_factura: liveSource.effectiveIdFactura
+        };
+        setVentaDetailModal({ open: true, venta: refreshedVenta });
+        const refreshMessage = 'El pedido cambió y el detalle fue actualizado. Vuelve a intentar la impresión de la factura.';
+        openToast('PEDIDO ACTUALIZADO', refreshMessage, 'warning');
+        const refreshError = new Error(refreshMessage);
+        refreshError.publicMessage = refreshMessage;
+        throw refreshError;
+      }
+
+      if (liveSource.status !== 'ready') {
+        const changedMessage = 'El pedido cambió mientras se actualizaba el detalle. Actualiza el tablero e intenta nuevamente.';
+        const changedError = new Error(changedMessage);
+        changedError.publicMessage = changedMessage;
+        throw changedError;
+      }
+
+      const liveVenta = {
+        ...venta,
+        id_factura: liveSource.effectiveIdFactura
+      };
+      await onPrintFactura?.(liveVenta, options);
+      facturaDetailOperationControllerRef.current.complete(actionOperation);
+    } catch (error) {
+      if (!facturaDetailOperationControllerRef.current.isCurrent(actionOperation)) return;
+      facturaDetailOperationControllerRef.current.complete(actionOperation);
+      throw error;
+    }
+  }, [effectiveSucursalId, onPrintFactura, openToast]);
+
+  const handlePrintComandaFromDetail = useCallback(async (venta, options) => {
+    const idPedido = toPositiveId(venta?.id_pedido);
+    const actionOperation = detailOperationControllerRef.current.beginOperation({
+      idPedido,
+      sucursalId: effectiveSucursalId
+    });
+    try {
+      const liveSource = await reconcilePedidoDetailPrintSource({
+        coordinator: pedidosCoordinatorRef.current,
+        idPedido,
+        modalIdFactura: venta?.id_factura,
+        fetchVenta: (idFactura) => ventasService.getById(idFactura),
+        isCurrent: () => detailOperationControllerRef.current.isCurrent(actionOperation)
+      });
+      if (liveSource.status === 'stale') return;
+
+      if (liveSource.status === 'refresh') {
+        const refreshedVenta = {
+          ...normalizeVentaDetail(liveSource.venta),
+          id_pedido: idPedido,
+          id_factura: liveSource.effectiveIdFactura
+        };
+        setVentaDetailModal({ open: true, venta: refreshedVenta });
+        const refreshMessage = 'El pedido cambió y el detalle fue actualizado. Vuelve a intentar la impresión de la comanda.';
+        openToast('PEDIDO ACTUALIZADO', refreshMessage, 'warning');
+        const refreshError = new Error(refreshMessage);
+        refreshError.publicMessage = refreshMessage;
+        throw refreshError;
+      }
+
+      if (liveSource.status !== 'ready') {
+        const changedMessage = 'El pedido cambió mientras se actualizaba el detalle. Actualiza el tablero e intenta nuevamente.';
+        const changedError = new Error(changedMessage);
+        changedError.publicMessage = changedMessage;
+        throw changedError;
+      }
+
+      const liveVenta = {
+        ...venta,
+        id_factura: liveSource.effectiveIdFactura
+      };
+      const liveOptions = {
+        ...options,
+        sourceType: liveSource.effectiveIdFactura ? 'factura' : 'pedido'
+      };
+      await onPrintComanda?.(liveVenta, liveOptions);
+      detailOperationControllerRef.current.complete(actionOperation);
+    } catch (error) {
+      if (!detailOperationControllerRef.current.isCurrent(actionOperation)) return;
+      if (getPrintErrorCode(error) !== 'PRINT_PEDIDO_SOURCE_INVALID') {
+        detailOperationControllerRef.current.complete(actionOperation);
+        throw error;
+      }
+
+      const recoveryOperation = detailOperationControllerRef.current.beginOperation({
+        idPedido,
+        sucursalId: effectiveSucursalId
+      });
+      const params = effectiveSucursalId ? { id_sucursal: effectiveSucursalId } : {};
+      let recovery;
+
+      try {
+        recovery = await recoverFacturedPedidoPrintSource({
+          error,
+          idPedido,
+          fetchPedidos: () => ventasService.getPedidosMenu(params),
+          fetchVenta: (idFactura) => ventasService.getById(idFactura),
+          isCurrent: () => detailOperationControllerRef.current.isCurrent(recoveryOperation)
+        });
+      } catch {
+        if (!detailOperationControllerRef.current.isCurrent(recoveryOperation)) return;
+        recovery = { handled: true, recovered: false };
+      }
+
+      if (recovery?.stale) return;
+      if (!recovery?.handled) throw error;
+
+      if (recovery.recovered) {
+        let reconciliation;
+        try {
+          reconciliation = await reconcileRecoveredFacturaDetail({
+            getCurrentPedidos,
+            idPedido,
+            recoveredIdFactura: recovery.idFactura,
+            recoveredVenta: recovery.venta,
+            fetchVenta: (idFactura) => ventasService.getById(idFactura),
+            isCurrent: () => detailOperationControllerRef.current.isCurrent(recoveryOperation)
+          });
+        } catch {
+          if (!detailOperationControllerRef.current.isCurrent(recoveryOperation)) return;
+          reconciliation = { status: 'invalid' };
+        }
+
+        if (reconciliation.status === 'stale') return;
+        if (reconciliation.status === 'changed') {
+          if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
+          const changedMessage = 'El pedido cambió mientras se actualizaba el detalle. Actualiza el tablero e intenta nuevamente.';
+          const changedError = new Error(changedMessage);
+          changedError.publicMessage = changedMessage;
+          throw changedError;
+        }
+
+        if (['apply-recovered', 'same', 'conflict'].includes(reconciliation.status)) {
+          if (!detailOperationControllerRef.current.isCurrent(recoveryOperation)) return;
+          const allowedLiveStatuses = reconciliation.status === 'apply-recovered'
+            ? ['apply-recovered', 'same']
+            : ['same'];
+          const liveResolution = commitRecoveredFacturaToLiveBoard({
+            coordinator: pedidosCoordinatorRef.current,
+            idPedido,
+            effectiveIdFactura: reconciliation.effectiveIdFactura,
+            allowedStatuses: allowedLiveStatuses
+          });
+          if (!allowedLiveStatuses.includes(liveResolution.status)) {
+            if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
+            const changedMessage = 'El pedido cambió mientras se actualizaba el detalle. Actualiza el tablero e intenta nuevamente.';
+            const changedError = new Error(changedMessage);
+            changedError.publicMessage = changedMessage;
+            throw changedError;
+          }
+          if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
+          const refreshedVenta = {
+            ...normalizeVentaDetail(reconciliation.venta),
+            id_pedido: idPedido,
+            id_factura: reconciliation.effectiveIdFactura
+          };
+          setVentaDetailModal({ open: true, venta: refreshedVenta });
+          const message = 'El pedido ya fue facturado. El detalle fue actualizado; vuelve a intentar la impresión de la comanda.';
+          openToast('PEDIDO ACTUALIZADO', message, 'warning');
+          const publicError = new Error(message);
+          publicError.publicMessage = message;
+          throw publicError;
+        }
+      }
+
+      if (!detailOperationControllerRef.current.complete(recoveryOperation)) return;
+      const message = 'El pedido ya no puede imprimirse como pendiente y no fue posible recuperar su factura. Actualiza el tablero e intenta nuevamente.';
+      const publicError = new Error(message);
+      publicError.publicMessage = message;
+      throw publicError;
+    }
+  }, [effectiveSucursalId, getCurrentPedidos, onPrintComanda, openToast]);
 
   const handleRegistrarPagoPedido = useCallback(
     async (idPedido, payload) => {
@@ -729,7 +988,7 @@ export default function PedidosView({
                   forbiddenErrorKeyRef.current = '';
                   inFlightKeyRef.current = '';
                   setErrorMessage('');
-                  setPedidos([]);
+                  commitPedidos([]);
                   setSelectedSucursalId(nextId);
                 }}
                 placeholder="Selecciona sucursal"
@@ -830,6 +1089,9 @@ export default function PedidosView({
         canReversion={false}
         canExport={false}
         canPrint={canPrintVenta}
+        printSourceType={ventaDetailModal.venta?.id_factura ? 'factura' : 'pedido'}
+        onPrintFactura={handlePrintFacturaFromDetail}
+        onPrintComanda={handlePrintComandaFromDetail}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />

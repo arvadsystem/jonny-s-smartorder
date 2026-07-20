@@ -12,6 +12,12 @@ import { buildVentaDetailSummary } from '../utils/ventasDetailSummary';
 import VentaTicketPrint from './VentaTicketPrint';
 import './VentaTicketPrint.css';
 import { printVentaTicketPdf } from '../utils/ventaPrintUtils';
+import {
+  createEmptyPrintErrors,
+  createDocumentPrintGuard,
+  getSafePrintErrorContext,
+  setDocumentPrintError
+} from '../utils/ventasPrintActions';
 
 const DEFAULT_TICKET_WIDTH_MM = 80;
 
@@ -53,20 +59,95 @@ const DetailField = ({ label, value }) => {
   );
 };
 
+export const VentaDetallePrintActions = ({
+  canPrintFactura,
+  canPrintComanda,
+  pendingComanda,
+  ticketWidthMm,
+  facturaLoading,
+  comandaLoading,
+  onTicketWidthChange,
+  onPrintFactura,
+  onPrintComanda
+}) => (
+  <>
+    {canPrintFactura ? (
+      <div className="ventas-detail-modal__print-group" aria-label="Impresion de factura">
+        <select
+          className="form-select form-select-sm"
+          value={ticketWidthMm}
+          onChange={onTicketWidthChange}
+          aria-label="Ancho de ticket"
+          style={{ maxWidth: 94 }}
+          disabled={facturaLoading}
+        >
+          <option value={80}>80mm</option>
+          <option value={58}>58mm</option>
+        </select>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={onPrintFactura}
+          disabled={facturaLoading}
+          aria-label="Imprimir factura"
+        >
+          <i className="bi bi-receipt" /> {facturaLoading ? 'Imprimiendo factura...' : 'Imprimir factura'}
+        </button>
+      </div>
+    ) : null}
+    {canPrintComanda ? (
+      <button
+        type="button"
+        className="btn btn-outline-primary"
+        onClick={onPrintComanda}
+        disabled={comandaLoading}
+        aria-label={pendingComanda ? 'Reimprimir comanda' : 'Imprimir comanda'}
+      >
+        <i className="bi bi-printer" /> {
+          comandaLoading
+            ? 'Preparando comanda...'
+            : pendingComanda ? 'Reimprimir comanda' : 'Imprimir comanda'
+        }
+      </button>
+    ) : null}
+  </>
+);
+
+export const VentaDetallePrintErrors = ({ errors }) => (
+  <>
+    {errors?.factura ? (
+      <div className="alert alert-warning ventas-detail-modal__print-error" role="alert" aria-label="Error de factura">
+        <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+        <span><strong>Factura:</strong> {errors.factura}</span>
+      </div>
+    ) : null}
+    {errors?.comanda ? (
+      <div className="alert alert-warning ventas-detail-modal__print-error" role="alert" aria-label="Error de comanda">
+        <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+        <span><strong>Comanda:</strong> {errors.comanda}</span>
+      </div>
+    ) : null}
+  </>
+);
+
 export default function VentaDetalleModal({
   open,
   venta,
   loading,
   onClose,
-  onPrintTicket,
+  onPrintFactura,
+  onPrintComanda,
+  printSourceType = 'factura',
   onOpenReversion,
   canReversion = false,
   canExport = true,
   canPrint = true
 }) {
   const [ticketWidthMm, setTicketWidthMm] = useState(DEFAULT_TICKET_WIDTH_MM);
-  const [printLoading, setPrintLoading] = useState(false);
-  const printInProgressRef = useRef(false);
+  const [printingDocuments, setPrintingDocuments] = useState({ factura: false, comanda: false });
+  const [printErrors, setPrintErrors] = useState(createEmptyPrintErrors);
+  const printGuardRef = useRef(null);
+  if (!printGuardRef.current) printGuardRef.current = createDocumentPrintGuard();
 
   useEffect(() => {
     if (!open) return;
@@ -74,6 +155,7 @@ export default function VentaDetalleModal({
     const widthFromLegacy = Number(venta?.ancho_ticket_mm);
     const resolvedWidth = widthFromFacturacion === 58 || widthFromLegacy === 58 ? 58 : 80;
     setTicketWidthMm(resolvedWidth);
+    setPrintErrors(createEmptyPrintErrors());
   }, [open, venta]);
 
   useEffect(() => {
@@ -123,31 +205,58 @@ export default function VentaDetalleModal({
   const delivery = venta?.delivery && typeof venta.delivery === 'object' ? venta.delivery : null;
   const contexto = venta?.contexto && typeof venta.contexto === 'object' ? venta.contexto : null;
   const isDeliveryDetail = Boolean(delivery);
-  const canPrintTicket = Boolean(canPrint && venta?.id_factura);
+  const canPrintFactura = Boolean(canPrint && venta?.id_factura);
+  const hasKitchenItems = Array.isArray(venta?.items) && venta.items.length > 0;
+  const canPrintComanda = Boolean(
+    canPrint
+    && (printSourceType === 'pedido' ? venta?.id_pedido : venta?.id_factura)
+    && (printSourceType === 'pedido' || hasKitchenItems)
+  );
+  const pendingComanda = printSourceType === 'pedido';
 
-  const handlePrintTicket = async () => {
-    if (typeof window === 'undefined' || !venta || printInProgressRef.current) return;
-    if (!venta.id_factura) {
-      console.error('[Ventas] No se puede generar el PDF del ticket sin id_factura.');
-      return;
-    }
-
-    printInProgressRef.current = true;
-    setPrintLoading(true);
-
+  const runPrintAction = async (documentType, action, fallbackMessage) => {
+    if (typeof window === 'undefined' || !venta || printGuardRef.current.isActive(documentType)) return;
+    setPrintingDocuments((current) => ({ ...current, [documentType]: true }));
+    setPrintErrors((current) => setDocumentPrintError(current, documentType, ''));
     try {
-      if (typeof onPrintTicket === 'function') {
-        await onPrintTicket(venta, { ticketWidthMm });
-      } else {
-        await printVentaTicketPdf(venta.id_factura);
-      }
+      await printGuardRef.current.run(documentType, action);
     } catch (error) {
-      console.error('[Ventas] No se pudo generar el PDF del ticket', error);
+      console.error('[Ventas] Fallo una accion de impresion desde el detalle.', getSafePrintErrorContext(documentType, error));
+      setPrintErrors((current) => setDocumentPrintError(
+        current,
+        documentType,
+        String(error?.publicMessage || fallbackMessage)
+      ));
     } finally {
-      printInProgressRef.current = false;
-      setPrintLoading(false);
+      setPrintingDocuments((current) => ({ ...current, [documentType]: false }));
     }
   };
+
+  const handlePrintFactura = () => runPrintAction(
+    'factura',
+    async () => {
+      if (!venta?.id_factura) throw new Error('Factura invalida para imprimir.');
+      if (typeof onPrintFactura === 'function') {
+        await onPrintFactura(venta, { ticketWidthMm });
+        return;
+      }
+      await printVentaTicketPdf(venta.id_factura);
+    },
+    'No se pudo enviar la factura a impresión.'
+  );
+
+  const handlePrintComanda = () => runPrintAction(
+    'comanda',
+    async () => {
+      if (typeof onPrintComanda !== 'function') {
+        throw new Error('La accion de comanda no esta disponible.');
+      }
+      await onPrintComanda(venta, { sourceType: printSourceType, action: 'reprint', origin: 'detail' });
+    },
+    pendingComanda
+      ? 'No se pudo reimprimir la comanda del pedido.'
+      : 'No se pudo enviar la comanda a impresión.'
+  );
 
   return (
     <div className="ventas-modal-backdrop" role="presentation" onClick={onClose}>
@@ -417,6 +526,8 @@ export default function VentaDetalleModal({
                 ) : null}
               </div>
 
+              <VentaDetallePrintErrors errors={printErrors} />
+
               <footer className="ventas-detail-modal__footer">
                 <div className="ventas-detail-modal__served-by">
                   Atendido por: <strong>{venta?.nombre_usuario || 'Sin usuario'}</strong>
@@ -444,34 +555,23 @@ export default function VentaDetalleModal({
                       <i className="bi bi-download" /> Exportar
                     </button>
                   ) : null}
-                  {canPrintTicket ? (
-                    <>
-                      <select
-                        className="form-select form-select-sm"
-                        value={ticketWidthMm}
-                        onChange={(event) => setTicketWidthMm(Number(event.target.value) === 58 ? 58 : 80)}
-                        aria-label="Ancho de ticket"
-                        style={{ maxWidth: 94 }}
-                      >
-                        <option value={80}>80mm</option>
-                        <option value={58}>58mm</option>
-                      </select>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={handlePrintTicket}
-                        disabled={printLoading}
-                      >
-                        <i className="bi bi-printer" /> {printLoading ? 'Imprimiendo...' : 'Imprimir ticket'}
-                      </button>
-                    </>
-                  ) : null}
+                  <VentaDetallePrintActions
+                    canPrintFactura={canPrintFactura}
+                    canPrintComanda={canPrintComanda}
+                    pendingComanda={pendingComanda}
+                    ticketWidthMm={ticketWidthMm}
+                    facturaLoading={printingDocuments.factura}
+                    comandaLoading={printingDocuments.comanda}
+                    onTicketWidthChange={(event) => setTicketWidthMm(Number(event.target.value) === 58 ? 58 : 80)}
+                    onPrintFactura={handlePrintFactura}
+                    onPrintComanda={handlePrintComanda}
+                  />
                 </div>
               </footer>
             </>
           )}
         </div>
-        {canPrintTicket ? (
+        {canPrintFactura ? (
           <VentaTicketPrint
             venta={venta}
             paperWidth={ticketWidthMm}

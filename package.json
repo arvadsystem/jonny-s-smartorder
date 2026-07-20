@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "qa:print-mode": "node scripts/qa-print-mode.mjs",
+    "test:ventas-print-actions": "node --test src/pages/dashboard/ventas/utils/ventasPrintActions.test.mjs",
     "qa:qz-session": "node scripts/qa-qz-session-lifecycle.mjs",
     "qa:print-agent-build": "node scripts/qa-print-agent-build.mjs",
     "dev": "vite --open",

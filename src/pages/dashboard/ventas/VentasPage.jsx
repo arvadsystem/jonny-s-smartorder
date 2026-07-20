@@ -26,6 +26,13 @@ import {
 } from './utils/ventaPrintUtils';
 import { validateComandaForPrint } from './utils/buildComandaCocinaHtml';
 import {
+  createClosedComandaPrompt,
+  createComandaPrompt,
+  enqueueAgentPrintAction,
+  getSafePrintErrorContext,
+  prepareComandaPrintWindow
+} from './utils/ventasPrintActions';
+import {
   getAllowedTabs,
   MODULE_PRIMARY_PERMISSION,
   PERMISSIONS,
@@ -121,13 +128,7 @@ export default function VentasPage() {
   const [reversionOpen, setReversionOpen] = useState(false);
   const [selectedVenta, setSelectedVenta] = useState(null);
   const [selectedVentaReversion, setSelectedVentaReversion] = useState(null);
-  const [comandaPrompt, setComandaPrompt] = useState({
-    open: false,
-    venta: null,
-    loading: false,
-    error: '',
-    mode: 'post-sale'
-  });
+  const [comandaPrompt, setComandaPrompt] = useState(createClosedComandaPrompt);
   const detailRequestRef = useRef(0);
   const printerConfigCacheRef = useRef(new Map());
 
@@ -461,7 +462,10 @@ export default function VentasPage() {
           return { ok: true, ventaDetail, fallbackUsed: true };
         } catch (fallbackError) {
           if (facturaPrintWindow) facturaPrintWindow.close();
-          console.error('[Ventas] No se pudo imprimir la factura ni con QZ ni con el navegador.', fallbackError);
+          console.error(
+            '[Ventas] No se pudo imprimir la factura ni con QZ ni con el navegador.',
+            getSafePrintErrorContext('factura', fallbackError)
+          );
           openToast('IMPRESION FACTURA', failureMessage, 'warning');
           void ventasService.registerPrintEvent(idFactura, {
             tipo_documento: 'FACTURA',
@@ -486,7 +490,10 @@ export default function VentasPage() {
       }
 
       if (facturaPrintWindow) facturaPrintWindow.close();
-      console.error('[Ventas] No se pudo abrir la factura para impresion.', error);
+      console.error(
+        '[Ventas] No se pudo abrir la factura para impresion.',
+        getSafePrintErrorContext('factura', error)
+      );
       openToast('IMPRESION FACTURA', browserFailureMessage, 'warning');
       void ventasService.registerPrintEvent(idFactura, {
         tipo_documento: 'FACTURA',
@@ -572,13 +579,12 @@ export default function VentasPage() {
       });
       ventaDetail = printResult.ventaDetail || ventaDetail;
 
-      setComandaPrompt({
-        open: true,
+      setComandaPrompt(createComandaPrompt({
         venta: ventaDetail,
-        loading: false,
-        error: '',
-        mode: 'post-sale'
-      });
+        sourceType: 'factura',
+        action: 'initial',
+        origin: 'post-sale'
+      }));
     } else if (facturaPrintWindow) {
       facturaPrintWindow.close();
     }
@@ -587,13 +593,12 @@ export default function VentasPage() {
   };
 
   const handlePendingOrderCreatedPrintPrompt = (comanda) => {
-    setComandaPrompt({
-      open: true,
+    setComandaPrompt(createComandaPrompt({
       venta: comanda,
-      loading: false,
-      error: '',
-      mode: 'pending-order'
-    });
+      sourceType: 'pedido',
+      action: 'initial',
+      origin: 'pending-order'
+    }));
   };
 
   const handleSuccessfulPendingOrderPaymentPrint = async (response, options = {}) => {
@@ -611,7 +616,7 @@ export default function VentasPage() {
 
   const closeComandaPrompt = async ({ markAsCancelled = true } = {}) => {
     const venta = comandaPrompt.venta;
-    const mode = comandaPrompt.mode;
+    const { sourceType, action, origin } = comandaPrompt;
     if (markAsCancelled && venta?.id_factura) {
       void ventasService.registerPrintEvent(venta.id_factura, {
         tipo_documento: 'COMANDA',
@@ -619,41 +624,40 @@ export default function VentasPage() {
         nombre_logico: 'COCINA',
         ancho_mm: 80,
         metadata: {
-          promptMode: mode,
+          promptSourceType: sourceType,
+          promptAction: action,
+          promptOrigin: origin,
           printMode: 'BROWSER',
           logicalPrinterName: 'COCINA'
         }
       }).catch(() => undefined);
     }
-    setComandaPrompt({
-      open: false,
-      venta: null,
-      loading: false,
-      error: '',
-      mode: 'post-sale'
-    });
-    if (mode === 'post-sale' && venta?.id_factura) {
+    setComandaPrompt(createClosedComandaPrompt());
+    if (origin === 'post-sale' && venta?.id_factura) {
       await openDetail(venta);
     }
   };
 
-  const handleDetailTicketPrint = async (venta, options = {}) => {
+  const handleDetailFacturaPrint = async (venta, options = {}) => {
     if (!venta?.id_factura) return;
 
     if (AGENT_PRINT_MODE) {
       try {
-        const idempotencyKey = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? `reprint:${crypto.randomUUID()}`
-          : `reprint:${venta.id_factura}:${Date.now()}`;
-        const queued = await ventasService.enqueuePrintJob(
-          venta.id_factura,
-          { tipo_documento: 'factura', es_reimpresion: true, motivo: String(options?.motivo || 'REIMPRESION_MANUAL').slice(0, 120) },
-          idempotencyKey
-        );
+        const { response: queued } = await enqueueAgentPrintAction({
+          ventasApi: ventasService,
+          documentType: 'factura',
+          venta,
+          action: 'reprint',
+          motivo: options?.motivo
+        });
         openToast('REIMPRESION FACTURA', 'Reimpresion enviada a la cola de la sucursal.', 'success');
         monitorAgentPrintJob(queued?.job?.id_trabajo, 'REIMPRESION FACTURA');
-      } catch {
-        openToast('REIMPRESION FACTURA', 'No se pudo enviar la reimpresion. Intenta nuevamente.', 'warning');
+      } catch (error) {
+        console.error('[Ventas] Fallo la reimpresion de factura.', getSafePrintErrorContext('factura', error));
+        openToast('REIMPRESION FACTURA', 'No se pudo enviar la factura a impresión.', 'warning');
+        const publicError = new Error('No se pudo enviar la factura a impresión.');
+        publicError.publicMessage = publicError.message;
+        throw publicError;
       }
       return;
     }
@@ -706,13 +710,6 @@ export default function VentasPage() {
         }
       }).catch(() => undefined);
 
-      setComandaPrompt({
-        open: true,
-        venta,
-        loading: false,
-        error: '',
-        mode: 'reprint'
-      });
     } catch (error) {
       const printErrorMessage = error?.message || 'No se pudo abrir la factura para imprimir.';
 
@@ -759,17 +756,13 @@ export default function VentasPage() {
             }
           }).catch(() => undefined);
 
-          setComandaPrompt({
-            open: true,
-            venta,
-            loading: false,
-            error: '',
-            mode: 'reprint'
-          });
           return;
         } catch (fallbackError) {
           if (facturaPrintWindow) facturaPrintWindow.close();
-          console.error('[Ventas] No se pudo reimprimir la factura ni con QZ ni con el navegador.', fallbackError);
+          console.error(
+            '[Ventas] No se pudo reimprimir la factura ni con QZ ni con el navegador.',
+            getSafePrintErrorContext('factura', fallbackError)
+          );
           openToast(
             'REIMPRESION FACTURA',
             'No se pudo imprimir la factura automaticamente ni abrir la impresion manual.',
@@ -796,7 +789,10 @@ export default function VentasPage() {
         }
       } else {
         if (facturaPrintWindow) facturaPrintWindow.close();
-        console.error('[Ventas] No se pudo abrir la factura para reimpresion.', error);
+        console.error(
+          '[Ventas] No se pudo abrir la factura para reimpresion.',
+          getSafePrintErrorContext('factura', error)
+        );
         openToast(
           'REIMPRESION FACTURA',
           'No se pudo abrir la factura para imprimir.',
@@ -820,40 +816,67 @@ export default function VentasPage() {
         }).catch(() => undefined);
       }
 
-      throw error;
+      const publicError = new Error('No se pudo enviar la factura a impresión.');
+      publicError.publicMessage = publicError.message;
+      throw publicError;
     }
   };
 
-  const handleAcceptComanda = async () => {
-    const venta = comandaPrompt.venta;
-    const mode = comandaPrompt.mode;
-    const isPendingOrderComanda = mode === 'pending-order';
-    if ((isPendingOrderComanda ? !venta?.id_pedido : !venta?.id_factura) || comandaPrompt.loading) return;
-
-    const comandaPrintWindow = isPendingOrderComanda ? null : openPrintWindow('Preparando comanda');
-
-    setComandaPrompt((current) => ({
-      ...current,
-      loading: true,
-      error: ''
-    }));
-
-    if (AGENT_PRINT_MODE) {
-      if (isPendingOrderComanda || !venta?.id_factura) {
-        setComandaPrompt((current) => ({ ...current, loading: false, error: 'La comanda del pedido pendiente se enviara al agente despues de confirmar la venta.' }));
+  const executeComandaPrint = async (printContext, {
+    usePromptState = true,
+    closePromptOnSuccess = true
+  } = {}) => {
+    const venta = printContext.venta;
+    const { sourceType, action, origin } = printContext;
+    const isPendingOrderComanda = sourceType === 'pedido';
+    const isReprint = action === 'reprint';
+    const failPrint = (message, cause = null) => {
+      if (usePromptState) {
+        setComandaPrompt((current) => ({ ...current, loading: false, error: message }));
         return;
       }
+      const publicError = new Error(message);
+      publicError.publicMessage = message;
+      publicError.code = String(cause?.code || cause?.data?.code || '').trim() || undefined;
+      publicError.status = Number(cause?.status || cause?.data?.status || 0) || undefined;
+      throw publicError;
+    };
+    if ((isPendingOrderComanda ? !venta?.id_pedido : !venta?.id_factura)
+      || (usePromptState && printContext.loading)) return;
+
+    const comandaPrintWindow = prepareComandaPrintWindow({
+      agentPrintMode: AGENT_PRINT_MODE,
+      sourceType,
+      openWindow: openPrintWindow
+    });
+
+    if (usePromptState) {
+      setComandaPrompt((current) => ({
+        ...current,
+        loading: true,
+        error: ''
+      }));
+    }
+
+    if (AGENT_PRINT_MODE) {
       try {
-        const queued = await ventasService.enqueuePrintJob(
-          venta.id_factura,
-          { tipo_documento: 'comanda', es_reimpresion: mode === 'reprint' },
-          mode === 'reprint' ? `comanda-reprint:${venta.id_factura}:${Date.now()}` : `comanda:${venta.id_factura}:inicial`
-        );
-        openToast('COMANDA COCINA', 'Comanda enviada a la cola de impresion.', 'success');
-        monitorAgentPrintJob(queued?.job?.id_trabajo, 'COMANDA COCINA');
-        await closeComandaPrompt({ markAsCancelled: false });
-      } catch {
-        setComandaPrompt((current) => ({ ...current, loading: false, error: 'No se pudo enviar la comanda a la cola.' }));
+        const { response: queued } = await enqueueAgentPrintAction({
+          ventasApi: ventasService,
+          documentType: 'comanda',
+          venta,
+          sourceType,
+          action
+        });
+        const monitorLabel = isReprint ? 'REIMPRESION COMANDA' : 'COMANDA COCINA';
+        openToast(monitorLabel, isReprint ? 'Comanda enviada a reimpresion.' : 'Comanda enviada a la cola de impresion.', 'success');
+        monitorAgentPrintJob(queued?.job?.id_trabajo, monitorLabel);
+        if (closePromptOnSuccess) await closeComandaPrompt({ markAsCancelled: false });
+      } catch (error) {
+        console.error('[Ventas] Fallo la impresion de comanda con agente.', getSafePrintErrorContext('comanda', error));
+        const message = isPendingOrderComanda && isReprint
+          ? 'No se pudo reimprimir la comanda del pedido.'
+          : 'No se pudo enviar la comanda a impresión.';
+        failPrint(message, error);
       }
       return;
     }
@@ -890,9 +913,7 @@ export default function VentasPage() {
       );
 
       const validation = validateComandaForPrint(comanda);
-      if (!validation.ok) {
-        throw new Error(validation.message);
-      }
+      if (!validation.ok) throw new Error(validation.message);
       if (isPendingOrderComanda && !canUseQzComanda) {
         throw new Error('El pedido fue creado, pero la comanda no se imprimio. Revisa la impresora logica COCINA en QZ Tray.');
       }
@@ -915,7 +936,9 @@ export default function VentasPage() {
           nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
           ancho_mm: cocinaWidthMm,
           metadata: {
-            promptMode: mode,
+            promptSourceType: sourceType,
+            promptAction: action,
+            promptOrigin: origin,
             printMode: canUseQzComanda ? attemptedQzMode : 'BROWSER',
             logicalPrinterName: 'COCINA',
             printerType: 'COCINA',
@@ -923,25 +946,29 @@ export default function VentasPage() {
           }
         }).catch(() => undefined);
       }
-      openToast('COMANDA COCINA', 'Comanda enviada a impresion.', 'success');
-      await closeComandaPrompt({ markAsCancelled: false });
+      openToast(isReprint ? 'REIMPRESION COMANDA' : 'COMANDA COCINA', 'Comanda enviada a impresion.', 'success');
+      if (closePromptOnSuccess) await closeComandaPrompt({ markAsCancelled: false });
     } catch (error) {
       const printErrorMessage = error?.message || 'No se pudo imprimir la comanda de cocina.';
 
       if (isPendingOrderComanda) {
         if (comandaPrintWindow) comandaPrintWindow.close();
-        console.error('[Ventas] No se pudo imprimir la comanda del pedido pendiente.', error);
-        const pendingOrderErrorMessage = comandaForPrint === venta
-          ? 'El pedido fue creado, pero no se pudo cargar la comanda para imprimir'
-          : 'El pedido fue creado, pero la comanda no se imprimio.';
-        setComandaPrompt((current) => ({
-          ...current,
-          loading: false,
-          error: comandaForPrint === venta
-            ? pendingOrderErrorMessage
-            : `${pendingOrderErrorMessage} ${printErrorMessage}`.trim()
-        }));
+        console.error(
+          '[Ventas] No se pudo imprimir la comanda del pedido pendiente.',
+          getSafePrintErrorContext('comanda', error)
+        );
+        const pendingOrderErrorMessage = isReprint
+          ? 'No se pudo reimprimir la comanda del pedido.'
+          : comandaForPrint === venta
+            ? 'El pedido fue creado, pero no se pudo cargar la comanda para imprimir'
+            : 'El pedido fue creado, pero la comanda no se imprimio.';
         openToast('COMANDA COCINA', pendingOrderErrorMessage, 'warning');
+        failPrint(
+          isReprint || comandaForPrint === venta
+            ? pendingOrderErrorMessage
+            : `${pendingOrderErrorMessage} ${printErrorMessage}`.trim(),
+          error
+        );
         return;
       }
 
@@ -956,7 +983,9 @@ export default function VentasPage() {
             ancho_mm: cocinaWidthMm,
             detalle_error: printErrorMessage,
             metadata: {
-              promptMode: mode,
+              promptSourceType: sourceType,
+              promptAction: action,
+              promptOrigin: origin,
               printMode: attemptedQzMode,
               logicalPrinterName: 'COCINA',
               printerType: 'COCINA',
@@ -981,7 +1010,9 @@ export default function VentasPage() {
               nombre_impresora_snapshot: cocinaPrinterConfig?.nombre_impresora_sistema || null,
               ancho_mm: cocinaWidthMm,
               metadata: {
-                promptMode: mode,
+                promptSourceType: sourceType,
+                promptAction: action,
+                promptOrigin: origin,
                 printMode: 'BROWSER',
                 logicalPrinterName: 'COCINA',
                 printerType: 'COCINA',
@@ -991,11 +1022,14 @@ export default function VentasPage() {
               }
             }).catch(() => undefined);
           }
-          await closeComandaPrompt({ markAsCancelled: false });
+          if (closePromptOnSuccess) await closeComandaPrompt({ markAsCancelled: false });
           return;
         } catch (fallbackError) {
           if (comandaPrintWindow) comandaPrintWindow.close();
-          console.error('[Ventas] No se pudo imprimir la comanda ni con QZ ni con el navegador.', fallbackError);
+          console.error(
+            '[Ventas] No se pudo imprimir la comanda ni con QZ ni con el navegador.',
+            getSafePrintErrorContext('comanda', fallbackError)
+          );
           if (venta.id_factura) {
             void ventasService.registerPrintEvent(venta.id_factura, {
               tipo_documento: 'COMANDA',
@@ -1006,7 +1040,9 @@ export default function VentasPage() {
               ancho_mm: cocinaWidthMm,
               detalle_error: fallbackError?.message || printErrorMessage,
               metadata: {
-                promptMode: mode,
+                promptSourceType: sourceType,
+                promptAction: action,
+                promptOrigin: origin,
                 printMode: 'BROWSER',
                 logicalPrinterName: 'COCINA',
                 printerType: 'COCINA',
@@ -1016,17 +1052,16 @@ export default function VentasPage() {
               }
             }).catch(() => undefined);
           }
-          setComandaPrompt((current) => ({
-            ...current,
-            loading: false,
-            error: fallbackError?.message || 'No se pudo abrir la impresion de comanda. Revisa ventanas emergentes o intenta nuevamente.'
-          }));
+          failPrint('No se pudo enviar la comanda a impresión.');
           return;
         }
       }
 
       if (comandaPrintWindow) comandaPrintWindow.close();
-      console.error('[Ventas] No se pudo imprimir la comanda de cocina.', error);
+      console.error(
+        '[Ventas] No se pudo imprimir la comanda de cocina.',
+        getSafePrintErrorContext('comanda', error)
+      );
       if (venta.id_factura) {
         void ventasService.registerPrintEvent(venta.id_factura, {
           tipo_documento: 'COMANDA',
@@ -1037,7 +1072,9 @@ export default function VentasPage() {
           ancho_mm: cocinaWidthMm,
           detalle_error: printErrorMessage,
           metadata: {
-            promptMode: mode,
+            promptSourceType: sourceType,
+            promptAction: action,
+            promptOrigin: origin,
             printMode: 'BROWSER',
             logicalPrinterName: 'COCINA',
             printerType: 'COCINA',
@@ -1045,12 +1082,31 @@ export default function VentasPage() {
           }
         }).catch(() => undefined);
       }
-      setComandaPrompt((current) => ({
-        ...current,
-        loading: false,
-        error: printErrorMessage || 'No se pudo abrir la impresion de comanda. Revisa ventanas emergentes o intenta nuevamente.'
-      }));
+      failPrint(isReprint ? 'No se pudo enviar la comanda a impresión.' : printErrorMessage, error);
     }
+  };
+
+  const openComandaReprintFromDetail = async (venta, { sourceType = 'factura' } = {}) => {
+    const printContext = createComandaPrompt({
+      venta,
+      sourceType,
+      action: 'reprint',
+      origin: 'detail',
+      open: false
+    });
+    setComandaPrompt(printContext);
+    try {
+      await executeComandaPrint(printContext, {
+        usePromptState: false,
+        closePromptOnSuccess: false
+      });
+    } finally {
+      setComandaPrompt(createClosedComandaPrompt());
+    }
+  };
+
+  const handleAcceptComanda = async () => {
+    await executeComandaPrint(comandaPrompt);
   };
 
   if (permisosLoading) return null;
@@ -1142,6 +1198,8 @@ export default function VentasPage() {
           defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
           scopeInfo={scopeInfo}
           canPrintVenta={canPrintVenta}
+          onPrintFactura={handleDetailFacturaPrint}
+          onPrintComanda={openComandaReprintFromDetail}
           onSuccessfulPendingOrderPaymentPrint={handleSuccessfulPendingOrderPaymentPrint}
         />
       ) : null}
@@ -1170,7 +1228,9 @@ export default function VentasPage() {
         }}
         canExport={canExportVenta}
         canPrint={canPrintVenta}
-        onPrintTicket={handleDetailTicketPrint}
+        printSourceType="factura"
+        onPrintFactura={handleDetailFacturaPrint}
+        onPrintComanda={openComandaReprintFromDetail}
         onClose={() => {
           detailRequestRef.current += 1;
           setDetailOpen(false);
@@ -1182,7 +1242,9 @@ export default function VentasPage() {
         venta={comandaPrompt.venta}
         loading={comandaPrompt.loading}
         error={comandaPrompt.error}
-        mode={comandaPrompt.mode}
+        sourceType={comandaPrompt.sourceType}
+        action={comandaPrompt.action}
+        origin={comandaPrompt.origin}
         onAccept={handleAcceptComanda}
         onCancel={() => {
           void closeComandaPrompt();
