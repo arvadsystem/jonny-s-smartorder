@@ -349,7 +349,7 @@ export const useCocina = ({
 
       try {
         const response = await cocinaApi.updateEstado(idPedido, estadoDestino);
-        setPedidos((current) => applyKitchenTransition(current, idPedido, estadoDestino));
+        setPedidos((current) => applyKitchenTransition(current, idPedido, estadoDestino, response));
         if (response?.warning_code === 'STOCK_INSUFICIENTE_PERMITIDO') {
           openToast('INVENTARIO EN NEGATIVO', 'El pedido inició preparación, pero algunos insumos quedaron en negativo.', 'warning', {
             origin: 'user-action',

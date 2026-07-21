@@ -67,14 +67,21 @@ const parseOrderDateMs = (value) => {
 };
 
 export const getKitchenOrderSortMs = (pedido) => {
-  const candidates = [
-    pedido?.visible_en_cocina_at,
-    pedido?.kds_timer_base_at,
-    pedido?.kds_started_at,
-    pedido?.fecha_hora_facturacion,
-    pedido?.fecha_hora_pedido,
-    pedido?.created_at
-  ];
+  const isPreparation =
+    String(pedido?.estado_codigo || '').trim().toUpperCase() === 'EN_PREPARACION' ||
+    String(pedido?.columna_kds || '').trim().toUpperCase() === 'EN_PREPARACION';
+  const candidates = isPreparation
+    ? [
+        pedido?.en_preparacion_at,
+        pedido?.visible_en_cocina_at,
+        pedido?.fecha_hora_facturacion,
+        pedido?.fecha_hora_pedido
+      ]
+    : [
+        pedido?.visible_en_cocina_at,
+        pedido?.fecha_hora_facturacion,
+        pedido?.fecha_hora_pedido
+      ];
 
   for (const value of candidates) {
     const parsed = parseOrderDateMs(value);
@@ -351,6 +358,7 @@ export const normalizeKitchenOrder = (row) => {
     kds_expected_minutes: Number(row?.kds_expected_minutes ?? 0) || null,
     kds_expected_rule: row?.kds_expected_rule || null,
     visible_en_cocina_at: row?.visible_en_cocina_at || row?.fecha_hora_facturacion || row?.fecha_hora_pedido || null,
+    en_preparacion_at: row?.en_preparacion_at || null,
     minutos_en_espera: row?.minutos_en_espera != null ? Number(row.minutos_en_espera) : null,
     esta_proximo_a_expirar: Boolean(row?.esta_proximo_a_expirar),
     nota_general_pedido: extractPedidoGeneralNotes(row?.descripcion_pedido, items),
@@ -456,7 +464,7 @@ export const filterActiveSucursales = (rows) =>
       })
     );
 
-export const applyKitchenTransition = (orders, idPedido, nextStatus) => {
+export const applyKitchenTransition = (orders, idPedido, nextStatus, transitionData = {}) => {
   const nextColumn =
     nextStatus === 'EN_PREPARACION'
       ? 'EN_PREPARACION'
@@ -477,7 +485,11 @@ export const applyKitchenTransition = (orders, idPedido, nextStatus) => {
       {
         ...order,
         estado_codigo: nextStatus,
-        columna_kds: nextColumn
+        columna_kds: nextColumn,
+        en_preparacion_at:
+          nextStatus === 'EN_PREPARACION'
+            ? transitionData?.en_preparacion_at || order?.en_preparacion_at || null
+            : order?.en_preparacion_at || null
       }
     ];
   });
