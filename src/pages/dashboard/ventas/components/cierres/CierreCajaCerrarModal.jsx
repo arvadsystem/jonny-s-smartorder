@@ -12,6 +12,31 @@ const buildInitialState = () => ({
 
 const normalizeMethodCode = (value) => String(value || '').trim().toUpperCase();
 
+// Presentacion unicamente: nunca persistir ni enviar estas etiquetas al
+// backend. metodo_pago_codigo sigue siendo la fuente de verdad. Compatible
+// con un backend anterior que no manda display_name (cae al mapa local) y
+// con codigos futuros desconocidos (cae al codigo crudo, no a un guion bajo
+// technical value sin traducir salvo que realmente no haya nada mejor).
+const METHOD_DISPLAY_LABELS = Object.freeze({
+  EFECTIVO: 'Efectivo',
+  TARJETA: 'Tarjeta',
+  TRANSFERENCIA: 'Transferencia',
+  OTRO: 'Otros no efectivo'
+});
+
+const resolveMethodDisplayLabel = (row) => {
+  const explicit = typeof row?.display_name === 'string' ? row.display_name.trim() : '';
+  if (explicit) return explicit;
+  const code = normalizeMethodCode(row?.metodo_pago_codigo);
+  return METHOD_DISPLAY_LABELS[code] || code;
+};
+
+// Fila automatica: no se enfoca, no se le agregan botones de edicion, y no
+// se le pide observacion manual. completado_automaticamente=true es la
+// senal principal (siempre presente en la fila OTRO); editable===false es
+// una senal adicional explicita del backend para el mismo caso.
+const isAutomaticRow = (row) => Boolean(row?.completado_automaticamente) || row?.editable === false;
+
 const resolveObservationError = (error) => {
   const code = normalizeMethodCode(error?.code || error?.data?.code);
   if (code !== 'VENTAS_CAJAS_ARQUEO_OBSERVACION_REQUIRED') return null;
@@ -169,7 +194,10 @@ export default function CierreCajaCerrarModal({
   const focusMethodField = useCallback((methodCode, field = 'observacion') => {
     const normalizedMethod = normalizeMethodCode(methodCode);
     const targetIndex = STEP_ORDER.indexOf(normalizedMethod);
-    if (targetIndex >= 0) setStepIndex(targetIndex);
+    // OTRO (y cualquier codigo futuro fuera de los tres pasos manuales) no
+    // tiene paso ni campo que enfocar: no existe fieldRefs[normalizedMethod].
+    if (targetIndex < 0) return;
+    setStepIndex(targetIndex);
     window.setTimeout(() => {
       const targetRef = fieldRefs[normalizedMethod]?.[field] || fieldRefs[normalizedMethod]?.observacion;
       targetRef?.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -342,6 +370,8 @@ export default function CierreCajaCerrarModal({
       : [];
   const rowsWithDifference = methodRows.filter((row) => Number(row?.diferencia || 0) !== 0);
   const requiredObservationCount = methodRows.filter((row) => row?.observacion_requerida && !row?.observacion_presente).length;
+  const isValidated = Boolean(validationData);
+  const otrosRow = methodRows.find((row) => normalizeMethodCode(row?.metodo_pago_codigo) === 'OTRO');
 
   const renderMethodActions = (row) => {
     const methodCode = normalizeMethodCode(row?.metodo_pago_codigo);
@@ -498,14 +528,42 @@ export default function CierreCajaCerrarModal({
                 </div>
               ) : null}
 
-              <article className="ventas-page__stat-card is-accent">
-                <div className="inv-prod-kpi-content">
-                  <span>Total declarado</span>
-                  <strong>L. {formatCajaCurrency(validationData?.resumen?.total_declarado ?? declaredSummary.total)}</strong>
-                </div>
-              </article>
+              {!isValidated ? (
+                <article className="ventas-page__stat-card is-accent">
+                  <div className="inv-prod-kpi-content">
+                    <span>Subtotal declarado manual</span>
+                    <strong>L. {formatCajaCurrency(declaredSummary.total)}</strong>
+                    <small className="text-muted">
+                      Aun no incluye la conciliación automática del sistema. Presiona Revisar diferencias para calcular el total definitivo.
+                    </small>
+                  </div>
+                </article>
+              ) : (
+                <>
+                  <article className="ventas-page__stat-card">
+                    <div className="inv-prod-kpi-content">
+                      <span>Subtotal manual (Efectivo + Tarjeta + Transferencia)</span>
+                      <strong>L. {formatCajaCurrency(declaredSummary.total)}</strong>
+                    </div>
+                  </article>
+                  {otrosRow ? (
+                    <article className="ventas-page__stat-card">
+                      <div className="inv-prod-kpi-content">
+                        <span>Otros no efectivo (automático)</span>
+                        <strong>L. {formatCajaCurrency(otrosRow.monto_declarado)}</strong>
+                      </div>
+                    </article>
+                  ) : null}
+                  <article className="ventas-page__stat-card is-accent">
+                    <div className="inv-prod-kpi-content">
+                      <span>Total declarado validado</span>
+                      <strong>L. {formatCajaCurrency(validationData?.resumen?.total_declarado)}</strong>
+                    </div>
+                  </article>
+                </>
+              )}
 
-              {canViewCajaTheoreticalAmounts && validationData?.resumen?.total_teorico !== undefined ? (
+              {isValidated && canViewCajaTheoreticalAmounts && validationData?.resumen?.total_teorico !== undefined ? (
                 <article className="ventas-page__stat-card is-warning">
                   <div className="inv-prod-kpi-content">
                     <span>Totales generales</span>
@@ -528,10 +586,16 @@ export default function CierreCajaCerrarModal({
                 <div className="cierres-caja-review-list">
                   {methodRows.map((row) => {
                     const methodCode = normalizeMethodCode(row?.metodo_pago_codigo);
+                    const automatic = isAutomaticRow(row);
                     return (
                       <article key={methodCode} className="cierres-caja-review-card">
                         <div className="cierres-caja-review-card__head">
-                          <strong>{methodCode}</strong>
+                          <strong>{resolveMethodDisplayLabel(row)}</strong>
+                          {automatic ? (
+                            <span className="ventas-page__table-pill bg-secondary border-secondary text-white">
+                              Automático
+                            </span>
+                          ) : null}
                           <span className={`ventas-page__table-pill ${resolveResultBadgeClass(row?.resultado)}`}>
                             {row?.resultado || 'CUADRADO'}
                           </span>
@@ -553,10 +617,21 @@ export default function CierreCajaCerrarModal({
                           </div>
                           <div>
                             <span>Observación</span>
-                            <strong>{row?.observacion_requerida && !row?.observacion_presente ? 'Requerida' : 'Completa'}</strong>
+                            <strong>
+                              {automatic
+                                ? 'Automática'
+                                : row?.observacion_requerida && !row?.observacion_presente ? 'Requerida' : 'Completa'}
+                            </strong>
                           </div>
                         </div>
-                        {Number(row?.diferencia || 0) !== 0 ? renderMethodActions(row) : null}
+                        {automatic ? (
+                          <div className="cierres-caja-review-card__actions">
+                            <small className="text-muted">
+                              {row?.observacion
+                                || 'Este monto fue conciliado automáticamente por el sistema a partir de los métodos no efectivo registrados. No requiere conteo manual.'}
+                            </small>
+                          </div>
+                        ) : Number(row?.diferencia || 0) !== 0 ? renderMethodActions(row) : null}
                       </article>
                     );
                   })}
