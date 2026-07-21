@@ -3,6 +3,7 @@ export const VENTAS_TIMEZONE = 'America/Tegucigalpa';
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_PATTERN = /^(\d{2}):(\d{2})$/;
 const HONDURAS_UTC_OFFSET_HOURS = 6;
+const MINUTE_MS = 60 * 1000;
 const HOURS_72_MS = 72 * 60 * 60 * 1000;
 
 const dateFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -38,14 +39,62 @@ const parseClockTime = (value) => {
 const wallTimeToEpochMs = (date, time) =>
   Date.UTC(date.year, date.month - 1, date.day, time.hour + HONDURAS_UTC_OFFSET_HOURS, time.minute);
 
-export const getTegucigalpaToday = (now = new Date()) => {
-  const parts = Object.fromEntries(
+const getTegucigalpaDateParts = (now) =>
+  Object.fromEntries(
     dateFormatter
       .formatToParts(now)
       .filter((part) => part.type !== 'literal')
       .map((part) => [part.type, part.value])
   );
+
+export const getTegucigalpaToday = (now = new Date()) => {
+  const parts = getTegucigalpaDateParts(now);
   return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+export const getVentas72hCutoffEpochMs = (now = new Date()) =>
+  Math.floor(now.getTime() / MINUTE_MS) * MINUTE_MS - HOURS_72_MS;
+
+export const getMillisecondsUntilNextTegucigalpaDay = (now = new Date()) => {
+  const parts = getTegucigalpaDateParts(now);
+  const nextMidnightEpochMs = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day) + 1,
+    HONDURAS_UTC_OFFSET_HOURS
+  );
+  return Math.max(0, nextMidnightEpochMs - now.getTime());
+};
+
+export const isVentasDefaultTemporalRange = (filters = {}, today = getTegucigalpaToday()) =>
+  String(filters.fechaDesde || '') === today &&
+  String(filters.fechaHasta || '') === today &&
+  !String(filters.horaDesde || '').trim() &&
+  !String(filters.horaHasta || '').trim();
+
+export const resolveVentasFiltersForTegucigalpaDayChange = (
+  filters = {},
+  { previousToday, nextToday, followDefaultRange = false } = {}
+) => {
+  const shouldUpdate = Boolean(
+    followDefaultRange &&
+    previousToday &&
+    nextToday &&
+    previousToday !== nextToday &&
+    isVentasDefaultTemporalRange(filters, previousToday)
+  );
+  if (!shouldUpdate) return { changed: false, filters };
+  return {
+    changed: true,
+    filters: {
+      ...filters,
+      fechaDesde: nextToday,
+      fechaHasta: nextToday,
+      horaDesde: '',
+      horaHasta: '',
+      page: 1
+    }
+  };
 };
 
 export const createDefaultVentasTemporalFilters = (now = new Date()) => {
@@ -59,7 +108,7 @@ export const createDefaultVentasTemporalFilters = (now = new Date()) => {
 };
 
 export const getVentasCashierMinDate = (now = new Date()) =>
-  getTegucigalpaToday(new Date(now.getTime() - HOURS_72_MS));
+  getTegucigalpaToday(new Date(getVentas72hCutoffEpochMs(now)));
 
 export const validateVentasTemporalFilters = (
   filters = {},
@@ -102,7 +151,7 @@ export const validateVentasTemporalFilters = (
 
   if (
     limitedToLast72Hours &&
-    wallTimeToEpochMs(desdeDate, desdeTime) < (now.getTime() - HOURS_72_MS)
+    wallTimeToEpochMs(desdeDate, desdeTime) < getVentas72hCutoffEpochMs(now)
   ) {
     return {
       ok: false,

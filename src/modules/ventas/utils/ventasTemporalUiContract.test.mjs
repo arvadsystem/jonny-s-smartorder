@@ -8,10 +8,10 @@ const defaultsSource = await readFile(new URL('../constants/ventasDefaults.js', 
 
 test('primera carga envia hoy-hoy y ambos parametros horarios', () => {
   assert.match(defaultsSource, /\.\.\.createDefaultVentasTemporalFilters\(\)/);
-  assert.match(hookSource, /fechaDesde: ventasFilters\.fechaDesde/);
-  assert.match(hookSource, /fechaHasta: ventasFilters\.fechaHasta/);
-  assert.match(hookSource, /horaDesde: ventasFilters\.horaDesde/);
-  assert.match(hookSource, /horaHasta: ventasFilters\.horaHasta/);
+  assert.match(hookSource, /fechaDesde: requestFilters\.fechaDesde/);
+  assert.match(hookSource, /fechaHasta: requestFilters\.fechaHasta/);
+  assert.match(hookSource, /horaDesde: requestFilters\.horaDesde/);
+  assert.match(hookSource, /horaHasta: requestFilters\.horaHasta/);
 });
 
 test('aplicar reinicia pagina una sola vez y limpiar vuelve a valores temporales por defecto', () => {
@@ -35,4 +35,20 @@ test('las cards siguen usando exclusivamente el summary recibido del backend', (
   assert.match(hookSource, /const backendSummary = response\?\.summary/);
   assert.match(hookSource, /setSummary\(normalizedSummary\)/);
   assert.doesNotMatch(hookSource, /setSummary\([^)]*rows/);
+});
+
+test('listado cancela la anterior e ignora respuestas obsoletas antes de actualizar estado o cache', () => {
+  assert.match(hookSource, /const request = manager\.start\(\)/);
+  assert.match(hookSource, /\{ signal: request\.controller\.signal \}/);
+  assert.match(hookSource, /if \(!manager\.isCurrent\(request\)\) return null;[\s\S]*?setVentas\(rows\)/);
+  assert.match(hookSource, /if \(isCancelledVentasListRequest\(error, request, manager\)\) return null;/);
+  assert.match(hookSource, /if \(manager\.finish\(request\)\) setLoading\(false\)/);
+  assert.match(hookSource, /ventasListRequestManagerRef\.current\?\.abort\(\)/);
+});
+
+test('vigila medianoche, foco y reanudacion sin polling agresivo', () => {
+  assert.match(hookSource, /getMillisecondsUntilNextTegucigalpaDay\(\) \+ 50/);
+  assert.match(hookSource, /window\.addEventListener\('focus', handleFocus\)/);
+  assert.match(hookSource, /document\.addEventListener\('visibilitychange', handleVisibilityChange\)/);
+  assert.match(hookSource, /resolveVentasFiltersForTegucigalpaDayChange/);
 });
