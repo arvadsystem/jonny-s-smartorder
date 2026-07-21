@@ -53,6 +53,8 @@ const buildVentasTotalsCacheKey = (filters = {}) => JSON.stringify({
   estado: String(filters.estado || '').trim().toUpperCase(),
   fechaDesde: String(filters.fechaDesde || '').trim(),
   fechaHasta: String(filters.fechaHasta || '').trim(),
+  horaDesde: String(filters.horaDesde || '').trim(),
+  horaHasta: String(filters.horaHasta || '').trim(),
   pageSize: Number.parseInt(String(filters.pageSize ?? 6), 10) || 6
 });
 
@@ -214,6 +216,8 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         estado: ventasFilters.estado,
         fechaDesde: ventasFilters.fechaDesde,
         fechaHasta: ventasFilters.fechaHasta,
+        horaDesde: ventasFilters.horaDesde,
+        horaHasta: ventasFilters.horaHasta,
         includeSummary: reuseTotals ? false : undefined,
         includePaginationTotals: reuseTotals ? false : undefined
       });
@@ -1173,6 +1177,14 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         const value = String(patch.fechaHasta || '').trim();
         next.fechaHasta = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
       }
+      if (Object.prototype.hasOwnProperty.call(patch, 'horaDesde')) {
+        const value = String(patch.horaDesde || '').trim();
+        next.horaDesde = /^\d{2}:\d{2}$/.test(value) ? value : '';
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'horaHasta')) {
+        const value = String(patch.horaHasta || '').trim();
+        next.horaHasta = /^\d{2}:\d{2}$/.test(value) ? value : '';
+      }
 
       next.page = 1;
       return next;
@@ -1180,13 +1192,16 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   }, []);
 
   const clearVentasFilters = useCallback(() => {
+    const defaults = createDefaultVentasFilters();
     setVentasFilters((prev) => ({
       ...prev,
       search: '',
       idSucursal: null,
       estado: '',
-      fechaDesde: '',
-      fechaHasta: '',
+      fechaDesde: defaults.fechaDesde,
+      fechaHasta: defaults.fechaHasta,
+      horaDesde: defaults.horaDesde,
+      horaHasta: defaults.horaHasta,
       page: 1
     }));
   }, []);

@@ -103,7 +103,6 @@ export default function VentasPage() {
     setVentasSearch,
     setVentasPage,
     setVentasPageSize,
-    setVentasSucursal,
     setVentasFilterPatch,
     clearVentasFilters,
     createVenta,
@@ -1135,7 +1134,6 @@ export default function VentasPage() {
           onSearchChange={setVentasSearch}
           onPageChange={setVentasPage}
           onPageSizeChange={setVentasPageSize}
-          onSucursalChange={setVentasSucursal}
           onFiltersChange={setVentasFilterPatch}
           onClearFilters={clearVentasFilters}
           onOpenDetail={openDetail}

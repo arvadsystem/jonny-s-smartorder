@@ -46,8 +46,7 @@ export const createDefaultVentasFilters = () => ({
   search: '',
   idSucursal: null,
   estado: '',
-  fechaDesde: '',
-  fechaHasta: '',
+  ...createDefaultVentasTemporalFilters(),
   page: 1,
   pageSize: 6
 });
@@ -60,3 +59,4 @@ export const createConsumidorFinalCliente = () => ({
   rtn: '',
   es_consumidor_final: true
 });
+import { createDefaultVentasTemporalFilters } from '../utils/ventasTemporalFilters';
