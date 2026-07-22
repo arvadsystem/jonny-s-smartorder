@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   createDefaultVentasTemporalFilters,
+  createVentasTemporalFiltersForDay,
   getMillisecondsUntilNextTegucigalpaDay,
   getTegucigalpaToday,
   getVentasCashierMinDate,
   resolveVentasDraftForAppliedDayChange,
+  resolveVentasDayTransition,
   resolveVentasFiltersForTegucigalpaDayChange,
   validateVentasTemporalFilters
 } from './ventasTemporalFilters.js';
@@ -122,6 +124,57 @@ test('cambio de dia actualiza solo el rango predeterminado y conserva otros filt
   assert.equal(result.changed, true);
   assert.deepEqual(result.filters, {
     ...current, fechaDesde: '2026-07-22', fechaHasta: '2026-07-22', page: 1
+  });
+});
+
+test('transicion actualiza el dia visual aunque el filtro aplicado sea manual', () => {
+  const manualFilters = [
+    { fechaDesde: '2026-07-20', fechaHasta: '2026-07-20', horaDesde: '', horaHasta: '' },
+    { fechaDesde: '2026-07-19', fechaHasta: '2026-07-20', horaDesde: '', horaHasta: '' },
+    { fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '08:00', horaHasta: '12:00' }
+  ];
+  for (const temporal of manualFilters) {
+    const filters = {
+      search: 'ana', idSucursal: 5, estado: 'LISTO', page: 4, pageSize: 12, ...temporal
+    };
+    const result = resolveVentasDayTransition(filters, {
+      previousToday: '2026-07-21',
+      nextToday: '2026-07-22',
+      followDefaultRange: false
+    });
+    assert.equal(result.dayChanged, true);
+    assert.equal(result.currentDay, '2026-07-22');
+    assert.equal(result.filtersChanged, false);
+    assert.equal(result.filters, filters);
+  }
+});
+
+test('transicion predeterminada alinea dia visual, filtros aplicados y pagina', () => {
+  const filters = {
+    search: 'ana', idSucursal: 5, estado: 'LISTO', page: 4, pageSize: 12,
+    fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: ''
+  };
+  const result = resolveVentasDayTransition(filters, {
+    previousToday: '2026-07-21',
+    nextToday: '2026-07-22',
+    followDefaultRange: true
+  });
+  assert.equal(result.currentDay, '2026-07-22');
+  assert.equal(result.filtersChanged, true);
+  assert.deepEqual(result.filters, {
+    ...filters,
+    fechaDesde: '2026-07-22',
+    fechaHasta: '2026-07-22',
+    page: 1
+  });
+});
+
+test('limpiar despues de medianoche usa el dia visual nuevo', () => {
+  assert.deepEqual(createVentasTemporalFiltersForDay('2026-07-22'), {
+    fechaDesde: '2026-07-22',
+    fechaHasta: '2026-07-22',
+    horaDesde: '',
+    horaHasta: ''
   });
 });
 

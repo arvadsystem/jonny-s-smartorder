@@ -97,6 +97,32 @@ export const resolveVentasFiltersForTegucigalpaDayChange = (
   };
 };
 
+export const resolveVentasDayTransition = (
+  filters = {},
+  { previousToday, nextToday, followDefaultRange = false } = {}
+) => {
+  const dayChanged = Boolean(previousToday && nextToday && previousToday !== nextToday);
+  if (!dayChanged) {
+    return {
+      dayChanged: false,
+      currentDay: nextToday || previousToday || '',
+      filtersChanged: false,
+      filters
+    };
+  }
+  const filtersResult = resolveVentasFiltersForTegucigalpaDayChange(filters, {
+    previousToday,
+    nextToday,
+    followDefaultRange
+  });
+  return {
+    dayChanged: true,
+    currentDay: nextToday,
+    filtersChanged: filtersResult.changed,
+    filters: filtersResult.filters
+  };
+};
+
 export const resolveVentasDraftForAppliedDayChange = (
   draft = {},
   { previousAppliedFilters = {}, nextAppliedFilters = {} } = {}
@@ -125,15 +151,15 @@ export const resolveVentasDraftForAppliedDayChange = (
   };
 };
 
-export const createDefaultVentasTemporalFilters = (now = new Date()) => {
-  const today = getTegucigalpaToday(now);
-  return {
-    fechaDesde: today,
-    fechaHasta: today,
-    horaDesde: '',
-    horaHasta: ''
-  };
-};
+export const createVentasTemporalFiltersForDay = (currentDay) => ({
+  fechaDesde: currentDay,
+  fechaHasta: currentDay,
+  horaDesde: '',
+  horaHasta: ''
+});
+
+export const createDefaultVentasTemporalFilters = (now = new Date()) =>
+  createVentasTemporalFiltersForDay(getTegucigalpaToday(now));
 
 export const getVentasCashierMinDate = (now = new Date()) =>
   getTegucigalpaToday(new Date(getVentas72hCutoffEpochMs(now)));

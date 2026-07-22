@@ -14,7 +14,7 @@ import {
   getMillisecondsUntilNextTegucigalpaDay,
   getTegucigalpaToday,
   isVentasDefaultTemporalRange,
-  resolveVentasFiltersForTegucigalpaDayChange
+  resolveVentasDayTransition
 } from '../../../../modules/ventas/utils/ventasTemporalFilters';
 import {
   buildCategoriasMap,
@@ -33,6 +33,7 @@ import {
   shouldRequestVentasClients
 } from '../utils/ventasClientRequestManager';
 import {
+  abortVentasListAndResetLoading,
   createVentasListRequestManager,
   isCancelledVentasListRequest,
   scheduleVentasActiveTabLoad
@@ -87,7 +88,12 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const [summary, setSummary] = useState(() => createDefaultVentasSummary());
   const [pagination, setPagination] = useState(() => createDefaultVentasPagination());
   const [scopeInfo, setScopeInfo] = useState(() => createDefaultVentasScopeInfo());
-  const [ventasFilters, setVentasFilters] = useState(() => createDefaultVentasFilters());
+  const [ventasCurrentDay, setVentasCurrentDay] = useState(() => getTegucigalpaToday());
+  const [ventasFilters, setVentasFilters] = useState(() => ({
+    ...createDefaultVentasFilters(),
+    fechaDesde: ventasCurrentDay,
+    fechaHasta: ventasCurrentDay
+  }));
   const [sucursales, setSucursales] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -142,13 +148,17 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const activeCajaUserKeyRef = useRef(cajaUserKey);
   const ventasTotalsCacheRef = useRef({ key: '', summary: null, pagination: null });
   const ventasLastFiltersRef = useRef(null);
-  const ventasTodayRef = useRef(getTegucigalpaToday());
+  const ventasTodayRef = useRef(ventasCurrentDay);
   const ventasFollowDefaultRangeRef = useRef(true);
   const ventasPendingDaySyncRef = useRef(null);
 
   const invalidateVentasTotalsCache = useCallback(() => {
     ventasTotalsCacheRef.current = { key: '', summary: null, pagination: null };
     ventasLastFiltersRef.current = null;
+  }, []);
+
+  const abortVentasListRequest = useCallback(() => {
+    abortVentasListAndResetLoading(ventasListRequestManagerRef.current, setLoading);
   }, []);
 
   const openToast = useCallback((title, message, variant = 'success') => {
@@ -194,15 +204,18 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       const nextToday = getTegucigalpaToday();
       if (previousToday === nextToday) return;
       ventasTodayRef.current = nextToday;
+      setVentasCurrentDay(nextToday);
+      abortVentasListRequest();
+      invalidateVentasTotalsCache();
       const pendingSync = { previousToday, nextToday };
       ventasPendingDaySyncRef.current = pendingSync;
       setVentasFilters((current) => {
-        const result = resolveVentasFiltersForTegucigalpaDayChange(current, {
+        const result = resolveVentasDayTransition(current, {
           previousToday,
           nextToday,
           followDefaultRange: ventasFollowDefaultRangeRef.current
         });
-        if (!result.changed && ventasPendingDaySyncRef.current === pendingSync) {
+        if (!result.filtersChanged && ventasPendingDaySyncRef.current === pendingSync) {
           ventasPendingDaySyncRef.current = null;
         }
         return result.filters;
@@ -228,7 +241,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [activeTab]);
+  }, [abortVentasListRequest, activeTab, invalidateVentasTotalsCache]);
 
   useEffect(() => {
     if (activeCajaUserKeyRef.current === cajaUserKey) return;
@@ -1130,13 +1143,13 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     return () => {
       active = false;
       cancelScheduledLoad();
-      ventasListRequestManagerRef.current?.abort();
+      abortVentasListRequest();
       cajaBootstrapAbortRef.current?.abort();
       clientesRequestManagerRef.current?.abort();
       for (const controller of catalogAbortControllers.values()) controller.abort();
       catalogAbortControllers.clear();
     };
-  }, [activeTab, initialSucursalId, isSuperAdmin, loadCajaBootstrap, loadCatalogs, loadVentas]);
+  }, [abortVentasListRequest, activeTab, initialSucursalId, isSuperAdmin, loadCajaBootstrap, loadCatalogs, loadVentas]);
 
   const refreshCatalogs = useCallback(
     (options = {}) => loadCatalogs({
@@ -1293,20 +1306,19 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   }, []);
 
   const clearVentasFilters = useCallback(() => {
-    const defaults = createDefaultVentasFilters();
     ventasFollowDefaultRangeRef.current = true;
     setVentasFilters((prev) => ({
       ...prev,
       search: '',
       idSucursal: null,
       estado: '',
-      fechaDesde: defaults.fechaDesde,
-      fechaHasta: defaults.fechaHasta,
-      horaDesde: defaults.horaDesde,
-      horaHasta: defaults.horaHasta,
+      fechaDesde: ventasCurrentDay,
+      fechaHasta: ventasCurrentDay,
+      horaDesde: '',
+      horaHasta: '',
       page: 1
     }));
-  }, []);
+  }, [ventasCurrentDay]);
 
   const getVentaDetail = useCallback(async (idFactura) => {
     setDetailLoading(true);
@@ -1409,6 +1421,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     pagination,
     scopeInfo,
     ventasFilters,
+    ventasCurrentDay,
     sucursales,
     categorias,
     tiposDepartamento,

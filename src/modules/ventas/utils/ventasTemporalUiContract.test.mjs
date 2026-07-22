@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const hookSource = await readFile(new URL('../../../pages/dashboard/ventas/hooks/useVentas.js', import.meta.url), 'utf8');
 const viewSource = await readFile(new URL('../../../pages/dashboard/ventas/components/VentaOverviewView.jsx', import.meta.url), 'utf8');
+const pageSource = await readFile(new URL('../../../pages/dashboard/ventas/VentasPage.jsx', import.meta.url), 'utf8');
 const defaultsSource = await readFile(new URL('../constants/ventasDefaults.js', import.meta.url), 'utf8');
 
 test('primera carga envia hoy-hoy y ambos parametros horarios', () => {
@@ -16,7 +17,8 @@ test('primera carga envia hoy-hoy y ambos parametros horarios', () => {
 
 test('aplicar reinicia pagina una sola vez y limpiar vuelve a valores temporales por defecto', () => {
   assert.match(hookSource, /const setVentasFilterPatch[\s\S]*?next\.page = 1;[\s\S]*?return next;/);
-  assert.match(hookSource, /const clearVentasFilters[\s\S]*?const defaults = createDefaultVentasFilters\(\)/);
+  assert.match(hookSource, /const clearVentasFilters[\s\S]*?fechaDesde: ventasCurrentDay,[\s\S]*?fechaHasta: ventasCurrentDay,[\s\S]*?page: 1/);
+  assert.match(viewSource, /createVentasTemporalFiltersForDay\(today\)/);
   assert.match(viewSource, /onFiltersChange\?\.\(filtersDraft\);/);
 });
 
@@ -43,7 +45,7 @@ test('listado cancela la anterior e ignora respuestas obsoletas antes de actuali
   assert.match(hookSource, /if \(!manager\.isCurrent\(request\)\) return null;[\s\S]*?setVentas\(rows\)/);
   assert.match(hookSource, /if \(isCancelledVentasListRequest\(error, request, manager\)\) return null;/);
   assert.match(hookSource, /if \(manager\.finish\(request\)\) setLoading\(false\)/);
-  assert.match(hookSource, /ventasListRequestManagerRef\.current\?\.abort\(\)/);
+  assert.match(hookSource, /abortVentasListAndResetLoading\(ventasListRequestManagerRef\.current, setLoading\)/);
 });
 
 test('vigila medianoche, foco y reanudacion sin polling agresivo', () => {
@@ -55,7 +57,7 @@ test('vigila medianoche, foco y reanudacion sin polling agresivo', () => {
   assert.match(hookSource, /window\.removeEventListener\('focus', handleFocus\)/);
   assert.match(hookSource, /document\.removeEventListener\('visibilitychange', handleVisibilityChange\)/);
   assert.match(hookSource, /if \(timerId\) clearTimeout\(timerId\)/);
-  assert.match(hookSource, /resolveVentasFiltersForTegucigalpaDayChange/);
+  assert.match(hookSource, /resolveVentasDayTransition/);
   assert.equal(hookSource.match(/window\.addEventListener\('focus', handleFocus\)/g)?.length, 1);
   assert.equal(hookSource.match(/document\.addEventListener\('visibilitychange', handleVisibilityChange\)/g)?.length, 1);
 });
@@ -72,4 +74,21 @@ test('panel abierto sincroniza solo el borrador temporal predeterminado', () => 
   assert.match(viewSource, /previousAppliedFiltersRef\.current = ventasFilters;\s*if \(!filtersOpen\) return;/);
   assert.match(viewSource, /resolveVentasDraftForAppliedDayChange\(current, \{[\s\S]*?previousAppliedFilters,[\s\S]*?nextAppliedFilters: ventasFilters/);
   assert.match(viewSource, /const openFiltersDrawer = \(\) => \{[\s\S]*?fechaDesde: ventasFilters\?\.fechaDesde/);
+});
+
+test('cambio de dia actualiza estado visual, aborta e invalida antes de tocar filtros', () => {
+  assert.match(hookSource, /const \[ventasCurrentDay, setVentasCurrentDay\] = useState\(\(\) => getTegucigalpaToday\(\)\)/);
+  assert.match(hookSource, /const \[ventasFilters, setVentasFilters\] = useState\(\(\) => \(\{[\s\S]*?fechaDesde: ventasCurrentDay,[\s\S]*?fechaHasta: ventasCurrentDay/);
+  assert.match(hookSource, /setVentasCurrentDay\(nextToday\);\s*abortVentasListRequest\(\);\s*invalidateVentasTotalsCache\(\);[\s\S]*?setVentasFilters/);
+  assert.match(hookSource, /ventasTotalsCacheRef\.current = \{ key: '', summary: null, pagination: null \};\s*ventasLastFiltersRef\.current = null;/);
+  assert.match(hookSource, /return \{[\s\S]*?ventasFilters,\s*ventasCurrentDay,/);
+  assert.match(pageSource, /ventasCurrentDay=\{ventasCurrentDay\}/);
+  assert.match(viewSource, /const today = ventasCurrentDay;/);
+  assert.match(viewSource, /const cashierMinDate = scopeInfo\?\.limitedToLast72Hours \? getVentasCashierMinDate\(\) : undefined;/);
+  assert.match(viewSource, /max=\{today\}/);
+  assert.match(viewSource, /useMemo\(\(\) => countActiveFilters\(ventasFilters, today\), \[today, ventasFilters\]\)/);
+});
+
+test('cleanup cancela carga programada y normaliza loading mediante helper seguro', () => {
+  assert.match(hookSource, /active = false;\s*cancelScheduledLoad\(\);\s*abortVentasListRequest\(\);/);
 });

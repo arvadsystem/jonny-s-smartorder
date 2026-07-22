@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AppSelect from '../../../../components/common/AppSelect';
 import {
-  createDefaultVentasTemporalFilters,
-  getTegucigalpaToday,
+  createVentasTemporalFiltersForDay,
   getVentasCashierMinDate,
   resolveVentasDraftForAppliedDayChange,
   validateVentasTemporalFilters
@@ -38,6 +37,7 @@ export default function VentaOverviewView({
   pagination,
   scopeInfo,
   ventasFilters,
+  ventasCurrentDay,
   sucursales,
   loading,
   error,
@@ -67,7 +67,7 @@ export default function VentaOverviewView({
     horaHasta: ventasFilters?.horaHasta || ''
   }));
   const previousAppliedFiltersRef = useRef(ventasFilters);
-  const today = getTegucigalpaToday();
+  const today = ventasCurrentDay;
   const cashierMinDate = scopeInfo?.limitedToLast72Hours ? getVentasCashierMinDate() : undefined;
   const isSingleDay = Boolean(
     filtersDraft.fechaDesde &&
@@ -121,7 +121,7 @@ export default function VentaOverviewView({
   };
 
   const clearFilters = () => {
-    const temporalDefaults = createDefaultVentasTemporalFilters();
+    const temporalDefaults = createVentasTemporalFiltersForDay(today);
     setFiltersDraft({
       search: '',
       idSucursal: '',

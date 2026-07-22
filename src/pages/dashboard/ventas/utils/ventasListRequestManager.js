@@ -49,3 +49,8 @@ export const scheduleVentasActiveTabLoad = (callback) => {
     cancelled = true;
   };
 };
+
+export const abortVentasListAndResetLoading = (manager, setLoading) => {
+  manager?.abort();
+  setLoading(false);
+};

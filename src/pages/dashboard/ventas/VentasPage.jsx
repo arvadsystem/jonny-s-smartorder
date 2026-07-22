@@ -75,6 +75,7 @@ export default function VentasPage() {
     pagination,
     scopeInfo,
     ventasFilters,
+    ventasCurrentDay,
     sucursales,
     categorias,
     productos,
@@ -1127,6 +1128,7 @@ export default function VentasPage() {
           pagination={pagination}
           scopeInfo={scopeInfo}
           ventasFilters={ventasFilters}
+          ventasCurrentDay={ventasCurrentDay}
           sucursales={sucursales}
           loading={loading}
           error={error}

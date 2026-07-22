@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  abortVentasListAndResetLoading,
   createVentasListRequestManager,
   isCancelledVentasListRequest,
   scheduleVentasActiveTabLoad
@@ -80,9 +81,11 @@ test('finalizar una solicitud cancelada no cambia loading de la vigente ni muest
 test('desmontaje aborta la vigente e impide actualizaciones tardias', () => {
   const manager = createVentasListRequestManager();
   const request = manager.start();
-  manager.abort();
+  let loading = true;
+  abortVentasListAndResetLoading(manager, (value) => { loading = value; });
   assert.equal(request.controller.signal.aborted, true);
   assert.equal(manager.isCurrent(request), false);
+  assert.equal(loading, false);
 });
 
 test('cambios rapidos siempre invalidan fecha, sucursal, estado, busqueda, pagina y limpiar anteriores', () => {
@@ -102,4 +105,68 @@ test('Strict Mode cancela el efecto especulativo y ejecuta una sola carga vigent
 
   assert.deepEqual(started, ['current']);
   cancelCurrent();
+});
+
+test('medianoche aborta la anterior, invalida cache e ignora toda respuesta tardia', () => {
+  const manager = createVentasListRequestManager();
+  const state = createStateHarness();
+  state.loading = true;
+  state.rows = ['visible'];
+  state.summary = 'summary-visible';
+  state.pagination = 'pagination-visible';
+  state.scope = 'scope-visible';
+  state.cache = 'cache-old-day';
+  state.lastFilters = 'filters-old-day';
+  const previousDayRequest = manager.start();
+
+  abortVentasListAndResetLoading(manager, (value) => { state.loading = value; });
+  state.cache = null;
+  state.lastFilters = null;
+
+  assert.equal(previousDayRequest.controller.signal.aborted, true);
+  assert.equal(commitIfCurrent(manager, previousDayRequest, state, {
+    rows: ['stale'], summary: 'summary-stale', pagination: 'pagination-stale',
+    scope: 'scope-stale', cache: 'cache-stale', filters: 'filters-stale'
+  }), false);
+  if (!isCancelledVentasListRequest({ code: 'REQUEST_TIMEOUT' }, previousDayRequest, manager)) {
+    state.errors.push('toast-stale');
+  }
+  assert.deepEqual(state, {
+    loading: false,
+    rows: ['visible'],
+    summary: 'summary-visible',
+    pagination: 'pagination-visible',
+    scope: 'scope-visible',
+    cache: null,
+    lastFilters: null,
+    errors: []
+  });
+});
+
+test('una solicitud antigua no apaga loading de la nueva vigente', () => {
+  const manager = createVentasListRequestManager();
+  let loading = false;
+  const requestA = manager.start();
+  loading = true;
+  abortVentasListAndResetLoading(manager, (value) => { loading = value; });
+  const requestB = manager.start();
+  loading = true;
+
+  if (manager.finish(requestA)) loading = false;
+  assert.equal(loading, true);
+  assert.equal(manager.isCurrent(requestB), true);
+
+  if (manager.finish(requestB)) loading = false;
+  assert.equal(loading, false);
+});
+
+test('filtros, pestaña, desmontaje y cambio de dia dejan loading falso sin solicitud vigente', () => {
+  for (const reason of ['filters', 'tab', 'unmount', 'day']) {
+    const manager = createVentasListRequestManager();
+    const request = manager.start();
+    let loading = true;
+    abortVentasListAndResetLoading(manager, (value) => { loading = value; });
+    assert.equal(manager.isCurrent(request), false, reason);
+    assert.equal(loading, false, reason);
+  }
 });
