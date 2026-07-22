@@ -131,58 +131,6 @@ const inferModifications = (item) => {
   return [];
 };
 
-const KITCHEN_ITEM_TYPE_ALLOWLIST = new Set([
-  'RECETA',
-  'COMBO',
-  'EXTRA',
-  'SALSA',
-  'INSUMO',
-  'INGREDIENTE',
-  'COMPONENTE',
-  'PREPARACION',
-  'MODIFICADOR'
-]);
-
-const KITCHEN_DIRECT_PRODUCT_TYPE_KEYS = new Set([
-  'PRODUCTO',
-  'PRODUCT',
-  'PRODUCTO_DIRECTO',
-  'DIRECT_PRODUCT'
-]);
-
-const hasPositiveId = (value) => Number(value ?? 0) > 0;
-
-const isDirectProductKitchenItem = (item) => {
-  const typeCandidates = [
-    item?.tipo_item,
-    item?.tipo,
-    item?.tipo_producto,
-    item?.origen,
-    item?.source
-  ]
-    .map((value) => normalizeTextKey(value).toUpperCase())
-    .filter(Boolean);
-
-  if (typeCandidates.some((type) => KITCHEN_ITEM_TYPE_ALLOWLIST.has(type))) {
-    return false;
-  }
-
-  const hasKitchenRecipeSignal =
-    hasPositiveId(item?.id_receta) ||
-    hasPositiveId(item?.id_combo) ||
-    hasPositiveId(item?.id_extra) ||
-    hasPositiveId(item?.id_salsa) ||
-    hasPositiveId(item?.id_insumo);
-
-  if (hasKitchenRecipeSignal) return false;
-
-  const hasProductTypeSignal = typeCandidates.some((type) =>
-    KITCHEN_DIRECT_PRODUCT_TYPE_KEYS.has(type) || type.includes('PRODUCTO') || type.includes('PRODUCT')
-  );
-
-  return hasPositiveId(item?.id_producto) || item?.es_producto === true || hasProductTypeSignal;
-};
-
 const itemNameKey = (value) => normalizeTextKey(value).replace(/_/g, ' ');
 
 const isTechnicalOrderNote = (note) => {
@@ -324,17 +272,22 @@ export const normalizeKitchenOrder = (row) => {
     estado_codigo: estadoCodigo
   });
   const items = (Array.isArray(row?.items) ? row.items : [])
-    .filter((item) => !isDirectProductKitchenItem(item))
-    .map((item) => ({
-      ...item,
-      id_detalle: Number(item?.id_detalle ?? 0) || null,
-      id_producto: Number(item?.id_producto ?? 0) || null,
-      id_receta: Number(item?.id_receta ?? 0) || null,
-      cantidad: Number(item?.cantidad ?? 0) || 0,
-      nombre_item: String(item?.nombre_item ?? 'Item de cocina'),
-      observacion: String(item?.observacion ?? '').trim() || null,
-      modificaciones: inferModifications(item)
-    }));
+    .map((item) => {
+      const operationalInstruction = normalizeUpper(item?.instruccion_operativa);
+      return {
+        ...item,
+        id_detalle: Number(item?.id_detalle ?? 0) || null,
+        id_producto: Number(item?.id_producto ?? 0) || null,
+        id_receta: Number(item?.id_receta ?? 0) || null,
+        cantidad: Number(item?.cantidad ?? 0) || 0,
+        nombre_item: String(item?.nombre_item ?? 'Item de cocina'),
+        observacion: String(item?.observacion ?? '').trim() || null,
+        modificaciones: inferModifications(item),
+        instruccion_operativa: operationalInstruction === 'ENTREGAR_JUNTO_CON_EL_PEDIDO'
+          ? operationalInstruction
+          : 'PREPARAR'
+      };
+    });
 
   return {
     ...row,
@@ -364,6 +317,18 @@ export const normalizeKitchenOrder = (row) => {
     nota_general_pedido: extractPedidoGeneralNotes(row?.descripcion_pedido, items),
     items
   };
+};
+
+export const groupKitchenItems = (items = []) => {
+  const groups = { preparar: [], entregarJunto: [] };
+  for (const item of Array.isArray(items) ? items : []) {
+    if (String(item?.instruccion_operativa || '').trim().toUpperCase() === 'ENTREGAR_JUNTO_CON_EL_PEDIDO') {
+      groups.entregarJunto.push(item);
+    } else {
+      groups.preparar.push(item);
+    }
+  }
+  return groups;
 };
 
 export const buildCocinaStats = (orders) => {

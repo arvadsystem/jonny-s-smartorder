@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyKitchenTransition,
-  groupOrdersByColumn
+  groupKitchenItems,
+  groupOrdersByColumn,
+  normalizeKitchenOrder
 } from './cocinaHelpers.js';
 
 const order = (id, status, values = {}) => ({
@@ -49,4 +51,32 @@ test('transicion optimista conserva la marca persistida devuelta por backend', (
   );
 
   assert.equal(transitioned[0].en_preparacion_at, '2026-07-20T17:30:00Z');
+});
+
+test('pedido mixto separa preparaciones y recordatorios de entrega', () => {
+  const normalized = normalizeKitchenOrder({
+    id_pedido: 80,
+    items: [
+      { id_detalle: 1, id_receta: 20, id_producto: null, tipo_item: 'RECETA', instruccion_operativa: 'PREPARAR', nombre_item: 'Hamburguesa', cantidad: 1 },
+      { id_detalle: 2, id_receta: null, id_producto: 10, tipo_item: 'PRODUCTO', instruccion_operativa: 'ENTREGAR_JUNTO_CON_EL_PEDIDO', nombre_item: 'Refresco', cantidad: 2 }
+    ]
+  });
+  const groups = groupKitchenItems(normalized.items);
+  assert.deepEqual(groups.preparar.map((item) => item.nombre_item), ['Hamburguesa']);
+  assert.deepEqual(groups.entregarJunto.map((item) => item.nombre_item), ['Refresco']);
+});
+
+test('multiples productos de un pedido mixto permanecen como recordatorios', () => {
+  const normalized = normalizeKitchenOrder({
+    id_pedido: 81,
+    items: [
+      { id_receta: 20, tipo_item: 'RECETA', instruccion_operativa: 'PREPARAR', nombre_item: 'Combo', cantidad: 1 },
+      { id_producto: 10, tipo_item: 'PRODUCTO', instruccion_operativa: 'ENTREGAR_JUNTO_CON_EL_PEDIDO', nombre_item: 'Refresco', cantidad: 1 },
+      { id_producto: 11, tipo_item: 'PRODUCTO', instruccion_operativa: 'ENTREGAR_JUNTO_CON_EL_PEDIDO', nombre_item: 'Helado', cantidad: 1 }
+    ]
+  });
+  const groups = groupKitchenItems(normalized.items);
+  assert.equal(groups.preparar.length, 1);
+  assert.equal(groups.entregarJunto.length, 2);
+  assert.ok(groups.entregarJunto.every((item) => item.instruccion_operativa === 'ENTREGAR_JUNTO_CON_EL_PEDIDO'));
 });

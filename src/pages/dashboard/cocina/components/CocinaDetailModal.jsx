@@ -3,12 +3,14 @@ import {
   formatCurrency,
   formatDateTimeLabel,
   formatServiceLabel,
-  formatTimerLabel
+  formatTimerLabel,
+  groupKitchenItems
 } from '../utils/cocinaHelpers';
 
 const _MOTION = motion;
 
 export default function CocinaDetailModal({ open, pedido, now, onClose }) {
+  const itemGroups = groupKitchenItems(pedido?.items);
   return (
     <AnimatePresence>
       {open && pedido ? (
@@ -88,8 +90,14 @@ export default function CocinaDetailModal({ open, pedido, now, onClose }) {
                 <div className="kds-modal__section-title">
                   Ítems del pedido ({pedido.total_items})
                 </div>
-                <div className="kds-modal__items">
-                  {(Array.isArray(pedido.items) ? pedido.items : []).map((item) => (
+                {[
+                  ['PREPARAR', itemGroups.preparar],
+                  ['ENTREGAR JUNTO CON EL PEDIDO', itemGroups.entregarJunto]
+                ].filter(([, items]) => items.length > 0).map(([label, items]) => (
+                  <div key={label}>
+                    <div className="kds-modal__item-group-label">{label}</div>
+                    <div className="kds-modal__items">
+                      {items.map((item) => (
                     <article
                       key={item.id_detalle || `${item.tipo_item}-${item.nombre_item}`}
                       className="kds-modal__item"
@@ -119,8 +127,10 @@ export default function CocinaDetailModal({ open, pedido, now, onClose }) {
                         ) : null}
                       </div>
                     </article>
-                  ))}
-                </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {/* Observaciones generales */}

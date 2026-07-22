@@ -1133,6 +1133,8 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
   const orderCode = buildPedidoOrderCode(pedido);
   const pendingPago = isPedidoPendientePago(pedido);
   const puedeCobrar = canCobrarPedido(pedido);
+  const requiereCocina = pedido?.requiere_cocina === true;
+  const requiereRevision = pedido?.requiere_revision === true;
   const kdsVencido = isPedidoKdsVencido(pedido);
   const total = Number(pedido?.total || 0);
   const hasCuentaDividida = Boolean(
@@ -1155,6 +1157,7 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
             ) : null}
             {hasCuentaDividida ? <span className="ventas-pedidos-card__badge is-split">Cuenta dividida</span> : null}
             {pendingPago ? <span className="ventas-pedidos-card__badge is-payment">Pago pendiente</span> : null}
+            {requiereRevision ? <span className="ventas-pedidos-card__badge is-overdue">Requiere revision</span> : null}
             {kdsVencido ? <span className="ventas-pedidos-card__badge is-overdue">Retrasado</span> : null}
           </div>
           <strong className="ventas-pedidos-card__client">{clienteName}</strong>
@@ -1208,7 +1211,7 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
           </button>
         ) : null}
 
-        {laneCode === 'PENDIENTE' ? (
+        {laneCode === 'PENDIENTE' && requiereCocina && !requiereRevision ? (
           <button
             className="ventas-pedidos-card__action ventas-pedidos-card__action--primary ventas-pedidos-card__btn is-primary"
             onClick={onSendKitchen}

@@ -578,13 +578,27 @@ export default function VentasPage() {
         origin: 'DIRECT_SALE'
       });
       ventaDetail = printResult.ventaDetail || ventaDetail;
+      ventaDetail = {
+        ...ventaDetail,
+        requiere_cocina: response?.requiere_cocina === true,
+        requiere_revision: response?.requiere_revision === true,
+        accion_operativa: response?.accion_operativa || null,
+        lineas_invalidas: Array.isArray(response?.lineas_invalidas) ? response.lineas_invalidas : []
+      };
 
-      setComandaPrompt(createComandaPrompt({
-        venta: ventaDetail,
-        sourceType: 'factura',
-        action: 'initial',
-        origin: 'post-sale'
-      }));
+      if (ventaDetail.requiere_revision) {
+        openToast('PEDIDO REQUIERE REVISION', 'El pedido contiene lineas invalidas y no fue enviado a cocina.', 'warning');
+        await openDetail(ventaDetail);
+      } else if (ventaDetail.requiere_cocina) {
+        setComandaPrompt(createComandaPrompt({
+          venta: ventaDetail,
+          sourceType: 'factura',
+          action: 'initial',
+          origin: 'post-sale'
+        }));
+      } else {
+        await openDetail(ventaDetail);
+      }
     } else if (facturaPrintWindow) {
       facturaPrintWindow.close();
     }
@@ -593,6 +607,11 @@ export default function VentasPage() {
   };
 
   const handlePendingOrderCreatedPrintPrompt = (comanda) => {
+    if (comanda?.requiere_revision === true) {
+      openToast('PEDIDO REQUIERE REVISION', 'El pedido contiene lineas invalidas y no fue enviado a cocina.', 'warning');
+      return;
+    }
+    if (comanda?.requiere_cocina !== true) return;
     setComandaPrompt(createComandaPrompt({
       venta: comanda,
       sourceType: 'pedido',
@@ -856,6 +875,16 @@ export default function VentasPage() {
         loading: true,
         error: ''
       }));
+    }
+
+    if (!isReprint && venta?.requiere_cocina === true) {
+      try {
+        await ventasService.updatePedidoEstado(venta.id_pedido, 'EN_COCINA');
+      } catch (error) {
+        if (comandaPrintWindow) comandaPrintWindow.close();
+        failPrint('No se pudo enviar el pedido a cocina.', error);
+        return;
+      }
     }
 
     if (AGENT_PRINT_MODE) {

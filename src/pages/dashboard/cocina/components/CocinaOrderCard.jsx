@@ -1,7 +1,8 @@
 import {
   buildKitchenCountdown,
   formatServiceLabel,
-  getOrderAction
+  getOrderAction,
+  groupKitchenItems
 } from '../utils/cocinaHelpers';
 
 const SERVICE_CLASSES = {
@@ -152,12 +153,10 @@ export default function CocinaOrderCard({
   const isExpiring = countdown.isDelayed;
 
   const allItems = Array.isArray(pedido.items) ? pedido.items : [];
+  const itemGroups = groupKitchenItems(allItems);
 
   const isLargeScreenOrder = isScreenMode && allItems.length > 4;
   const isDensePendingCard = !isScreenMode && isPendingColumn && allItems.length > 3;
-  const denseSplitIndex = Math.ceil(allItems.length / 2);
-  const denseLeftItems = isDensePendingCard ? allItems.slice(0, denseSplitIndex) : allItems;
-  const denseRightItems = isDensePendingCard ? allItems.slice(denseSplitIndex) : [];
 
   const showAdvanceBtn = canAdvance || isSuperAdmin;
   const tipoPedidoLabel = String(pedido?.tipo_servicio || '').trim()
@@ -279,12 +278,16 @@ export default function CocinaOrderCard({
         ) : null}
 
         <div className="kds-card__body-scroll">
-          <div className="kds-card__items">
-            {denseLeftItems.map(renderItem)}
-          </div>
-          {isDensePendingCard ? (
-            <div className="kds-card__items kds-card__items--secondary">
-              {denseRightItems.map(renderItem)}
+          {itemGroups.preparar.length > 0 ? (
+            <div className="kds-card__item-group">
+              <div className="kds-card__item-group-label">PREPARAR</div>
+              <div className="kds-card__items">{itemGroups.preparar.map(renderItem)}</div>
+            </div>
+          ) : null}
+          {itemGroups.entregarJunto.length > 0 ? (
+            <div className="kds-card__item-group is-delivery-reminder">
+              <div className="kds-card__item-group-label">ENTREGAR JUNTO CON EL PEDIDO</div>
+              <div className="kds-card__items">{itemGroups.entregarJunto.map(renderItem)}</div>
             </div>
           ) : null}
 
@@ -292,7 +295,7 @@ export default function CocinaOrderCard({
             <div className="kds-card__order-note">
               <span className="kds-card__order-note-label">Nota general del pedido</span>
               <div className="kds-card__order-note-text">
-                {pedido.nota_general_pedido.join(' · ')}
+                {pedido.nota_general_pedido.join(' Â· ')}
               </div>
             </div>
           ) : null}
