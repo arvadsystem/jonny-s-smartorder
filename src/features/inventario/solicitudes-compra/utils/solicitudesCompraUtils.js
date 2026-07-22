@@ -26,13 +26,86 @@ export const getDraftLineKey = (line) => [
   line?.id_presentacion_insumo ? Number(line.id_presentacion_insumo) : 'base'
 ].join(':');
 
+const DECIMAL_SCALE = 10_000n;
+
+const decimalToScaled4 = (value) => {
+  const text = String(value ?? '').trim();
+  if (!/^\d+(?:\.\d{1,4})?$/.test(text)) return null;
+  const [whole, fraction = ''] = text.split('.');
+  return BigInt(whole) * DECIMAL_SCALE + BigInt(fraction.padEnd(4, '0') || '0');
+};
+
+const scaled4ToCanonical = (scaled) => {
+  const integer = scaled / DECIMAL_SCALE;
+  const fraction = String(scaled % DECIMAL_SCALE).padStart(4, '0').replace(/0+$/, '');
+  return fraction ? `${integer}.${fraction}` : String(integer);
+};
+
+export const addDecimalQuantities = (left, right) => {
+  const leftScaled = decimalToScaled4(left);
+  const rightScaled = decimalToScaled4(right);
+  if (leftScaled === null || rightScaled === null) return null;
+  return scaled4ToCanonical(leftScaled + rightScaled);
+};
+
+const multiplyVisualQuantity = (quantity, factor) => {
+  const quantityScaled = decimalToScaled4(quantity);
+  const factorScaled = decimalToScaled4(factor);
+  if (quantityScaled === null || factorScaled === null) return null;
+  const raw = quantityScaled * factorScaled;
+  const roundedScaled = (raw + DECIMAL_SCALE / 2n) / DECIMAL_SCALE;
+  return scaled4ToCanonical(roundedScaled);
+};
+
+const formatVisualNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 4, useGrouping: true }).format(parsed)
+    : String(value);
+};
+
+export const buildVisualEquivalence = (line) => {
+  if (!line?.id_presentacion_insumo || !line?.factor_conversion_visual) return null;
+  const baseQuantity = multiplyVisualQuantity(line.cantidad, line.factor_conversion_visual);
+  if (baseQuantity === null) return null;
+  const presentation = String(line.nombre_presentacion_visual || line.presentacion || 'Presentación');
+  const baseUnit = String(line.unidad_base_visual || 'Unidad base');
+  return `${formatVisualNumber(line.cantidad)} ${presentation} ≈ ${formatVisualNumber(baseQuantity)} ${baseUnit}`;
+};
+
+export const createEmptyCatalogState = (warehouseId = null, loading = false) => ({
+  items: [],
+  pagination: { page: 1, total_pages: 1 },
+  loading,
+  error: '',
+  requestedWarehouseId: warehouseId === null || warehouseId === undefined ? null : String(warehouseId)
+});
+
+export const createCatalogRequestCoordinator = () => {
+  let currentRequestId = 0;
+  return {
+    begin(warehouseId) {
+      currentRequestId += 1;
+      return { requestId: currentRequestId, warehouseId: String(warehouseId ?? '') };
+    },
+    invalidate() { currentRequestId += 1; },
+    isCurrent(token, warehouseId) {
+      return Boolean(token)
+        && token.requestId === currentRequestId
+        && token.warehouseId === String(warehouseId ?? '');
+    }
+  };
+};
+
 export const upsertDraftLine = (lines, incoming) => {
   const key = getDraftLineKey(incoming);
   const current = Array.isArray(lines) ? lines : [];
   const existingIndex = current.findIndex((line) => getDraftLineKey(line) === key);
   if (existingIndex < 0) return { lines: [...current, incoming], merged: false };
   const next = [...current];
-  next[existingIndex] = { ...next[existingIndex], cantidad: Number(next[existingIndex].cantidad) + Number(incoming.cantidad) };
+  const combinedQuantity = addDecimalQuantities(next[existingIndex].cantidad, incoming.cantidad);
+  if (combinedQuantity === null) return { lines: current, merged: false };
+  next[existingIndex] = { ...next[existingIndex], cantidad: combinedQuantity };
   return { lines: next, merged: true };
 };
 

@@ -1,4 +1,4 @@
-import { parseRequestedQuantity } from '../utils/solicitudesCompraUtils';
+import { buildVisualEquivalence, parseRequestedQuantity } from '../utils/solicitudesCompraUtils';
 
 export default function SolicitudCompraResumen({ lines, onChange, onRemove, observation, setObservation, submitting, onSubmit, disabled }) {
   return (
@@ -6,8 +6,9 @@ export default function SolicitudCompraResumen({ lines, onChange, onRemove, obse
       <h3 id="summary-title">Resumen de solicitud</h3>
       {!lines.length ? <p className="sol-comp-summary-empty">Agrega artículos desde el catálogo.</p> : lines.map((line, index) => {
         const valid = parseRequestedQuantity(line.cantidad, line.tipo_item);
+        const visualEquivalence = buildVisualEquivalence(line);
         return <div className="sol-comp-summary-line" key={`${line.tipo_item}-${line.id_item}-${line.id_presentacion_insumo || 'base'}`}>
-          <div><strong>{line.nombre}</strong><small>{line.tipo_item === 'producto' ? 'Producto' : 'Insumo'} · {line.presentacion}</small>{line.equivalencia ? <small>{line.equivalencia}</small> : null}</div>
+          <div><strong>{line.nombre}</strong><small>{line.tipo_item === 'producto' ? 'Producto' : 'Insumo'} · {line.presentacion}</small>{visualEquivalence ? <small>{visualEquivalence}</small> : null}</div>
           <label>Cantidad<input type="number" min="0" step={line.tipo_item === 'producto' ? '1' : '0.0001'} value={line.cantidad} aria-invalid={!valid} onChange={(event) => onChange(index, event.target.value)} /></label>
           <button type="button" className="btn btn-outline-danger btn-sm" aria-label={`Eliminar ${line.nombre}`} onClick={() => onRemove(index)}><i className="bi bi-trash" /></button>
         </div>;

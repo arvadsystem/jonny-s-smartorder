@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { inventarioService } from '../../../../services/inventarioService';
 import { solicitudesCompraService } from '../../../../services/solicitudesCompraService';
-import { mapSolicitudError } from '../utils/solicitudesCompraUtils';
+import {
+  createCatalogRequestCoordinator,
+  createEmptyCatalogState,
+  mapSolicitudError
+} from '../utils/solicitudesCompraUtils';
 
 const INITIAL_LIST = { solicitudes: [], pagination: { page: 1, total_pages: 1, total: 0 } };
 
@@ -12,8 +16,9 @@ export default function useSolicitudesCompra({ canView, openToast }) {
   const [detailState, setDetailState] = useState({ id: null, data: null, loading: false, error: '' });
   const [warehouses, setWarehouses] = useState([]);
   const [warehousesLoading, setWarehousesLoading] = useState(false);
-  const [catalogState, setCatalogState] = useState({ items: [], pagination: { page: 1, total_pages: 1 }, loading: false, error: '' });
+  const [catalogState, setCatalogState] = useState(() => createEmptyCatalogState());
   const listRequest = useRef(0);
+  const catalogRequest = useRef(createCatalogRequestCoordinator());
   const submitLock = useRef(false);
 
   const loadList = useCallback(async ({ page = 1, estado = '' } = {}) => {
@@ -62,15 +67,20 @@ export default function useSolicitudesCompra({ canView, openToast }) {
   }, []);
 
   const loadCatalog = useCallback(async (options) => {
-    setCatalogState((current) => ({ ...current, loading: true, error: '' }));
+    const warehouseId = String(options?.id_almacen ?? '');
+    const requestToken = catalogRequest.current.begin(warehouseId);
+    setCatalogState(createEmptyCatalogState(warehouseId, true));
     try {
       const payload = await solicitudesCompraService.getCatalogo({ ...options, limit: 12 });
+      if (!catalogRequest.current.isCurrent(requestToken, warehouseId)) return;
       setCatalogState({
         items: Array.isArray(payload?.items) ? payload.items : Array.isArray(payload?.catalogo) ? payload.catalogo : [],
-        pagination: payload?.pagination || { page: options?.page || 1, total_pages: 1 }, loading: false, error: ''
+        pagination: payload?.pagination || { page: options?.page || 1, total_pages: 1 },
+        loading: false, error: '', requestedWarehouseId: warehouseId
       });
     } catch (error) {
-      setCatalogState((current) => ({ ...current, loading: false, error: mapSolicitudError(error) }));
+      if (!catalogRequest.current.isCurrent(requestToken, warehouseId)) return;
+      setCatalogState({ ...createEmptyCatalogState(warehouseId), error: mapSolicitudError(error) });
     }
   }, []);
 
