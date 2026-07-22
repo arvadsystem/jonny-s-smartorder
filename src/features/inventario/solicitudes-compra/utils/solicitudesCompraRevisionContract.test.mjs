@@ -16,7 +16,7 @@ test('servicio usa endpoints administrativos exactos y URLSearchParams', async (
   assert.match(source, /aprobarSolicitud:[\s\S]*encodeURIComponent[\s\S]*\/aprobar`[\s\S]*'PUT'/);
   assert.match(source, /rechazarSolicitud:[\s\S]*encodeURIComponent[\s\S]*\/rechazar`[\s\S]*'PUT'/);
   assert.match(source, /new URLSearchParams/);
-  assert.doesNotMatch(source, /\/recibir|\/evidencias|orden_compras|detalle_compras|ordenes_compra_workflow/);
+  assert.doesNotMatch(source, /orden_compras|detalle_compras|ordenes_compra_workflow/);
 });
 
 test('permisos administrativos se calculan exclusivamente con constantes autorizadas', async () => {
@@ -66,9 +66,8 @@ test('confirmacion es inline, no usa modal y conserva el borrador al volver', as
 
 test('feature no implementa recepcion factura archivos ni clientes Supabase', async () => {
   const files = await Promise.all([
-    '../SolicitudesCompraTab.jsx', '../components/SolicitudCompraRevisionPanel.jsx',
-    '../components/SolicitudCompraRevisionLinea.jsx', '../hooks/useSolicitudCompraRevision.js',
-    '../utils/solicitudesCompraRevisionUtils.js', '../../../../services/solicitudesCompraService.js'
+    '../components/SolicitudCompraRevisionPanel.jsx', '../components/SolicitudCompraRevisionLinea.jsx',
+    '../hooks/useSolicitudCompraRevision.js', '../utils/solicitudesCompraRevisionUtils.js'
   ].map(read));
   assert.doesNotMatch(files.join('\n'), /\/recibir|\/evidencias|factura|createSignedUrl|supabase|service_role|precio|costo|impuesto|cantidad_base_aprobada/i);
 });

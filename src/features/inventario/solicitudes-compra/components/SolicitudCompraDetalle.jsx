@@ -1,10 +1,12 @@
 import SolicitudCompraEstado from './SolicitudCompraEstado';
 import SolicitudCompraRevisionPanel from './SolicitudCompraRevisionPanel';
+import SolicitudCompraRecepcionPanel from './SolicitudCompraRecepcionPanel';
+import SolicitudCompraEvidencias from './SolicitudCompraEvidencias';
 import { formatDateTime } from '../utils/solicitudesCompraUtils';
 
 const value = (raw) => raw === null || raw === undefined ? '—' : raw;
 
-export default function SolicitudCompraDetalle({ state, onBack, onRetry, reloadDetail, reloadList, canApprove, canReject, openToast }) {
+export default function SolicitudCompraDetalle({ state, onBack, onRetry, reloadDetail, reloadList, canApprove, canReject, canReceive, canViewEvidence, openToast }) {
   if (state.loading) return <div className="sol-comp-feedback" aria-live="polite">Cargando detalle…</div>;
   if (state.error) return <div className="sol-comp-feedback sol-comp-feedback--error"><span>{state.error}</span><button type="button" className="btn btn-outline-danger btn-sm" onClick={onRetry}>Reintentar</button><button type="button" className="btn btn-link btn-sm" onClick={onBack}>Volver</button></div>;
   const payload = state.data || {};
@@ -23,6 +25,7 @@ export default function SolicitudCompraDetalle({ state, onBack, onRetry, reloadD
       </div>
       {request.observacion_solicitud ? <div className="sol-comp-note"><strong>Observación de solicitud</strong><p>{request.observacion_solicitud}</p></div> : null}
       {request.comentario_revision ? <div className="sol-comp-note"><strong>Comentario de Administración</strong><p>{request.comentario_revision}</p></div> : null}
+      {request.observacion_recepcion ? <div className="sol-comp-note"><strong>Observación de recepción</strong><p>{request.observacion_recepcion}</p></div> : null}
       <div className="sol-comp-detail-lines">{details.map((line) => (
         <article key={line.id_solicitud_detalle ?? 'invalid-contract-detail'}>
           <div className="sol-comp-card-top"><strong>{line.nombre}</strong><span>{line.tipo_item === 'PRODUCTO' ? 'Producto' : 'Insumo'}</span></div>
@@ -42,6 +45,22 @@ export default function SolicitudCompraDetalle({ state, onBack, onRetry, reloadD
           reloadList={reloadList}
           openToast={openToast}
         />
+      ) : null}
+      {String(request.estado || '').toUpperCase() === 'APROBADA' && canReceive ? (
+        <SolicitudCompraRecepcionPanel
+          key={request.id_solicitud_compra}
+          solicitud={request}
+          detalles={details}
+          canReceive={canReceive}
+          reloadDetail={reloadDetail}
+          reloadList={reloadList}
+          openToast={openToast}
+        />
+      ) : null}
+      {request.tiene_evidencia && canViewEvidence ? (
+        <div className="sol-comp-evidence-access">
+          <SolicitudCompraEvidencias key={request.id_solicitud_compra} idSolicitud={request.id_solicitud_compra} />
+        </div>
       ) : null}
     </section>
   );

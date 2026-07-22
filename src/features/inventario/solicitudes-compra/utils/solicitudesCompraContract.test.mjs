@@ -10,7 +10,7 @@ test('servicio usa exclusivamente endpoints nuevos autorizados', async () => {
   assert.match(source, /crearSolicitud:[\s\S]*\/solicitudes_compra'[\s\S]*'POST'/);
   assert.match(source, /getSolicitudes:[\s\S]*\/solicitudes_compra/);
   assert.match(source, /getSolicitudById:[\s\S]*\/solicitudes_compra\/\$\{/);
-  assert.doesNotMatch(source, /orden_compras|detalle_orden_compras|ordenes_compra_workflow|\/compras|recibir|evidencias/);
+  assert.doesNotMatch(source, /orden_compras|detalle_orden_compras|ordenes_compra_workflow|\/compras/);
 });
 test('query params usan URLSearchParams y omiten vacios', async () => {
   const source = await read('../../../../services/solicitudesCompraService.js');
@@ -37,8 +37,8 @@ test('flujo no contiene polling ni modales', async () => {
   const tab = await read('../SolicitudesCompraTab.jsx');
   assert.doesNotMatch(hook, /setInterval|polling/i); assert.doesNotMatch(tab, /modal/i);
 });
-test('flujo no implementa factura, evidencia, recepcion o proveedor', async () => {
-  const files = await Promise.all(['../SolicitudesCompraTab.jsx', '../hooks/useSolicitudesCompra.js', '../components/NuevaSolicitudCompra.jsx'].map(read));
+test('creacion operativa permanece separada de recepcion, evidencia y proveedores', async () => {
+  const files = await Promise.all(['../hooks/useSolicitudesCompra.js', '../components/NuevaSolicitudCompra.jsx'].map(read));
   assert.doesNotMatch(files.join('\n'), /factura|createSignedUrl|subir.*imagen|\/recibir|\/evidencias|\/proveedores/i);
 });
 test('no hay imports Supabase ni credenciales o project IDs', async () => {
