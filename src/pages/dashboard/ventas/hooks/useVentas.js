@@ -34,7 +34,8 @@ import {
 } from '../utils/ventasClientRequestManager';
 import {
   createVentasListRequestManager,
-  isCancelledVentasListRequest
+  isCancelledVentasListRequest,
+  scheduleVentasActiveTabLoad
 } from '../utils/ventasListRequestManager';
 import { mergeVentasClienteCatalogOption } from '../utils/ventasClientesCatalogUtils';
 
@@ -143,6 +144,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const ventasLastFiltersRef = useRef(null);
   const ventasTodayRef = useRef(getTegucigalpaToday());
   const ventasFollowDefaultRangeRef = useRef(true);
+  const ventasPendingDaySyncRef = useRef(null);
 
   const invalidateVentasTotalsCache = useCallback(() => {
     ventasTotalsCacheRef.current = { key: '', summary: null, pagination: null };
@@ -192,11 +194,19 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       const nextToday = getTegucigalpaToday();
       if (previousToday === nextToday) return;
       ventasTodayRef.current = nextToday;
-      setVentasFilters((current) => resolveVentasFiltersForTegucigalpaDayChange(current, {
-        previousToday,
-        nextToday,
-        followDefaultRange: ventasFollowDefaultRangeRef.current
-      }).filters);
+      const pendingSync = { previousToday, nextToday };
+      ventasPendingDaySyncRef.current = pendingSync;
+      setVentasFilters((current) => {
+        const result = resolveVentasFiltersForTegucigalpaDayChange(current, {
+          previousToday,
+          nextToday,
+          followDefaultRange: ventasFollowDefaultRangeRef.current
+        });
+        if (!result.changed && ventasPendingDaySyncRef.current === pendingSync) {
+          ventasPendingDaySyncRef.current = null;
+        }
+        return result.filters;
+      });
     };
 
     const handleFocus = () => {
@@ -208,6 +218,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       handleFocus();
     };
 
+    syncTegucigalpaDay();
     scheduleNextDayCheck();
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -253,6 +264,19 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   }, [activeTab, cajaUserKey]);
 
   const loadVentas = useCallback(async (options = {}) => {
+    const pendingDaySync = ventasPendingDaySyncRef.current;
+    if (pendingDaySync) {
+      if (
+        ventasFollowDefaultRangeRef.current &&
+        isVentasDefaultTemporalRange(ventasFilters, pendingDaySync.previousToday)
+      ) return null;
+      if (
+        isVentasDefaultTemporalRange(ventasFilters, pendingDaySync.nextToday) ||
+        !ventasFollowDefaultRangeRef.current
+      ) {
+        ventasPendingDaySyncRef.current = null;
+      }
+    }
     const manager = ventasListRequestManagerRef.current;
     const request = manager.start();
     const suppressErrors = Boolean(options?.suppressErrors);
@@ -1082,7 +1106,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   useEffect(() => {
     let active = true;
     const catalogAbortControllers = cajaCatalogAbortRef.current;
-    void (async () => {
+    const loadActiveTab = async () => {
       if (String(activeTab || '').toLowerCase() === 'caja') {
         let idSucursal = parsePositiveId(initialSucursalId);
         await loadCajaBootstrap(idSucursal ? { id_sucursal: idSucursal } : {});
@@ -1099,9 +1123,13 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       } else {
         setCatalogLoading(false);
       }
-    })();
+    };
+    const cancelScheduledLoad = scheduleVentasActiveTabLoad(() => {
+      if (active) void loadActiveTab();
+    });
     return () => {
       active = false;
+      cancelScheduledLoad();
       ventasListRequestManagerRef.current?.abort();
       cajaBootstrapAbortRef.current?.abort();
       clientesRequestManagerRef.current?.abort();

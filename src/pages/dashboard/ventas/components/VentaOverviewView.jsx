@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AppSelect from '../../../../components/common/AppSelect';
 import {
   createDefaultVentasTemporalFilters,
   getTegucigalpaToday,
   getVentasCashierMinDate,
+  resolveVentasDraftForAppliedDayChange,
   validateVentasTemporalFilters
 } from '../../../../modules/ventas/utils/ventasTemporalFilters';
 import VentasList from './VentasList';
@@ -65,6 +66,7 @@ export default function VentaOverviewView({
     horaDesde: ventasFilters?.horaDesde || '',
     horaHasta: ventasFilters?.horaHasta || ''
   }));
+  const previousAppliedFiltersRef = useRef(ventasFilters);
   const today = getTegucigalpaToday();
   const cashierMinDate = scopeInfo?.limitedToLast72Hours ? getVentasCashierMinDate() : undefined;
   const isSingleDay = Boolean(
@@ -93,6 +95,16 @@ export default function VentaOverviewView({
       ...rows
     ];
   }, [scopeInfo, sucursales]);
+
+  useEffect(() => {
+    const previousAppliedFilters = previousAppliedFiltersRef.current;
+    previousAppliedFiltersRef.current = ventasFilters;
+    if (!filtersOpen) return;
+    setFiltersDraft((current) => resolveVentasDraftForAppliedDayChange(current, {
+      previousAppliedFilters,
+      nextAppliedFilters: ventasFilters
+    }).filters);
+  }, [filtersOpen, ventasFilters]);
 
   const openFiltersDrawer = () => {
     setFiltersDraft({

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   createVentasListRequestManager,
-  isCancelledVentasListRequest
+  isCancelledVentasListRequest,
+  scheduleVentasActiveTabLoad
 } from './ventasListRequestManager.js';
 
 const createStateHarness = () => ({
@@ -89,4 +90,16 @@ test('cambios rapidos siempre invalidan fecha, sucursal, estado, busqueda, pagin
   const requests = ['fecha', 'sucursal', 'estado', 'busqueda', 'pagina', 'limpiar'].map(() => manager.start());
   requests.slice(0, -1).forEach((request) => assert.equal(manager.isCurrent(request), false));
   assert.equal(manager.isCurrent(requests.at(-1)), true);
+});
+
+test('Strict Mode cancela el efecto especulativo y ejecuta una sola carga vigente', async () => {
+  const started = [];
+  const cancelSpeculative = scheduleVentasActiveTabLoad(() => started.push('speculative'));
+  cancelSpeculative();
+  const cancelCurrent = scheduleVentasActiveTabLoad(() => started.push('current'));
+
+  await new Promise((resolve) => queueMicrotask(resolve));
+
+  assert.deepEqual(started, ['current']);
+  cancelCurrent();
 });

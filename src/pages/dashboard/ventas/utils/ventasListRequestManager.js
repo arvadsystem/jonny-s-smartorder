@@ -39,3 +39,13 @@ export const isCancelledVentasListRequest = (error, request, manager) => Boolean
   error?.name === 'AbortError' ||
   error?.code === 'ABORT_ERR'
 );
+
+export const scheduleVentasActiveTabLoad = (callback) => {
+  let cancelled = false;
+  queueMicrotask(() => {
+    if (!cancelled) callback();
+  });
+  return () => {
+    cancelled = true;
+  };
+};

@@ -5,6 +5,7 @@ import {
   getMillisecondsUntilNextTegucigalpaDay,
   getTegucigalpaToday,
   getVentasCashierMinDate,
+  resolveVentasDraftForAppliedDayChange,
   resolveVentasFiltersForTegucigalpaDayChange,
   validateVentasTemporalFilters
 } from './ventasTemporalFilters.js';
@@ -81,10 +82,39 @@ test('calcula la proxima medianoche exclusivamente en Tegucigalpa', () => {
   assert.equal(getMillisecondsUntilNextTegucigalpaDay(new Date('2026-07-22T06:00:00.000Z')), 24 * 60 * 60 * 1000);
 });
 
+test('sincronizacion de medianoche cruza dia, mes, anio y febrero bisiesto', () => {
+  const cases = [
+    ['2026-07-22T05:59:59.000Z', '2026-07-22T06:00:00.000Z'],
+    ['2026-08-01T05:59:59.000Z', '2026-08-01T06:00:00.000Z'],
+    ['2026-01-01T05:59:59.000Z', '2026-01-01T06:00:00.000Z'],
+    ['2024-03-01T05:59:59.000Z', '2024-03-01T06:00:00.000Z']
+  ];
+  for (const [before, after] of cases) {
+    const previousToday = getTegucigalpaToday(new Date(before));
+    const nextToday = getTegucigalpaToday(new Date(after));
+    const current = {
+      search: 'conservar', idSucursal: 3, estado: 'LISTO', pageSize: 12, page: 3,
+      fechaDesde: previousToday, fechaHasta: previousToday, horaDesde: '', horaHasta: ''
+    };
+    const result = resolveVentasFiltersForTegucigalpaDayChange(current, {
+      previousToday,
+      nextToday,
+      followDefaultRange: true
+    });
+    assert.equal(result.changed, true, `${previousToday} -> ${nextToday}`);
+    assert.deepEqual(result.filters, {
+      ...current,
+      fechaDesde: nextToday,
+      fechaHasta: nextToday,
+      page: 1
+    });
+  }
+});
+
 test('cambio de dia actualiza solo el rango predeterminado y conserva otros filtros', () => {
   const current = {
     search: 'ana', idSucursal: 4, estado: 'COMPLETADA',
-    fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: '', page: 3
+    fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: '', page: 3, pageSize: 24
   };
   const result = resolveVentasFiltersForTegucigalpaDayChange(current, {
     previousToday: '2026-07-21', nextToday: '2026-07-22', followDefaultRange: true
@@ -99,8 +129,64 @@ test('cambio de dia respeta fecha manual, rango horario y modo manual', () => {
   const options = { previousToday: '2026-07-21', nextToday: '2026-07-22', followDefaultRange: true };
   const manualDate = { fechaDesde: '2026-07-20', fechaHasta: '2026-07-20', horaDesde: '', horaHasta: '', page: 2 };
   const manualHours = { fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '08:00', horaHasta: '09:00', page: 2 };
+  const multipleDays = { fechaDesde: '2026-07-20', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: '', page: 2 };
   const defaultButManual = { fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: '', page: 2 };
   assert.equal(resolveVentasFiltersForTegucigalpaDayChange(manualDate, options).changed, false);
   assert.equal(resolveVentasFiltersForTegucigalpaDayChange(manualHours, options).changed, false);
+  assert.equal(resolveVentasFiltersForTegucigalpaDayChange(multipleDays, options).changed, false);
   assert.equal(resolveVentasFiltersForTegucigalpaDayChange(defaultButManual, { ...options, followDefaultRange: false }).changed, false);
+});
+
+test('borrador predeterminado sigue el cambio aplicado y conserva filtros no temporales', () => {
+  const previousAppliedFilters = {
+    fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: ''
+  };
+  const nextAppliedFilters = {
+    fechaDesde: '2026-07-22', fechaHasta: '2026-07-22', horaDesde: '', horaHasta: ''
+  };
+  const draft = {
+    search: 'nuevo texto', idSucursal: '8', estado: 'PENDIENTE',
+    fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: ''
+  };
+  const result = resolveVentasDraftForAppliedDayChange(draft, {
+    previousAppliedFilters,
+    nextAppliedFilters
+  });
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.filters, {
+    ...draft,
+    fechaDesde: '2026-07-22',
+    fechaHasta: '2026-07-22'
+  });
+});
+
+test('borrador manual no cambia por fecha, multiples dias ni rango horario', () => {
+  const appliedChange = {
+    previousAppliedFilters: {
+      fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: ''
+    },
+    nextAppliedFilters: {
+      fechaDesde: '2026-07-22', fechaHasta: '2026-07-22', horaDesde: '', horaHasta: ''
+    }
+  };
+  const drafts = [
+    { fechaDesde: '2026-07-20', fechaHasta: '2026-07-20', horaDesde: '', horaHasta: '' },
+    { fechaDesde: '2026-07-20', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: '' },
+    { fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '08:00', horaHasta: '12:00' }
+  ];
+  for (const draft of drafts) {
+    const result = resolveVentasDraftForAppliedDayChange(draft, appliedChange);
+    assert.equal(result.changed, false);
+    assert.equal(result.filters, draft);
+  }
+});
+
+test('sin cambio aplicado de dia el borrador permanece intacto', () => {
+  const draft = { fechaDesde: '2026-07-21', fechaHasta: '2026-07-21', horaDesde: '', horaHasta: '' };
+  const result = resolveVentasDraftForAppliedDayChange(draft, {
+    previousAppliedFilters: draft,
+    nextAppliedFilters: { ...draft, search: 'ana' }
+  });
+  assert.equal(result.changed, false);
+  assert.equal(result.filters, draft);
 });

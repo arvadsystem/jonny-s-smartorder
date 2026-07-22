@@ -97,6 +97,34 @@ export const resolveVentasFiltersForTegucigalpaDayChange = (
   };
 };
 
+export const resolveVentasDraftForAppliedDayChange = (
+  draft = {},
+  { previousAppliedFilters = {}, nextAppliedFilters = {} } = {}
+) => {
+  const previousDay = String(previousAppliedFilters.fechaDesde || '');
+  const nextDay = String(nextAppliedFilters.fechaDesde || '');
+  const appliedRangeChangedDay = Boolean(
+    previousDay &&
+    nextDay &&
+    previousDay !== nextDay &&
+    isVentasDefaultTemporalRange(previousAppliedFilters, previousDay) &&
+    isVentasDefaultTemporalRange(nextAppliedFilters, nextDay)
+  );
+  if (!appliedRangeChangedDay || !isVentasDefaultTemporalRange(draft, previousDay)) {
+    return { changed: false, filters: draft };
+  }
+  return {
+    changed: true,
+    filters: {
+      ...draft,
+      fechaDesde: nextDay,
+      fechaHasta: nextDay,
+      horaDesde: '',
+      horaHasta: ''
+    }
+  };
+};
+
 export const createDefaultVentasTemporalFilters = (now = new Date()) => {
   const today = getTegucigalpaToday(now);
   return {

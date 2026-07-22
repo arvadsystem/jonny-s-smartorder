@@ -47,8 +47,29 @@ test('listado cancela la anterior e ignora respuestas obsoletas antes de actuali
 });
 
 test('vigila medianoche, foco y reanudacion sin polling agresivo', () => {
+  assert.match(hookSource, /if \(String\(activeTab \|\| ''\)\.toLowerCase\(\) !== 'ventas'\) return undefined;/);
   assert.match(hookSource, /getMillisecondsUntilNextTegucigalpaDay\(\) \+ 50/);
+  assert.match(hookSource, /syncTegucigalpaDay\(\);\s*scheduleNextDayCheck\(\);\s*window\.addEventListener/);
   assert.match(hookSource, /window\.addEventListener\('focus', handleFocus\)/);
   assert.match(hookSource, /document\.addEventListener\('visibilitychange', handleVisibilityChange\)/);
+  assert.match(hookSource, /window\.removeEventListener\('focus', handleFocus\)/);
+  assert.match(hookSource, /document\.removeEventListener\('visibilitychange', handleVisibilityChange\)/);
+  assert.match(hookSource, /if \(timerId\) clearTimeout\(timerId\)/);
   assert.match(hookSource, /resolveVentasFiltersForTegucigalpaDayChange/);
+  assert.equal(hookSource.match(/window\.addEventListener\('focus', handleFocus\)/g)?.length, 1);
+  assert.equal(hookSource.match(/document\.addEventListener\('visibilitychange', handleVisibilityChange\)/g)?.length, 1);
+});
+
+test('reentrada difiere la carga anterior y Strict Mode descarta el efecto especulativo', () => {
+  assert.match(hookSource, /ventasPendingDaySyncRef/);
+  assert.match(hookSource, /isVentasDefaultTemporalRange\(ventasFilters, pendingDaySync\.previousToday\)[\s\S]*?return null/);
+  assert.match(hookSource, /scheduleVentasActiveTabLoad\(\(\) => \{\s*if \(active\) void loadActiveTab\(\);/);
+  assert.match(hookSource, /active = false;\s*cancelScheduledLoad\(\);/);
+});
+
+test('panel abierto sincroniza solo el borrador temporal predeterminado', () => {
+  assert.match(viewSource, /previousAppliedFiltersRef = useRef\(ventasFilters\)/);
+  assert.match(viewSource, /previousAppliedFiltersRef\.current = ventasFilters;\s*if \(!filtersOpen\) return;/);
+  assert.match(viewSource, /resolveVentasDraftForAppliedDayChange\(current, \{[\s\S]*?previousAppliedFilters,[\s\S]*?nextAppliedFilters: ventasFilters/);
+  assert.match(viewSource, /const openFiltersDrawer = \(\) => \{[\s\S]*?fechaDesde: ventasFilters\?\.fechaDesde/);
 });
