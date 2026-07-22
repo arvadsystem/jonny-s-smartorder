@@ -252,6 +252,7 @@
 }
 
 .cierres-caja-detail-shell .ventas-modal__header {
+  flex: 0 0 auto;
   padding: 12px 16px;
   gap: 12px;
 }
@@ -286,9 +287,20 @@
 }
 
 .cierres-caja-detail-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 0;
   padding: 12px 16px 16px;
   gap: 12px;
-  overflow-x: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.cierres-caja-detail-body > * {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .cierres-caja-detail-summary {
@@ -393,11 +405,11 @@
 
 .cierres-caja-detail-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
+  overflow: visible;
   padding: 2px 0 8px;
   border-bottom: 1px solid rgba(157, 150, 112, 0.16);
-  scrollbar-width: thin;
 }
 
 .cierres-caja-detail-tab {
@@ -431,6 +443,7 @@
 
 .cierres-caja-detail-resolution-cta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -441,9 +454,16 @@
 }
 
 .cierres-caja-detail-resolution-cta > div {
+  flex: 1 1 320px;
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+
+.cierres-caja-detail-resolution-cta .btn {
+  flex: 0 0 auto;
+  max-width: 100%;
+  white-space: normal;
 }
 
 .cierres-caja-detail-resolution-cta strong {
@@ -1479,6 +1499,11 @@
     flex-direction: column;
   }
 
+  .cierres-caja-detail-resolution-cta > div {
+    flex: 0 1 auto;
+    width: 100%;
+  }
+
   .cierres-caja-detail-resolution-cta .btn {
     width: 100%;
   }
@@ -1537,31 +1562,24 @@
   }
 
   .cierres-caja-detail__badges {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 6px;
-    overflow-x: auto;
+    overflow: visible;
     padding-bottom: 2px;
-    scrollbar-width: none;
-  }
-
-  .cierres-caja-detail__badges::-webkit-scrollbar {
-    display: none;
   }
 
   .cierres-caja-detail__badges .ventas-page__table-pill {
-    flex: 0 0 auto;
-    max-width: 210px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    flex: 0 1 auto;
+    max-width: 100%;
+    white-space: normal;
   }
 
   .cierres-caja-detail-tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
-    overflow-x: auto;
+    overflow: visible;
     padding: 0 0 8px;
-    scrollbar-width: thin;
   }
 
   .cierres-caja-detail-tab {
