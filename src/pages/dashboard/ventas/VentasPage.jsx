@@ -75,6 +75,7 @@ export default function VentasPage() {
     pagination,
     scopeInfo,
     ventasFilters,
+    ventasCurrentDay,
     sucursales,
     categorias,
     productos,
@@ -103,7 +104,6 @@ export default function VentasPage() {
     setVentasSearch,
     setVentasPage,
     setVentasPageSize,
-    setVentasSucursal,
     setVentasFilterPatch,
     clearVentasFilters,
     createVenta,
@@ -1128,6 +1128,7 @@ export default function VentasPage() {
           pagination={pagination}
           scopeInfo={scopeInfo}
           ventasFilters={ventasFilters}
+          ventasCurrentDay={ventasCurrentDay}
           sucursales={sucursales}
           loading={loading}
           error={error}
@@ -1135,7 +1136,6 @@ export default function VentasPage() {
           onSearchChange={setVentasSearch}
           onPageChange={setVentasPage}
           onPageSizeChange={setVentasPageSize}
-          onSucursalChange={setVentasSucursal}
           onFiltersChange={setVentasFilterPatch}
           onClearFilters={clearVentasFilters}
           onOpenDetail={openDetail}

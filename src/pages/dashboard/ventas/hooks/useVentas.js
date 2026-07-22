@@ -11,6 +11,12 @@ import {
   createDefaultVentasToast
 } from '../../../../modules/ventas/constants/ventasDefaults';
 import {
+  getMillisecondsUntilNextTegucigalpaDay,
+  getTegucigalpaToday,
+  isVentasDefaultTemporalRange,
+  resolveVentasDayTransition
+} from '../../../../modules/ventas/utils/ventasTemporalFilters';
+import {
   buildCategoriasMap,
   extractApiMessage,
   normalizeCategoriaRecord,
@@ -26,6 +32,12 @@ import {
   isCancelledVentasClientRequest,
   shouldRequestVentasClients
 } from '../utils/ventasClientRequestManager';
+import {
+  abortVentasListAndResetLoading,
+  createVentasListRequestManager,
+  isCancelledVentasListRequest,
+  scheduleVentasActiveTabLoad
+} from '../utils/ventasListRequestManager';
 import { mergeVentasClienteCatalogOption } from '../utils/ventasClientesCatalogUtils';
 
 const isTruthyState = (value) =>
@@ -53,6 +65,8 @@ const buildVentasTotalsCacheKey = (filters = {}) => JSON.stringify({
   estado: String(filters.estado || '').trim().toUpperCase(),
   fechaDesde: String(filters.fechaDesde || '').trim(),
   fechaHasta: String(filters.fechaHasta || '').trim(),
+  horaDesde: String(filters.horaDesde || '').trim(),
+  horaHasta: String(filters.horaHasta || '').trim(),
   pageSize: Number.parseInt(String(filters.pageSize ?? 6), 10) || 6
 });
 
@@ -74,7 +88,12 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const [summary, setSummary] = useState(() => createDefaultVentasSummary());
   const [pagination, setPagination] = useState(() => createDefaultVentasPagination());
   const [scopeInfo, setScopeInfo] = useState(() => createDefaultVentasScopeInfo());
-  const [ventasFilters, setVentasFilters] = useState(() => createDefaultVentasFilters());
+  const [ventasCurrentDay, setVentasCurrentDay] = useState(() => getTegucigalpaToday());
+  const [ventasFilters, setVentasFilters] = useState(() => ({
+    ...createDefaultVentasFilters(),
+    fechaDesde: ventasCurrentDay,
+    fechaHasta: ventasCurrentDay
+  }));
   const [sucursales, setSucursales] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -111,6 +130,10 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   if (!clientesRequestManagerRef.current) {
     clientesRequestManagerRef.current = createVentasClientRequestManager();
   }
+  const ventasListRequestManagerRef = useRef(null);
+  if (!ventasListRequestManagerRef.current) {
+    ventasListRequestManagerRef.current = createVentasListRequestManager();
+  }
   const cajaCatalogLoadedRef = useRef(new Set());
   const cajaCatalogInFlightRef = useRef(new Map());
   const cajaBootstrapRequestIdRef = useRef(0);
@@ -125,10 +148,17 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   const activeCajaUserKeyRef = useRef(cajaUserKey);
   const ventasTotalsCacheRef = useRef({ key: '', summary: null, pagination: null });
   const ventasLastFiltersRef = useRef(null);
+  const ventasTodayRef = useRef(ventasCurrentDay);
+  const ventasFollowDefaultRangeRef = useRef(true);
+  const ventasPendingDaySyncRef = useRef(null);
 
   const invalidateVentasTotalsCache = useCallback(() => {
     ventasTotalsCacheRef.current = { key: '', summary: null, pagination: null };
     ventasLastFiltersRef.current = null;
+  }, []);
+
+  const abortVentasListRequest = useCallback(() => {
+    abortVentasListAndResetLoading(ventasListRequestManagerRef.current, setLoading);
   }, []);
 
   const openToast = useCallback((title, message, variant = 'success') => {
@@ -151,6 +181,67 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     }, 3200);
     return () => clearTimeout(timer);
   }, [toast.show]);
+
+  useEffect(() => {
+    if (String(activeTab || '').toLowerCase() !== 'ventas') return undefined;
+
+    let timerId = null;
+    let disposed = false;
+
+    const scheduleNextDayCheck = () => {
+      if (disposed) return;
+      if (timerId) clearTimeout(timerId);
+      const delayMs = getMillisecondsUntilNextTegucigalpaDay() + 50;
+      timerId = setTimeout(() => {
+        syncTegucigalpaDay();
+        scheduleNextDayCheck();
+      }, delayMs);
+    };
+
+    const syncTegucigalpaDay = () => {
+      if (disposed) return;
+      const previousToday = ventasTodayRef.current;
+      const nextToday = getTegucigalpaToday();
+      if (previousToday === nextToday) return;
+      ventasTodayRef.current = nextToday;
+      setVentasCurrentDay(nextToday);
+      abortVentasListRequest();
+      invalidateVentasTotalsCache();
+      const pendingSync = { previousToday, nextToday };
+      ventasPendingDaySyncRef.current = pendingSync;
+      setVentasFilters((current) => {
+        const result = resolveVentasDayTransition(current, {
+          previousToday,
+          nextToday,
+          followDefaultRange: ventasFollowDefaultRangeRef.current
+        });
+        if (!result.filtersChanged && ventasPendingDaySyncRef.current === pendingSync) {
+          ventasPendingDaySyncRef.current = null;
+        }
+        return result.filters;
+      });
+    };
+
+    const handleFocus = () => {
+      syncTegucigalpaDay();
+      scheduleNextDayCheck();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      handleFocus();
+    };
+
+    syncTegucigalpaDay();
+    scheduleNextDayCheck();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      disposed = true;
+      if (timerId) clearTimeout(timerId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [abortVentasListRequest, activeTab, invalidateVentasTotalsCache]);
 
   useEffect(() => {
     if (activeCajaUserKeyRef.current === cajaUserKey) return;
@@ -186,11 +277,27 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   }, [activeTab, cajaUserKey]);
 
   const loadVentas = useCallback(async (options = {}) => {
+    const pendingDaySync = ventasPendingDaySyncRef.current;
+    if (pendingDaySync) {
+      if (
+        ventasFollowDefaultRangeRef.current &&
+        isVentasDefaultTemporalRange(ventasFilters, pendingDaySync.previousToday)
+      ) return null;
+      if (
+        isVentasDefaultTemporalRange(ventasFilters, pendingDaySync.nextToday) ||
+        !ventasFollowDefaultRangeRef.current
+      ) {
+        ventasPendingDaySyncRef.current = null;
+      }
+    }
+    const manager = ventasListRequestManagerRef.current;
+    const request = manager.start();
     const suppressErrors = Boolean(options?.suppressErrors);
-    const totalsKey = buildVentasTotalsCacheKey(ventasFilters);
+    const requestFilters = { ...ventasFilters };
+    const totalsKey = buildVentasTotalsCacheKey(requestFilters);
     const lastFilters = ventasLastFiltersRef.current;
     const lastTotalsKey = lastFilters ? buildVentasTotalsCacheKey(lastFilters) : '';
-    const currentPage = Number.parseInt(String(ventasFilters.page ?? 1), 10) || 1;
+    const currentPage = Number.parseInt(String(requestFilters.page ?? 1), 10) || 1;
     const lastPage = Number.parseInt(String(lastFilters?.page ?? 1), 10) || 1;
     const cachedTotals = ventasTotalsCacheRef.current?.key === totalsKey
       ? ventasTotalsCacheRef.current
@@ -207,16 +314,20 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
 
     try {
       const response = await ventasService.list({
-        page: ventasFilters.page,
-        pageSize: ventasFilters.pageSize,
-        search: ventasFilters.search,
-        idSucursal: ventasFilters.idSucursal,
-        estado: ventasFilters.estado,
-        fechaDesde: ventasFilters.fechaDesde,
-        fechaHasta: ventasFilters.fechaHasta,
+        page: requestFilters.page,
+        pageSize: requestFilters.pageSize,
+        search: requestFilters.search,
+        idSucursal: requestFilters.idSucursal,
+        estado: requestFilters.estado,
+        fechaDesde: requestFilters.fechaDesde,
+        fechaHasta: requestFilters.fechaHasta,
+        horaDesde: requestFilters.horaDesde,
+        horaHasta: requestFilters.horaHasta,
         includeSummary: reuseTotals ? false : undefined,
         includePaginationTotals: reuseTotals ? false : undefined
-      });
+      }, { signal: request.controller.signal });
+
+      if (!manager.isCurrent(request)) return null;
 
       const rowsPayload = Array.isArray(response)
         ? response
@@ -224,8 +335,8 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       const rows = rowsPayload.map(normalizeVentaRecord);
 
       const serverPagination = response?.pagination || {};
-      const resolvedPage = Number.parseInt(String(serverPagination.page ?? ventasFilters.page), 10) || 1;
-      const resolvedPageSize = Number.parseInt(String(serverPagination.pageSize ?? ventasFilters.pageSize), 10) || 6;
+      const resolvedPage = Number.parseInt(String(serverPagination.page ?? requestFilters.page), 10) || 1;
+      const resolvedPageSize = Number.parseInt(String(serverPagination.pageSize ?? requestFilters.pageSize), 10) || 6;
       const resolvedTotal = Number.parseInt(
         String(serverPagination.total ?? cachedTotals?.pagination?.total ?? rows.length),
         10
@@ -279,13 +390,14 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
             : cachedTotals?.pagination
         };
       }
-      ventasLastFiltersRef.current = { ...ventasFilters };
+      ventasLastFiltersRef.current = requestFilters;
       return {
         rows,
         canSelectSucursal,
         catalogSucursalId: selectedSucursalId || userSucursalId
       };
     } catch (error) {
+      if (isCancelledVentasListRequest(error, request, manager)) return null;
       const message = extractApiMessage(error, 'No se pudieron cargar las ventas.');
       if (!suppressErrors) {
         setError(message);
@@ -293,7 +405,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       }
       throw error;
     } finally {
-      setLoading(false);
+      if (manager.finish(request)) setLoading(false);
     }
   }, [openToast, ventasFilters]);
 
@@ -1007,7 +1119,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
   useEffect(() => {
     let active = true;
     const catalogAbortControllers = cajaCatalogAbortRef.current;
-    void (async () => {
+    const loadActiveTab = async () => {
       if (String(activeTab || '').toLowerCase() === 'caja') {
         let idSucursal = parsePositiveId(initialSucursalId);
         await loadCajaBootstrap(idSucursal ? { id_sucursal: idSucursal } : {});
@@ -1024,15 +1136,20 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       } else {
         setCatalogLoading(false);
       }
-    })();
+    };
+    const cancelScheduledLoad = scheduleVentasActiveTabLoad(() => {
+      if (active) void loadActiveTab();
+    });
     return () => {
       active = false;
+      cancelScheduledLoad();
+      abortVentasListRequest();
       cajaBootstrapAbortRef.current?.abort();
       clientesRequestManagerRef.current?.abort();
       for (const controller of catalogAbortControllers.values()) controller.abort();
       catalogAbortControllers.clear();
     };
-  }, [activeTab, initialSucursalId, isSuperAdmin, loadCajaBootstrap, loadCatalogs, loadVentas]);
+  }, [abortVentasListRequest, activeTab, initialSucursalId, isSuperAdmin, loadCajaBootstrap, loadCatalogs, loadVentas]);
 
   const refreshCatalogs = useCallback(
     (options = {}) => loadCatalogs({
@@ -1173,23 +1290,35 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         const value = String(patch.fechaHasta || '').trim();
         next.fechaHasta = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
       }
+      if (Object.prototype.hasOwnProperty.call(patch, 'horaDesde')) {
+        const value = String(patch.horaDesde || '').trim();
+        next.horaDesde = /^\d{2}:\d{2}$/.test(value) ? value : '';
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'horaHasta')) {
+        const value = String(patch.horaHasta || '').trim();
+        next.horaHasta = /^\d{2}:\d{2}$/.test(value) ? value : '';
+      }
 
       next.page = 1;
+      ventasFollowDefaultRangeRef.current = isVentasDefaultTemporalRange(next, getTegucigalpaToday());
       return next;
     });
   }, []);
 
   const clearVentasFilters = useCallback(() => {
+    ventasFollowDefaultRangeRef.current = true;
     setVentasFilters((prev) => ({
       ...prev,
       search: '',
       idSucursal: null,
       estado: '',
-      fechaDesde: '',
-      fechaHasta: '',
+      fechaDesde: ventasCurrentDay,
+      fechaHasta: ventasCurrentDay,
+      horaDesde: '',
+      horaHasta: '',
       page: 1
     }));
-  }, []);
+  }, [ventasCurrentDay]);
 
   const getVentaDetail = useCallback(async (idFactura) => {
     setDetailLoading(true);
@@ -1292,6 +1421,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     pagination,
     scopeInfo,
     ventasFilters,
+    ventasCurrentDay,
     sucursales,
     categorias,
     tiposDepartamento,

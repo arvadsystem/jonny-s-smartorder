@@ -10,7 +10,7 @@ import CategoriasTab from './inventario/CategoriasTab.jsx';
 import InsumosTab from './inventario/InsumosTab.jsx';
 import ProductosTab from './inventario/ProductosTab.jsx';
 import AlmacenesTab from './inventario/AlmacenesTab.jsx';
-import OrdenesCompraTab from './inventario/OrdenesCompraTab.jsx';
+import SolicitudesCompraTab from '../../features/inventario/solicitudes-compra/SolicitudesCompraTab.jsx';
 import MobiliarioTab from './inventario/MobiliarioTab.jsx';
 
 // AJUSTE: centraliza llaves de tabs para mantener consistencia con navegación por querystring.
@@ -282,7 +282,7 @@ const Inventario = () => {
       {activeTab === 'insumos' && <InsumosTab categorias={categorias} categoriasInsumos={categoriasInsumos} openToast={openToast} />}
       {activeTab === 'productos' && <ProductosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'almacenes' && <AlmacenesTab openToast={openToast} />}
-      {activeTab === 'ordenes_compra' && <OrdenesCompraTab openToast={openToast} />}
+      {activeTab === 'ordenes_compra' && <SolicitudesCompraTab openToast={openToast} />}
       {activeTab === 'mobiliario' && <MobiliarioTab openToast={openToast} />}
 
       {toast.show && createPortal(

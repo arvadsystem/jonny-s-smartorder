@@ -191,7 +191,7 @@ const getCajaBootstrapCoalesced = async (params = {}, config = {}) => {
 };
 
 const ventasService = {
-  list: (params = {}) => apiFetch(`/ventas${buildVentasListQuery(params)}`, 'GET'),
+  list: (params = {}, config = {}) => apiFetch(`/ventas${buildVentasListQuery(params)}`, 'GET', null, config),
   buscarVenta: (params = {}) => apiFetch(`/ventas/buscar${buildQuery(params)}`, 'GET'),
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
   getTicketById: (id) => apiFetch(`/ventas/${id}/ticket`, 'GET'),

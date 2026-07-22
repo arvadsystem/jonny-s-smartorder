@@ -2448,6 +2448,19 @@
   gap: 10px;
 }
 
+.ventas-filter-field input:disabled {
+  cursor: not-allowed;
+  background: rgba(157, 150, 112, 0.09);
+  color: rgba(82, 44, 34, 0.48);
+}
+
+.ventas-filter-section__hint {
+  color: rgba(82, 44, 34, 0.68);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .ventas-detail-modal__print-group {
   display: inline-flex;
   align-items: center;
