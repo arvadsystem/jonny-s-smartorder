@@ -10,7 +10,7 @@ test('servicio usa exclusivamente endpoints nuevos autorizados', async () => {
   assert.match(source, /crearSolicitud:[\s\S]*\/solicitudes_compra'[\s\S]*'POST'/);
   assert.match(source, /getSolicitudes:[\s\S]*\/solicitudes_compra/);
   assert.match(source, /getSolicitudById:[\s\S]*\/solicitudes_compra\/\$\{/);
-  assert.doesNotMatch(source, /orden_compras|detalle_orden_compras|ordenes_compra_workflow|\/compras|proveedores|aprobar|rechazar|recibir|evidencias/);
+  assert.doesNotMatch(source, /orden_compras|detalle_orden_compras|ordenes_compra_workflow|\/compras|recibir|evidencias/);
 });
 test('query params usan URLSearchParams y omiten vacios', async () => {
   const source = await read('../../../../services/solicitudesCompraService.js');

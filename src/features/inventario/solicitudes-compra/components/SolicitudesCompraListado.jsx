@@ -6,7 +6,7 @@ const FILTERS = [
   ['RECIBIDA', 'Recibidas'], ['RECHAZADA', 'Rechazadas']
 ];
 
-export default function SolicitudesCompraListado({ state, filter, onFilter, onPage, onDetail, onCreate, canCreate }) {
+export default function SolicitudesCompraListado({ state, filter, onFilter, onPage, onDetail, onCreate, canCreate, canReview }) {
   const page = Number(state.pagination?.page || 1);
   const pages = Math.max(1, Number(state.pagination?.total_pages || 1));
   return (
@@ -35,7 +35,7 @@ export default function SolicitudesCompraListado({ state, filter, onFilter, onPa
             </div>
             <div className="sol-comp-counts"><span>{item.total_lineas || 0} líneas</span><span>{item.total_productos || 0} productos</span><span>{item.total_insumos || 0} insumos</span>{item.tiene_evidencia ? <span><i className="bi bi-paperclip" /> Evidencia</span> : null}</div>
             {item.observacion_solicitud ? <p className="sol-comp-observation">{item.observacion_solicitud}</p> : null}
-            <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => onDetail(item.id_solicitud_compra)}>Ver detalle</button>
+            <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => onDetail(item.id_solicitud_compra)}>{canReview && String(item.estado || '').toUpperCase() === 'PENDIENTE' ? 'Revisar solicitud' : 'Ver detalle'}</button>
           </article>
         ))}
       </div>
