@@ -23,17 +23,25 @@ export default function NuevaSolicitudCompra({ warehouses, warehousesLoading, ca
     setSubmitting(true);
     try {
       await submit(buildSolicitudPayload({ idAlmacen: warehouseId, observacion: observation, detalles: lines }));
-      setLines([]); setObservation('');
+      setLines([]);
+      setObservation('');
     } catch { /* AM: conserva el borrador para reintentar. */ }
     finally { setSubmitting(false); }
   };
   return (
     <section className="sol-comp-section">
-      <header className="sol-comp-header"><div><button type="button" className="sol-comp-back" onClick={onBack}><i className="bi bi-arrow-left" /> Volver</button><h2>Nueva solicitud</h2><p>Selecciona el almacén y agrega los artículos que necesita tu sucursal.</p></div></header>
-      <div className="sol-comp-warehouse"><AppSelect label="Almacén" placeholder={warehousesLoading ? 'Cargando almacenes…' : 'Selecciona un almacén'} value={warehouseId} options={warehouseOptions} onChange={(value) => { setWarehouseId(value); setLines([]); }} disabled={warehousesLoading} searchable={warehouseOptions.length > 6} /></div>
+      <button type="button" className="sol-comp-back" onClick={onBack}><i className="bi bi-arrow-left" aria-hidden="true" /> Volver a solicitudes</button>
+      <header className="sol-comp-header sol-comp-header--create">
+        <div className="sol-comp-header__copy"><span className="sol-comp-header__icon" aria-hidden="true"><i className="bi bi-cart-plus" /></span><div><h2>Nueva solicitud</h2><p>Selecciona el almacén y agrega los artículos que necesita tu sucursal.</p></div></div>
+      </header>
+      <ol className="sol-comp-steps" aria-label="Flujo de nueva solicitud"><li className="is-current"><span>1</span> Almacén</li><li><span>2</span> Seleccionar artículos</li><li><span>3</span> Revisar y enviar</li></ol>
+      <div className="sol-comp-warehouse">
+        <div className="sol-comp-panel-heading"><span aria-hidden="true"><i className="bi bi-building-check" /></span><div><h3>Almacén de destino</h3><p>El catálogo y el inventario corresponden al almacén seleccionado.</p></div></div>
+        <AppSelect label="Almacén" placeholder={warehousesLoading ? 'Cargando almacenes…' : 'Selecciona un almacén'} value={warehouseId} options={warehouseOptions} onChange={(selected) => { setWarehouseId(selected); setLines([]); }} disabled={warehousesLoading} searchable={warehouseOptions.length > 6} />
+      </div>
       {!warehouseId ? <div className="sol-comp-feedback">Selecciona un almacén para consultar su catálogo.</div> : (
         <div className="sol-comp-create-layout">
-          <SolicitudCompraCatalogo warehouseId={warehouseId} state={catalogState} loadCatalog={loadCatalog} onAdd={addLine} />
+          <SolicitudCompraCatalogo key={warehouseId} warehouseId={warehouseId} state={catalogState} loadCatalog={loadCatalog} onAdd={addLine} />
           <SolicitudCompraResumen lines={lines} onChange={(index, cantidad) => setLines((current) => current.map((line, currentIndex) => currentIndex === index ? { ...line, cantidad } : line))} onRemove={(index) => setLines((current) => current.filter((_, currentIndex) => currentIndex !== index))} observation={observation} setObservation={setObservation} submitting={submitting} onSubmit={send} disabled={!warehouseId || !allValid} />
         </div>
       )}
