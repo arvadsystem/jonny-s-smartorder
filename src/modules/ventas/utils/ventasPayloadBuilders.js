@@ -5,8 +5,11 @@ import {
   toNormalizedId
 } from './ventasCartUtils.js';
 
-export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) =>
-  (Array.isArray(cart) ? cart : []).map((line) => {
+export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) => {
+  const normalizedCart = Array.isArray(cart) ? cart : [];
+  const hasPreparations = normalizedCart.some((line) => ['RECETA', 'ITEM'].includes(String(line?.kind || '').toUpperCase()));
+
+  return normalizedCart.map((line) => {
     const cantidad = parseVentaLineQuantity(line.cantidad);
     if (!cantidad) {
       throw new Error('Cada linea debe incluir cantidad entera entre 1 y 999.');
@@ -26,6 +29,9 @@ export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) 
     if (line.kind !== 'PRODUCTO') {
       payload.observacion = String(line.observacion || '').trim() || null;
     }
+    if (line.kind === 'PRODUCTO') {
+      payload.entregar_con_pedido = hasPreparations && line.entregar_con_pedido !== false;
+    }
     const complementos = ['PRODUCTO', 'ITEM'].includes(line.kind)
       ? []
       : normalizeValidComplementIds(line);
@@ -44,6 +50,7 @@ export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) 
     }
     return payload;
   });
+};
 
 export const applyDiscountPayloadFields = (payload, { canApplyDiscount = false, selectedDiscountId = '' } = {}) => {
   if (!canApplyDiscount) return payload;

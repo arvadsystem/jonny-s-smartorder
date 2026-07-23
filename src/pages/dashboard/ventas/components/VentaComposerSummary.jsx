@@ -39,6 +39,8 @@ export default function VentaComposerSummary({
   const [quantityValidationMessage, setQuantityValidationMessage] = useState('');
   const [pendingQuantityConfirm, setPendingQuantityConfirm] = useState(null);
   const isStandaloneExtraLine = (line) => String(line?.kind || '').toUpperCase() === 'ITEM';
+  const hasPreparations = (Array.isArray(composer.cart) ? composer.cart : [])
+    .some((line) => ['RECETA', 'ITEM'].includes(String(line?.kind || '').toUpperCase()));
   const pendingCount = Number(pendingPaymentsSummary?.total ?? 0) || 0;
   const pendingAmount = Number(pendingPaymentsSummary?.monto ?? 0) || 0;
   const pendingLabel = pendingPaymentsSummary?.error
@@ -209,6 +211,24 @@ export default function VentaComposerSummary({
                         {line.complementos_requiere ? buildComplementSummaryLabel(line, composer) : 'Cocina'}
                       </small>
                     )}
+
+                    {isSimpleProduct && hasPreparations ? (
+                      <label className="ventas-cart__delivery-timing">
+                        <input
+                          type="checkbox"
+                          checked={line.entregar_con_pedido !== false}
+                          onChange={(event) => {
+                            const entregarConPedido = event.target.checked;
+                            composer.updateLine(
+                              line.cartKey,
+                              (current) => ({ ...current, entregar_con_pedido: entregarConPedido }),
+                              { merge: false }
+                            );
+                          }}
+                        />
+                        <span>Entregar junto con la comida</span>
+                      </label>
+                    ) : null}
 
                     <div className="ventas-cart__item-row">
                       {isQuantityManaged ? (
