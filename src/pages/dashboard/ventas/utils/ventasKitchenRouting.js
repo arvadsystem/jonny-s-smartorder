@@ -17,10 +17,17 @@ export const isKitchenPreparationItem = (item) => {
     const quantity = Number(item?.cantidad || 0);
     return Number.isSafeInteger(idExtra) && idExtra > 0 && name.length > 0 && Number.isFinite(quantity) && quantity > 0;
   }
-  return !hasProduct && (hasRecipe || type === 'RECETA');
+  return !hasProduct && hasRecipe && type !== 'PRODUCTO';
 };
 
 export const canPrintKitchenComanda = (venta) => {
   if (venta?.requiere_cocina === false || venta?.requiere_revision === true) return false;
   return (Array.isArray(venta?.items) ? venta.items : []).some(isKitchenPreparationItem);
+};
+
+export const loadKitchenComandaPrintSource = async ({ sourceType, venta, ventasApi }) => {
+  if (sourceType === 'pedido') {
+    return ventasApi.getPedidoComanda(venta?.id_pedido);
+  }
+  return ventasApi.getComandaById(venta?.id_factura);
 };

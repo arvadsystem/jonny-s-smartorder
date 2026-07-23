@@ -32,6 +32,7 @@ import {
   getSafePrintErrorContext,
   prepareComandaPrintWindow
 } from './utils/ventasPrintActions';
+import { loadKitchenComandaPrintSource } from './utils/ventasKitchenRouting';
 import {
   getAllowedTabs,
   MODULE_PRIMARY_PERMISSION,
@@ -917,9 +918,11 @@ export default function VentasPage() {
     let canUseQzComanda = false;
 
     try {
-      const comanda = isPendingOrderComanda
-        ? await ventasService.getPedidoComanda(venta.id_pedido)
-        : venta;
+      const comanda = await loadKitchenComandaPrintSource({
+        sourceType,
+        venta,
+        ventasApi: ventasService
+      });
       comandaForPrint = comanda;
 
       const resolvedSucursalId = Number.parseInt(String(comanda?.id_sucursal ?? ''), 10);

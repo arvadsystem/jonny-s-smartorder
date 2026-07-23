@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { buildComandaCocinaHtml } from './buildComandaCocinaHtml.js';
-import { canPrintKitchenComanda } from './ventasKitchenRouting.js';
+import {
+  canPrintKitchenComanda,
+  loadKitchenComandaPrintSource
+} from './ventasKitchenRouting.js';
 
 test('PedidosView muestra Mandar a cocina solo con autorizacion explicita del backend', () => {
   const source = fs.readFileSync(new URL('../components/PedidosView.jsx', import.meta.url), 'utf8');
@@ -39,6 +42,43 @@ test('detalle oculta comanda cuando backend no requiere cocina o no hay preparac
   const source = fs.readFileSync(new URL('../components/VentaDetalleModal.jsx', import.meta.url), 'utf8');
   assert.match(source, /canPrintKitchenComanda\(venta\)/);
   assert.doesNotMatch(source, /hasKitchenItems/);
+});
+
+test('impresion directa usa siempre la comanda operativa del backend segun el origen', async () => {
+  const calls = [];
+  const ventasApi = {
+    getComandaById: async (id) => {
+      calls.push(['factura', id]);
+      return { id_factura: id, items: [{ id_receta: 1 }] };
+    },
+    getPedidoComanda: async (id) => {
+      calls.push(['pedido', id]);
+      return { id_pedido: id, items: [{ id_receta: 2 }] };
+    }
+  };
+
+  for (const action of ['initial', 'reprint']) {
+    const factura = await loadKitchenComandaPrintSource({
+      sourceType: 'factura',
+      venta: { id_factura: 41, action },
+      ventasApi
+    });
+    const pedido = await loadKitchenComandaPrintSource({
+      sourceType: 'pedido',
+      venta: { id_pedido: 51, action },
+      ventasApi
+    });
+    assert.equal(factura.id_factura, 41);
+    assert.equal(pedido.id_pedido, 51);
+  }
+
+  assert.deepEqual(calls, [
+    ['factura', 41], ['pedido', 51],
+    ['factura', 41], ['pedido', 51]
+  ]);
+  const source = fs.readFileSync(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
+  assert.match(source, /loadKitchenComandaPrintSource/);
+  assert.doesNotMatch(source, /\? await ventasService\.getPedidoComanda\(venta\.id_pedido\)\s*:\s*venta/);
 });
 
 test('HTML de navegador separa preparar y entrega conjunta sin secciones vacias', () => {
