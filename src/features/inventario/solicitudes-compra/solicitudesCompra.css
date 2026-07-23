@@ -1175,19 +1175,69 @@
 .sol-comp-reception-panel,
 .sol-comp-evidence {
   margin-top: 1rem;
-  padding: 1rem;
-  border: 1px solid #cfdce5;
-  border-radius: 15px;
-  background: #f7f9fb;
+  padding: 1.1rem;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 16px;
+  background: var(--c-surface);
+  box-shadow: 0 8px 18px rgba(var(--c-shadow-rgb), 0.08);
 }
 
 .sol-comp-review-panel {
-  border-top: 3px solid #4c83bd;
+  border-top: 3px solid var(--c-accent);
 }
 
 .sol-comp-reception-panel {
-  border-top: 3px solid #4b9b69;
-  background: #f7fbf9;
+  border-top: 3px solid var(--c-info);
+}
+
+.sol-comp-review-panel > header,
+.sol-comp-reception-panel > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.sol-comp-workflow-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.sol-comp-workflow-heading > span,
+.sol-comp-inline-confirm__icon,
+.sol-comp-invoice-field__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 11px;
+  color: var(--c-accent);
+  background: rgba(197, 111, 67, 0.12);
+  font-size: 1.1rem;
+}
+
+.sol-comp-workflow-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  color: var(--c-accent-hover);
+  background: var(--c-bg-soft);
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.sol-comp-workflow-badge--definitive {
+  color: var(--c-info);
+  background: rgba(45, 107, 102, 0.1);
 }
 
 .sol-comp-review-panel > header h3,
@@ -1205,10 +1255,24 @@
 }
 
 .sol-comp-provider-status {
-  min-height: 2rem;
   display: flex;
   align-items: center;
   margin: 0.75rem 0;
+}
+
+.sol-comp-provider-status > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 9px;
+  background: var(--c-bg-soft);
+  font-size: 0.82rem;
+}
+
+.sol-comp-provider-status__available {
+  color: var(--c-info);
+  background: rgba(45, 107, 102, 0.09);
 }
 
 .sol-comp-contract-error {
@@ -1239,9 +1303,10 @@
   gap: 0.85rem;
   min-width: 0;
   padding: 0.9rem;
-  border: 1px solid #dfe5e8;
+  border: 1px solid var(--c-border-soft);
   border-radius: 12px;
-  background: #fff;
+  background: var(--c-surface);
+  box-shadow: 0 3px 10px rgba(var(--c-shadow-rgb), 0.05);
 }
 
 .sol-comp-review-info,
@@ -1252,12 +1317,61 @@
 
 .sol-comp-review-info p,
 .sol-comp-reception-info > p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.7rem;
   margin: 0.35rem 0 0.65rem;
   color: var(--sol-comp-muted);
 }
 
+.sol-comp-review-info p span + span::before,
+.sol-comp-reception-info > p span + span::before {
+  content: "·";
+  margin-right: 0.7rem;
+}
+
+.sol-comp-review-quantity,
+.sol-comp-reception-quantity,
+.sol-comp-review-comment {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--c-text);
+  font-weight: 700;
+}
+
+.sol-comp-review-quantity input,
+.sol-comp-reception-quantity input,
+.sol-comp-review-comment textarea,
+.sol-comp-reception-observation textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 10px;
+  background: var(--c-surface);
+  color: var(--c-text);
+}
+
+.sol-comp-review-quantity input:focus,
+.sol-comp-reception-quantity input:focus,
+.sol-comp-review-comment textarea:focus,
+.sol-comp-reception-observation textarea:focus {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px rgba(178, 45, 48, 0.13);
+  outline: 0;
+}
+
 .sol-comp-review-comment {
   margin-top: 1rem;
+  padding: 0.9rem;
+  border: 1px solid var(--c-border-soft);
+  border-radius: 12px;
+  background: var(--c-bg-soft);
+}
+
+.sol-comp-review-comment > small {
+  color: var(--c-text-soft);
+  font-weight: 400;
 }
 
 .sol-comp-review-comment > span,
@@ -1289,9 +1403,36 @@
   gap: 1rem;
   padding: 1rem;
   margin-top: 1rem;
-  border: 1px solid #b8cbe0;
+  border: 1px solid var(--c-border-strong);
   border-radius: 12px;
-  background: #fff;
+  background: var(--c-bg-soft);
+}
+
+.sol-comp-inline-confirm > div:first-child {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  column-gap: 0.7rem;
+}
+
+.sol-comp-inline-confirm > div:first-child > p {
+  grid-column: 2;
+}
+
+.sol-comp-inline-confirm--approve,
+.sol-comp-inline-confirm--receive {
+  border-color: rgba(45, 107, 102, 0.35);
+  background: rgba(45, 107, 102, 0.07);
+}
+
+.sol-comp-inline-confirm--approve .sol-comp-inline-confirm__icon,
+.sol-comp-inline-confirm--receive .sol-comp-inline-confirm__icon {
+  color: var(--c-info);
+  background: rgba(45, 107, 102, 0.13);
+}
+
+.sol-comp-inline-confirm--reject {
+  border-color: rgba(178, 45, 48, 0.35);
+  background: rgba(178, 45, 48, 0.06);
 }
 
 .sol-comp-inline-confirm p {
@@ -1311,18 +1452,30 @@
 }
 
 .sol-comp-difference {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  display: grid;
+  grid-template-columns: 1.2rem minmax(0, 1fr);
+  gap: 0.25rem 0.4rem;
   border-radius: 10px;
   padding: 0.55rem 0.65rem;
   font-size: 0.84rem;
 }
 
+.sol-comp-difference > i {
+  grid-row: 1 / 3;
+}
+
+.sol-comp-difference > small {
+  grid-column: 2;
+}
+
 .sol-comp-difference--equal { background: #dcf6e5; color: #17633a; }
 .sol-comp-difference--different { background: #fff3cd; color: #725500; }
+.sol-comp-difference--invalid { background: #fde5e5; color: #8d2222; }
 
 .sol-comp-difference-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
   padding: 0.75rem;
   margin-top: 1rem;
   border: 1px solid #e2bd67;
@@ -1343,16 +1496,55 @@
 }
 
 .sol-comp-invoice-field {
-  align-items: flex-start;
-  padding: 0.8rem;
-  border: 1px dashed #bfcdd5;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border: 1px dashed var(--c-border-strong);
   border-radius: 11px;
   background: #fff;
+}
+
+.sol-comp-invoice-field > .btn,
+.sol-comp-invoice-field > input,
+.sol-comp-invoice-field > small {
+  grid-column: 1 / -1;
+}
+
+.sol-comp-invoice-field p {
+  margin: 0.15rem 0 0;
+  color: var(--c-text-soft);
+  font-size: 0.82rem;
 }
 
 .sol-comp-invoice-field input[type="file"] {
   width: 100%;
   font-weight: 400;
+}
+
+.sol-comp-invoice-field input[type="file"]::file-selector-button {
+  margin-right: 0.7rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 8px;
+  color: var(--c-accent-hover);
+  background: var(--c-bg-soft);
+  font-weight: 700;
+}
+
+.sol-comp-outline-action {
+  border: 1px solid var(--c-terracotta);
+  color: var(--c-accent-hover);
+  background: var(--c-surface);
+  font-weight: 700;
+}
+
+.sol-comp-outline-action:hover,
+.sol-comp-outline-action:focus-visible {
+  border-color: var(--c-accent);
+  color: #fff;
+  background: var(--c-accent);
 }
 
 .sol-comp-invoice-field small,
@@ -1407,6 +1599,39 @@
   margin-top: 1rem;
 }
 
+.sol-comp-evidence-trigger {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 12px;
+  color: var(--c-text);
+  background: var(--c-surface);
+  text-align: left;
+}
+
+.sol-comp-evidence-trigger:hover,
+.sol-comp-evidence-trigger:focus-visible {
+  border-color: var(--c-terracotta);
+  background: var(--c-bg-soft);
+}
+
+.sol-comp-evidence-trigger > i:first-child {
+  color: var(--c-terracotta);
+  font-size: 1.25rem;
+}
+
+.sol-comp-evidence-trigger span {
+  display: grid;
+}
+
+.sol-comp-evidence-trigger small {
+  color: var(--c-text-soft);
+}
+
 .sol-comp-evidence > header {
   display: flex;
   justify-content: space-between;
@@ -1425,6 +1650,52 @@
   background: #fff;
 }
 
+.sol-comp-evidence-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+  margin: 0;
+}
+
+.sol-comp-evidence-meta > div {
+  min-width: 0;
+  padding: 0.5rem;
+  border-radius: 8px;
+  background: var(--c-bg-soft);
+}
+
+.sol-comp-evidence-meta dt {
+  color: var(--c-text-soft);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.sol-comp-evidence-meta dd {
+  margin: 0.1rem 0 0;
+  overflow-wrap: break-word;
+}
+
+.sol-comp-temporary-access {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  color: var(--c-info);
+  background: rgba(45, 107, 102, 0.09);
+  font-weight: 700;
+}
+
+.sol-comp-review-provider {
+  position: relative;
+  z-index: 2;
+}
+
+.sol-comp-review-line:focus-within {
+  position: relative;
+  z-index: 5;
+}
 .sol-comp-section .app-select {
   position: relative;
   display: grid;
@@ -1650,18 +1921,25 @@
 
   .sol-comp-review-line,
   .sol-comp-reception-line {
-    grid-template-columns: minmax(0, 1fr) minmax(145px, 0.45fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .sol-comp-review-provider,
+  .sol-comp-review-info,
+  .sol-comp-reception-info,
   .sol-comp-difference {
     grid-column: 1 / -1;
+  }
+
+  .sol-comp-review-provider {
+    grid-column: auto;
   }
 }
 
 @media (max-width: 767px) {
   .sol-comp-header,
-  .sol-comp-detail-header {
+  .sol-comp-detail-header,
+  .sol-comp-review-panel > header,
+  .sol-comp-reception-panel > header {
     flex-direction: column;
   }
 
@@ -1720,6 +1998,10 @@
     grid-column: auto;
   }
 
+  .sol-comp-workflow-badge {
+    align-self: flex-start;
+  }
+
   .sol-comp-catalog-filters__primary > .btn,
   .sol-comp-request-card__footer .btn,
   .sol-comp-review-actions .btn,
@@ -1732,6 +2014,7 @@
   }
 
   .sol-comp-review-actions,
+  .sol-comp-reception-actions,
   .sol-comp-inline-confirm,
   .sol-comp-inline-confirm > div:last-child {
     flex-direction: column;
@@ -1740,6 +2023,14 @@
 
   .sol-comp-inline-confirm {
     align-items: stretch;
+  }
+
+  .sol-comp-inline-confirm > div:first-child {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+  }
+
+  .sol-comp-evidence-meta {
+    grid-template-columns: 1fr;
   }
 
   .sol-comp-evidence > header {

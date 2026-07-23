@@ -14,8 +14,11 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
   return (
     <section className="sol-comp-reception-panel" aria-labelledby="sol-comp-reception-title">
       <header>
-        <h3 id="sol-comp-reception-title">Recepción final</h3>
-        <p>Registra todas las cantidades recibidas y adjunta una fotografía de la factura.</p>
+        <div className="sol-comp-workflow-heading">
+          <span aria-hidden="true"><i className="bi bi-box-arrow-in-down" /></span>
+          <div><h3 id="sol-comp-reception-title">Recepción final</h3><p>Registra todas las cantidades recibidas y adjunta una fotografía de la factura.</p></div>
+        </div>
+        <span className="sol-comp-workflow-badge sol-comp-workflow-badge--definitive"><i className="bi bi-lock" aria-hidden="true" /> Operación definitiva</span>
       </header>
 
       {reception.validation.general.length ? (
@@ -39,8 +42,9 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
 
       {reception.differences.length ? (
         <div className="sol-comp-difference-notice" role="alert">
-          <strong>Hay {reception.differences.length} {reception.differences.length === 1 ? 'línea diferente' : 'líneas diferentes'}.</strong>
+          <i className="bi bi-exclamation-triangle" aria-hidden="true" /><div><strong>Hay {reception.differences.length} {reception.differences.length === 1 ? 'línea diferente' : 'líneas diferentes'}.</strong>
           <p>{reception.differences.map((line) => line.nombre || `Detalle ${line.id_solicitud_detalle}`).join(', ')}</p>
+          </div>
         </div>
       ) : null}
 
@@ -58,12 +62,13 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
             onChange={(event) => reception.setObservation(event.target.value)}
           />
           <small id="sol-comp-reception-observation-help">Cuando la cantidad recibida sea diferente de la aprobada, explica brevemente el motivo.</small>
-          <span><small id="sol-comp-reception-observation-error" className="sol-comp-field-error">{reception.observationError}</small><small>{reception.observation.length}/1000</small></span>
+          <span><small id="sol-comp-reception-observation-error" className="sol-comp-field-error">{reception.observationError}</small><small>{reception.observation.length} / 1000</small></span>
         </label>
 
         <div className="sol-comp-invoice-field">
-          <strong>Factura</strong>
-          <label className="btn btn-outline-primary" htmlFor="sol-comp-invoice-input">Tomar foto o seleccionar imagen</label>
+          <span className="sol-comp-invoice-field__icon" aria-hidden="true"><i className="bi bi-camera" /></span>
+          <div><strong>Factura</strong><p>Tomar foto o seleccionar imagen</p></div>
+          <label className="btn sol-comp-outline-action" htmlFor="sol-comp-invoice-input">Tomar foto o seleccionar imagen</label>
           <input
             id="sol-comp-invoice-input"
             type="file"
@@ -97,8 +102,9 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
       {reception.accessDenied ? <div className="sol-comp-contract-error" role="alert">No tienes permiso para registrar esta recepción.</div> : null}
 
       {reception.confirmation ? (
-        <div className="sol-comp-inline-confirm" role="group" aria-labelledby="sol-comp-receive-confirm-title" aria-live="polite">
+        <div className="sol-comp-inline-confirm sol-comp-inline-confirm--receive" role="group" aria-labelledby="sol-comp-receive-confirm-title" aria-live="polite">
           <div>
+            <span className="sol-comp-inline-confirm__icon" aria-hidden="true"><i className="bi bi-box-arrow-in-down" /></span>
             <strong id="sol-comp-receive-confirm-title">Confirmar recepción final</strong>
             <p>La factura se guardará y las cantidades recibidas se aplicarán al inventario. Esta operación no puede repetirse en esta versión.</p>
             <ul>

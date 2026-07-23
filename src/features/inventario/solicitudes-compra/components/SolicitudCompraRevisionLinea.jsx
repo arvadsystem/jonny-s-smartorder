@@ -6,17 +6,19 @@ export default function SolicitudCompraRevisionLinea({ line, errors = {}, provid
   const inputId = `approved-quantity-${line.id_solicitud_detalle}`;
   const quantityErrorId = `${inputId}-error`;
   const isProduct = line.tipo_item === 'PRODUCTO';
+  const stockKey = String(line.estado_stock || '').toUpperCase();
+  const stockLabel = { SIN_STOCK: 'Sin stock', STOCK_BAJO: 'Stock bajo', DISPONIBLE: 'Disponible' }[stockKey] || line.estado_stock || '—';
   return (
     <article className="sol-comp-review-line">
       <div className="sol-comp-review-info">
-        <div className="sol-comp-card-top"><strong>{line.nombre}</strong><span>{isProduct ? 'Producto' : 'Insumo'}</span></div>
-        <p>{line.categoria || 'Sin categoría'} · {line.presentacion_snapshot || line.unidad_base || 'Unidad'}</p>
+        <div className="sol-comp-card-top"><strong>{line.nombre}</strong><span className="sol-comp-type-pill">{isProduct ? 'Producto' : 'Insumo'}</span></div>
+        <p><span>{line.categoria || 'Sin categoría'}</span><span>{line.presentacion_snapshot || line.unidad_base || 'Unidad'}</span></p>
         <div className="sol-comp-quantities">
           <span>Solicitada <b>{display(line.cantidad_solicitada)}</b></span>
           <span>Base solicitada <b>{display(line.cantidad_base_solicitada)} {line.unidad_base || ''}</b></span>
           <span>Stock <b>{display(line.stock_actual)}</b></span>
           <span>Mínimo <b>{display(line.stock_minimo)}</b></span>
-          <span>Estado <b>{line.estado_stock || '—'}</b></span>
+          <span className={`sol-comp-stock-text sol-comp-stock-text--${stockKey.toLowerCase() || 'unknown'}`}>Estado <b>{stockLabel}</b></span>
         </div>
       </div>
       {editable ? (

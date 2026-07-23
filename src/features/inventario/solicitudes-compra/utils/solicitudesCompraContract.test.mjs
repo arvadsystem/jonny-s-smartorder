@@ -399,3 +399,101 @@ test('detalle define jerarquia responsive y estados visuales accesibles', async 
   assert.match(css, /\.sol-comp-quantity--approved/);
   assert.match(css, /\.sol-comp-quantity--received/);
 });
+
+test('revision conserva hook proveedores AppSelect y contratos de edicion', async () => {
+  const panel = await read('../components/SolicitudCompraRevisionPanel.jsx');
+  const line = await read('../components/SolicitudCompraRevisionLinea.jsx');
+  assert.match(panel, /useSolicitudCompraRevision\(\{ solicitud, detalles, canApprove, canReject, reloadDetail, reloadList, openToast \}\)/);
+  assert.match(panel, /review\.providers\.(?:loading|loaded|error|items)/);
+  assert.match(panel, /review\.retryProviders/);
+  assert.match(line, /import AppSelect/);
+  assert.match(line, /<AppSelect[\s\S]*value=\{line\.id_proveedor\}[\s\S]*id_proveedor: value/);
+  assert.doesNotMatch(line, /<select/);
+  assert.match(line, /value=\{line\.cantidad_aprobada\}/);
+  assert.match(line, /onChange=\{\(event\) => line\.onChange\(\{ cantidad_aprobada: event\.target\.value \}\)\}/);
+  assert.match(line, /step=\{isProduct \? '1' : '0\.0001'\}/);
+  assert.match(line, /inputMode=\{isProduct \? 'numeric' : 'decimal'\}/);
+  assert.match(line, /aria-invalid=\{Boolean\(errors\.cantidad\)\}/);
+  assert.match(line, /aria-describedby=\{errors\.cantidad \? quantityErrorId : undefined\}/);
+});
+
+test('revision conserva comentario acciones y confirmacion inline', async () => {
+  const panel = await read('../components/SolicitudCompraRevisionPanel.jsx');
+  assert.match(panel, /maxLength="1000"/);
+  assert.match(panel, /review\.comment\.length\} \/ 1000/);
+  assert.match(panel, /disabled=\{review\.rejectDisabled\}/);
+  assert.match(panel, /disabled=\{review\.approveDisabled\}/);
+  assert.match(panel, /review\.confirmation \?/);
+  assert.match(panel, /review\.execute\(review\.confirmation\)/);
+  assert.match(panel, /Aprobando…/);
+  assert.match(panel, /Rechazando…/);
+  assert.doesNotMatch(panel, /window\.confirm|<Modal|createPortal/);
+});
+
+test('recepcion conserva hook lineas validacion decimal y estados comparativos', async () => {
+  const panel = await read('../components/SolicitudCompraRecepcionPanel.jsx');
+  const line = await read('../components/SolicitudCompraRecepcionLinea.jsx');
+  assert.match(panel, /useSolicitudCompraRecepcion\(\{ solicitud, detalles, canReceive, reloadDetail, reloadList, openToast \}\)/);
+  assert.match(panel, /reception\.lines\.filter\(\(line\) => line\.id_solicitud_detalle\)\.map/);
+  assert.match(line, /compareDecimalQuantities\(line\.cantidad_recibida, line\.cantidad_aprobada\)/);
+  assert.match(line, /onChange=\{\(event\) => onChange\(event\.target\.value\)\}/);
+  assert.match(line, /inputMode=\{isProduct \? 'numeric' : 'decimal'\}/);
+  assert.match(line, /Cantidad inválida/);
+  assert.match(line, /Diferencia/);
+  assert.match(line, /Igual/);
+  assert.match(line, /Aprobada: \{value\(line\.cantidad_aprobada\)\} · Recibida: \{value\(line\.cantidad_recibida\)\}/);
+});
+
+test('recepcion conserva diferencias observacion y factura accesible', async () => {
+  const panel = await read('../components/SolicitudCompraRecepcionPanel.jsx');
+  assert.match(panel, /reception\.differences\.length/);
+  assert.match(panel, /className="sol-comp-difference-notice" role="alert"/);
+  assert.match(panel, /maxLength="1000"/);
+  assert.match(panel, /reception\.observation\.length\} \/ 1000/);
+  assert.match(panel, /accept="image\/jpeg,image\/png,image\/webp"/);
+  assert.match(panel, /capture="environment"/);
+  assert.match(panel, /Máximo 6 MB/);
+  assert.match(panel, /onChange=\{handleInvoiceChange\}/);
+  assert.match(panel, /Validando imagen…/);
+  assert.match(panel, /src=\{reception\.invoice\.previewUrl\}/);
+  assert.match(panel, /Cambiar imagen/);
+  assert.match(panel, /onClick=\{reception\.removeInvoice\}/);
+});
+
+test('confirmacion de recepcion conserva contrato irreversible sin recepcion parcial', async () => {
+  const panel = await read('../components/SolicitudCompraRecepcionPanel.jsx');
+  assert.match(panel, /reception\.confirmation \?/);
+  assert.match(panel, /Confirmar recepción final/);
+  assert.match(panel, /onClick=\{reception\.executeReception\}/);
+  assert.match(panel, /reception\.busy \|\| reception\.receiveDisabled/);
+  assert.match(panel, /Registrando…/);
+  assert.doesNotMatch(panel, /recepción parcial|recepcion parcial|window\.confirm|<Modal/);
+});
+
+test('evidencias conserva carga bajo demanda acceso temporal y seguridad del enlace', async () => {
+  const source = await read('../components/SolicitudCompraEvidencias.jsx');
+  assert.match(source, /useSolicitudCompraEvidencias\(\{ idSolicitud \}\)/);
+  assert.match(source, /if \(!evidence\.open\)/);
+  assert.match(source, /onClick=\{evidence\.openViewer\}/);
+  assert.match(source, /onClick=\{evidence\.closeViewer\}/);
+  assert.match(source, /onClick=\{evidence\.refreshAccess\}/);
+  assert.match(source, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(source, /Acceso temporal: \{item\.expira_en_segundos \|\| 300\} segundos/);
+  assert.doesNotMatch(source, /setInterval|setTimeout|poll|localStorage|sessionStorage|bucket|ruta_privada|storage_path/i);
+});
+
+test('paneles mantienen CSS institucional responsive sin recorte rigido', async () => {
+  const css = await read('../solicitudesCompra.css');
+  assert.match(css, /\.sol-comp-workflow-heading/);
+  assert.match(css, /\.sol-comp-inline-confirm--approve/);
+  assert.match(css, /\.sol-comp-inline-confirm--reject/);
+  assert.match(css, /\.sol-comp-difference--invalid/);
+  assert.match(css, /\.sol-comp-evidence-trigger/);
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.sol-comp-review-line,[\s\S]*\.sol-comp-reception-line,[\s\S]*grid-template-columns:\s*1fr/);
+  const panelBlocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selectors]) =>
+    selectors.split(',').some((selector) => /^\s*\.sol-comp-(?:review-panel|reception-panel|evidence|review-line|reception-line|invoice-preview|evidence-card)\s*$/.test(selector))
+  );
+  panelBlocks.forEach(([, , declarations]) => {
+    assert.doesNotMatch(declarations, /(?:^|;)\s*(?:height|max-height|overflow|overflow-y|position)\s*:\s*(?:fixed|hidden|auto|scroll|\d)/i);
+  });
+});

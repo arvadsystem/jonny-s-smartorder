@@ -6,13 +6,14 @@ export default function SolicitudCompraRecepcionLinea({ line, errors, disabled, 
   const isProduct = line.tipo_item === 'PRODUCTO';
   const comparison = compareDecimalQuantities(line.cantidad_recibida, line.cantidad_aprobada);
   const different = comparison !== null && comparison !== 0;
+  const invalid = comparison === null;
   const quantityErrorId = `sol-comp-received-error-${line.id_solicitud_detalle}`;
 
   return (
     <article className={`sol-comp-reception-line${different ? ' is-different' : ''}`}>
       <div className="sol-comp-reception-info">
-        <div className="sol-comp-card-top"><strong>{line.nombre}</strong><span>{isProduct ? 'Producto' : 'Insumo'}</span></div>
-        <p>{line.categoria || 'Sin categoría'} · {line.presentacion_snapshot || line.unidad_base || 'Unidad'}</p>
+        <div className="sol-comp-card-top"><strong>{line.nombre}</strong><span className="sol-comp-type-pill">{isProduct ? 'Producto' : 'Insumo'}</span></div>
+        <p><span>{line.categoria || 'Sin categoría'}</span><span>{line.presentacion_snapshot || line.unidad_base || 'Unidad'}</span></p>
         <div className="sol-comp-quantities">
           <span>Aprobada <b>{value(line.cantidad_aprobada)}</b></span>
           <span>Base aprobada <b>{value(line.cantidad_base_aprobada)}</b></span>
@@ -30,7 +31,7 @@ export default function SolicitudCompraRecepcionLinea({ line, errors, disabled, 
           type="number"
           min={isProduct ? '1' : '0.0001'}
           step={isProduct ? '1' : '0.0001'}
-          inputMode="decimal"
+          inputMode={isProduct ? 'numeric' : 'decimal'}
           value={line.cantidad_recibida}
           disabled={disabled}
           aria-invalid={Boolean(errors?.cantidad)}
@@ -39,8 +40,9 @@ export default function SolicitudCompraRecepcionLinea({ line, errors, disabled, 
         />
         {errors?.cantidad ? <small id={quantityErrorId} className="sol-comp-field-error">{errors.cantidad}</small> : null}
       </label>
-      <div className={`sol-comp-difference sol-comp-difference--${different ? 'different' : 'equal'}`}>
-        <strong>{comparison === null ? 'Cantidad inválida' : different ? 'Diferencia' : 'Igual'}</strong>
+      <div className={`sol-comp-difference sol-comp-difference--${invalid ? 'invalid' : different ? 'different' : 'equal'}`}>
+        <i className={`bi ${invalid ? 'bi-x-circle' : different ? 'bi-exclamation-triangle' : 'bi-check-circle'}`} aria-hidden="true" />
+        <strong>{invalid ? 'Cantidad inválida' : different ? 'Diferencia' : 'Igual'}</strong>
         {different ? <small>Aprobada: {value(line.cantidad_aprobada)} · Recibida: {value(line.cantidad_recibida)}</small> : null}
       </div>
     </article>
