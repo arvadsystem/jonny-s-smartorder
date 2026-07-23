@@ -171,6 +171,9 @@ export const buildVentaLineConfigSignature = (line) => {
   const minComplements = Number(line?.minimo_complementos || 0) || 0;
   const maxComplements = Number(line?.maximo_complementos || 0) || 0;
   const complementType = String(line?.tipo_complemento || '').trim().toUpperCase() || 'none';
+  const deliveryTiming = kind === 'PRODUCTO' && line?.entregar_con_pedido === false
+    ? 'delivery-immediate'
+    : 'delivery-with-order';
   return [
     kind,
     entityId,
@@ -183,7 +186,8 @@ export const buildVentaLineConfigSignature = (line) => {
     requiresComplements,
     minComplements,
     maxComplements,
-    complementType
+    complementType,
+    deliveryTiming
   ].join('|');
 };
 

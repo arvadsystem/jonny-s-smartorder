@@ -4126,6 +4126,25 @@
   gap: 8px;
 }
 
+.ventas-cart__delivery-timing {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  color: #6b5c50;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.ventas-cart__delivery-timing input {
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: #9a5319;
+}
+
 .ventas-cart__item-row .ventas-create-modal__qty-control {
   gap: 4px;
 }

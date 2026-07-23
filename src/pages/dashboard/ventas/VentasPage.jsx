@@ -32,6 +32,7 @@ import {
   getSafePrintErrorContext,
   prepareComandaPrintWindow
 } from './utils/ventasPrintActions';
+import { loadKitchenComandaPrintSource } from './utils/ventasKitchenRouting';
 import {
   getAllowedTabs,
   MODULE_PRIMARY_PERMISSION,
@@ -578,13 +579,27 @@ export default function VentasPage() {
         origin: 'DIRECT_SALE'
       });
       ventaDetail = printResult.ventaDetail || ventaDetail;
+      ventaDetail = {
+        ...ventaDetail,
+        requiere_cocina: response?.requiere_cocina === true,
+        requiere_revision: response?.requiere_revision === true,
+        accion_operativa: response?.accion_operativa || null,
+        lineas_invalidas: Array.isArray(response?.lineas_invalidas) ? response.lineas_invalidas : []
+      };
 
-      setComandaPrompt(createComandaPrompt({
-        venta: ventaDetail,
-        sourceType: 'factura',
-        action: 'initial',
-        origin: 'post-sale'
-      }));
+      if (ventaDetail.requiere_revision) {
+        openToast('PEDIDO REQUIERE REVISION', 'El pedido contiene lineas invalidas y no fue enviado a cocina.', 'warning');
+        await openDetail(ventaDetail);
+      } else if (ventaDetail.requiere_cocina) {
+        setComandaPrompt(createComandaPrompt({
+          venta: ventaDetail,
+          sourceType: 'factura',
+          action: 'initial',
+          origin: 'post-sale'
+        }));
+      } else {
+        await openDetail(ventaDetail);
+      }
     } else if (facturaPrintWindow) {
       facturaPrintWindow.close();
     }
@@ -593,6 +608,11 @@ export default function VentasPage() {
   };
 
   const handlePendingOrderCreatedPrintPrompt = (comanda) => {
+    if (comanda?.requiere_revision === true) {
+      openToast('PEDIDO REQUIERE REVISION', 'El pedido contiene lineas invalidas y no fue enviado a cocina.', 'warning');
+      return;
+    }
+    if (comanda?.requiere_cocina !== true) return;
     setComandaPrompt(createComandaPrompt({
       venta: comanda,
       sourceType: 'pedido',
@@ -858,6 +878,16 @@ export default function VentasPage() {
       }));
     }
 
+    if (!isReprint && venta?.requiere_cocina === true) {
+      try {
+        await ventasService.updatePedidoEstado(venta.id_pedido, 'EN_COCINA');
+      } catch (error) {
+        if (comandaPrintWindow) comandaPrintWindow.close();
+        failPrint('No se pudo enviar el pedido a cocina.', error);
+        return;
+      }
+    }
+
     if (AGENT_PRINT_MODE) {
       try {
         const { response: queued } = await enqueueAgentPrintAction({
@@ -888,9 +918,11 @@ export default function VentasPage() {
     let canUseQzComanda = false;
 
     try {
-      const comanda = isPendingOrderComanda
-        ? await ventasService.getPedidoComanda(venta.id_pedido)
-        : venta;
+      const comanda = await loadKitchenComandaPrintSource({
+        sourceType,
+        venta,
+        ventasApi: ventasService
+      });
       comandaForPrint = comanda;
 
       const resolvedSucursalId = Number.parseInt(String(comanda?.id_sucursal ?? ''), 10);

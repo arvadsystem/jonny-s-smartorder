@@ -1046,24 +1046,36 @@ export default function CajaView({
       await loadPendientesSummary();
       const idPedido = toPositiveId(response?.id_pedido);
       if (idPedido) {
-        try {
-          const comanda = await ventasService.getPedidoComanda(idPedido);
-          onPedidoPendienteCreated?.(comanda);
-        } catch (error) {
-          if (Number(error?.status || 0) >= 500) {
-            console.error('[Ventas] No se pudo cargar la comanda persistida del pedido pendiente', error);
-          } else if (import.meta.env.DEV) {
-            console.warn('[Ventas] No se pudo cargar la comanda persistida del pedido pendiente', {
-              status: error?.status,
-              code: error?.code,
-              message: error?.message
+        if (response?.requiere_revision === true || response?.requiere_cocina !== true) {
+          onPedidoPendienteCreated?.(response);
+        } else {
+          try {
+            const comanda = await ventasService.getPedidoComanda(idPedido);
+            onPedidoPendienteCreated?.({
+              ...comanda,
+              requiere_cocina: response.requiere_cocina === true,
+              requiere_revision: response.requiere_revision === true,
+              accion_operativa: response.accion_operativa || null,
+              items_sin_clasificar: Array.isArray(response.items_sin_clasificar)
+                ? response.items_sin_clasificar
+                : []
             });
+          } catch (error) {
+            if (Number(error?.status || 0) >= 500) {
+              console.error('[Ventas] No se pudo cargar la comanda persistida del pedido pendiente', error);
+            } else if (import.meta.env.DEV) {
+              console.warn('[Ventas] No se pudo cargar la comanda persistida del pedido pendiente', {
+                status: error?.status,
+                code: error?.code,
+                message: error?.message
+              });
+            }
+            onNotify?.(
+              'COMANDA COCINA',
+              'El pedido fue creado, pero no se pudo cargar la comanda para imprimir',
+              'warning'
+            );
           }
-          onNotify?.(
-            'COMANDA COCINA',
-            'El pedido fue creado, pero no se pudo cargar la comanda para imprimir',
-            'warning'
-          );
         }
       } else {
         onNotify?.(

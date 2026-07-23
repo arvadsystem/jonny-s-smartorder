@@ -18,6 +18,7 @@ import {
   getSafePrintErrorContext,
   setDocumentPrintError
 } from '../utils/ventasPrintActions';
+import { canPrintKitchenComanda } from '../utils/ventasKitchenRouting';
 
 const DEFAULT_TICKET_WIDTH_MM = 80;
 
@@ -206,11 +207,10 @@ export default function VentaDetalleModal({
   const contexto = venta?.contexto && typeof venta.contexto === 'object' ? venta.contexto : null;
   const isDeliveryDetail = Boolean(delivery);
   const canPrintFactura = Boolean(canPrint && venta?.id_factura);
-  const hasKitchenItems = Array.isArray(venta?.items) && venta.items.length > 0;
   const canPrintComanda = Boolean(
     canPrint
     && (printSourceType === 'pedido' ? venta?.id_pedido : venta?.id_factura)
-    && (printSourceType === 'pedido' || hasKitchenItems)
+    && canPrintKitchenComanda(venta)
   );
   const pendingComanda = printSourceType === 'pedido';
 

@@ -745,6 +745,24 @@
   max-width: 100%;
 }
 
+.kds-card__item-group + .kds-card__item-group {
+  margin-top: 0.7rem;
+}
+
+.kds-card__item-group-label,
+.kds-modal__item-group-label {
+  margin: 0 1rem 0.35rem;
+  color: var(--kds-text-3);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.kds-card__item-group.is-delivery-reminder {
+  border-top: 1px dashed var(--kds-border);
+  padding-top: 0.65rem;
+}
+
 .kds-card__item {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
@@ -1198,6 +1216,10 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+.kds-modal__item-group-label {
+  margin: 0.75rem 0 0.35rem;
 }
 
 .kds-modal__item {
