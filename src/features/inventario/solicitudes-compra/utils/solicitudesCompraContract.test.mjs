@@ -299,3 +299,103 @@ test('css limita catalogo a dos columnas y evita scroll o alturas rigidas', asyn
   assert.doesNotMatch(css, /\.sol-comp-catalog-card__description\s*\{[^}]*(?:line-clamp|text-overflow|overflow\s*:)/i);
   assert.match(css, /\.sol-comp-add-row\s*\{[^}]*margin-top:\s*auto/);
 });
+
+test('detalle conserva navegacion cabecera estado e informacion principal', async () => {
+  const detail = await read('../components/SolicitudCompraDetalle.jsx');
+  assert.match(detail, /onClick=\{onBack\}[^>]*>[\s\S]*Volver a solicitudes/);
+  assert.match(detail, /Solicitud #\{request\.id_solicitud_compra\}/);
+  assert.match(detail, /<SolicitudCompraEstado estado=\{request\.estado\} showMessage \/>/);
+  [
+    'request.sucursal?.nombre',
+    'request.almacen?.nombre',
+    'request.solicitante?.nombre',
+    'formatDateTime(request.fecha_creacion)',
+  ].forEach((contract) => assert.match(detail, new RegExp(contract.replace(/[?.()]/g, '\\$&'))));
+});
+
+test('detalle presenta trazabilidad y observaciones sin alterar sus fuentes', async () => {
+  const detail = await read('../components/SolicitudCompraDetalle.jsx');
+  [
+    'request.revisor?.nombre',
+    'formatDateTime(request.fecha_revision)',
+    'request.receptor?.nombre',
+    'formatDateTime(request.fecha_recepcion)',
+    'request.inventario_aplicado',
+    'request.tiene_evidencia',
+    'request.observacion_solicitud',
+    'request.comentario_revision',
+    'request.observacion_recepcion',
+  ].forEach((contract) => assert.match(detail, new RegExp(contract.replace(/[?.()]/g, '\\$&'))));
+  ['sol-comp-note--request', 'sol-comp-note--review', 'sol-comp-note--reception'].forEach((className) =>
+    assert.match(detail, new RegExp(className))
+  );
+});
+
+test('detalle representa lineas con llave estable metadatos y cantidades completas', async () => {
+  const detail = await read('../components/SolicitudCompraDetalle.jsx');
+  assert.match(detail, /key=\{line\.id_solicitud_detalle \?\? 'invalid-contract-detail'\}/);
+  assert.doesNotMatch(detail, /key=\{(?:index|idx|i)\}/);
+  [
+    'line.nombre',
+    'line.tipo_item',
+    'line.categoria',
+    'line.presentacion_snapshot',
+    'line.unidad_base',
+    'line.cantidad_solicitada',
+    'line.cantidad_base_solicitada',
+    'line.cantidad_aprobada',
+    'line.cantidad_base_aprobada',
+    'line.cantidad_recibida',
+    'line.cantidad_base_recibida',
+  ].forEach((contract) => assert.match(detail, new RegExp(contract.replace('.', '\\.'))));
+  assert.match(detail, /No hay art/);
+  assert.match(detail, /details\.length === 1/);
+});
+
+test('detalle muestra stock proveedor y estados semanticos sin inventar valores', async () => {
+  const detail = await read('../components/SolicitudCompraDetalle.jsx');
+  ['line.stock_actual', 'line.stock_minimo', 'line.estado_stock', 'line.proveedor?.nombre_proveedor'].forEach((contract) =>
+    assert.match(detail, new RegExp(contract.replace(/[?.]/g, '\\$&')))
+  );
+  assert.match(detail, /SIN_STOCK: 'Sin stock'/);
+  assert.match(detail, /STOCK_BAJO: 'Stock bajo'/);
+  assert.match(detail, /DISPONIBLE: 'Disponible'/);
+  assert.match(detail, /\|\| 'Sin asignar'/);
+  assert.match(detail, /raw === null \|\| raw === undefined \? '[^']+' : raw/);
+});
+
+test('detalle preserva exactamente montaje de revision recepcion y evidencias', async () => {
+  const detail = await read('../components/SolicitudCompraDetalle.jsx');
+  assert.match(detail, /String\(request\.estado \|\| ''\)\.toUpperCase\(\) === 'PENDIENTE' && \(canApprove \|\| canReject\)/);
+  assert.match(detail, /SolicitudCompraRevisionPanel[\s\S]*solicitud=\{request\} detalles=\{details\} canApprove=\{canApprove\} canReject=\{canReject\} reloadDetail=\{reloadDetail\} reloadList=\{reloadList\} openToast=\{openToast\}/);
+  assert.match(detail, /String\(request\.estado \|\| ''\)\.toUpperCase\(\) === 'APROBADA' && canReceive/);
+  assert.match(detail, /SolicitudCompraRecepcionPanel[\s\S]*solicitud=\{request\} detalles=\{details\} canReceive=\{canReceive\} reloadDetail=\{reloadDetail\} reloadList=\{reloadList\} openToast=\{openToast\}/);
+  assert.match(detail, /request\.tiene_evidencia && canViewEvidence/);
+  assert.match(detail, /SolicitudCompraEvidencias[\s\S]*idSolicitud=\{request\.id_solicitud_compra\}/);
+  assert.doesNotMatch(detail, /apiFetch|axios|fetch\(/);
+});
+
+test('detalle no introduce informacion monetaria ni oculta contenido', async () => {
+  const detail = await read('../components/SolicitudCompraDetalle.jsx');
+  const css = await read('../solicitudesCompra.css');
+  assert.doesNotMatch(detail, /precio|costo|impuesto|subtotal|total monetario/i);
+  const protectedBlocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selectors]) =>
+    selectors.split(',').some((selector) => /^\s*\.sol-comp-detail-lines article\s*$/.test(selector))
+  );
+  protectedBlocks.forEach(([, , declarations]) => {
+    assert.doesNotMatch(declarations, /(?:^|;)\s*(?:height|min-height|max-height|overflow|overflow-y)\s*:/i);
+  });
+  assert.doesNotMatch(css, /\.sol-comp-note\s*\{[^}]*(?:line-clamp|text-overflow|overflow\s*:)/i);
+});
+
+test('detalle define jerarquia responsive y estados visuales accesibles', async () => {
+  const css = await read('../solicitudesCompra.css');
+  assert.match(css, /\.sol-comp-detail-primary\s*\{[^}]*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /\.sol-comp-quantity-groups\s*\{[^}]*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /\.sol-comp-line-context\s*\{[^}]*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /@media \(max-width: 1023px\)[\s\S]*\.sol-comp-line-context[\s\S]*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.sol-comp-line-meta,[\s\S]*\.sol-comp-line-context,[\s\S]*grid-template-columns:\s*1fr/);
+  assert.match(css, /\.sol-comp-quantity--requested/);
+  assert.match(css, /\.sol-comp-quantity--approved/);
+  assert.match(css, /\.sol-comp-quantity--received/);
+});
