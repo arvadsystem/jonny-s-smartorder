@@ -55,22 +55,26 @@ function CatalogItem({ item, onAdd }) {
       </div>
       <p className="sol-comp-type">{isSupply ? 'Insumo' : 'Producto'} · {item.categoria || 'Sin categoría'}</p>
       {item.descripcion ? <p className="sol-comp-catalog-card__description">{item.descripcion}</p> : null}
-      <div className="sol-comp-stock-values">
-        <span><small>Existencia</small><b>{item.cantidad ?? 0}</b></span>
-        <span><small>Stock mínimo</small><b>{item.stock_minimo ?? 0}</b></span>
-        <span><small>Unidad base</small><b>{item.unidad_base || 'Unidad'}</b></span>
+      <div className="sol-comp-catalog-card__inventory">
+        <div className="sol-comp-stock-values">
+          <span><small>Existencia</small><b>{item.cantidad ?? 0}</b></span>
+          <span><small>Stock mínimo</small><b>{item.stock_minimo ?? 0}</b></span>
+          <span><small>Unidad base</small><b>{item.unidad_base || 'Unidad'}</b></span>
+        </div>
       </div>
       {isSupply && presentations.length ? (
         <div className="sol-comp-presentation">
           <AppSelect label="Presentación de compra" value={presentation} options={options} onChange={setPresentation} />
           {selected ? <small><i className="bi bi-arrow-left-right" aria-hidden="true" /> {selected.cantidad_presentacion || 1} {selected.unidad_presentacion || selected.nombre_presentacion} equivale a {selected.cantidad_base} {selected.unidad_base || item.unidad_base}</small> : null}
         </div>
-      ) : null}
+      ) : <div className="sol-comp-base-presentation"><i className="bi bi-box" aria-hidden="true" /> Solicitud en unidad base</div>}
       <div className="sol-comp-add-row">
-        <label>Cantidad solicitada<input aria-invalid={Boolean(error)} aria-describedby={error ? quantityErrorId : undefined} type="number" min="0" step={isSupply ? '0.0001' : '1'} inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
-        <button type="button" className="btn btn-outline-primary" onClick={add}><i className="bi bi-plus-circle" aria-hidden="true" /> Agregar</button>
+        <label>Cantidad solicitada
+          <input aria-invalid={Boolean(error)} aria-describedby={error ? quantityErrorId : undefined} type="number" min="0" step={isSupply ? '0.0001' : '1'} inputMode={isSupply ? 'decimal' : 'numeric'} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+          {error ? <small id={quantityErrorId} className="sol-comp-field-error" role="alert">{error}</small> : null}
+        </label>
+        <button type="button" className="btn sol-comp-add-action" onClick={add}><i className="bi bi-plus-circle" aria-hidden="true" /> Agregar</button>
       </div>
-      {error ? <small id={quantityErrorId} className="sol-comp-field-error" role="alert">{error}</small> : null}
     </article>
   );
 }

@@ -111,7 +111,7 @@ test('frontend conserva exactamente el orden recibido y no filtra disponibles', 
   assert.match(catalog, /visibleItems\.map/);
   assert.doesNotMatch(catalog, /\.sort\(|estado_stock\s*!==\s*['"]DISPONIBLE|\.filter\([^)]*estado_stock/);
   assert.match(catalog, /sol-comp-stock--\$\{String\(item\.estado_stock\)/);
-  assert.match(catalog, /<button type="button" className="btn btn-outline-primary" onClick=\{add\}>/);
+  assert.match(catalog, /<button type="button" className="btn sol-comp-add-action" onClick=\{add\}>/);
 });
 
 test('catalogo conserva badges presentaciones equivalencia y validaciones', async () => {
@@ -172,7 +172,7 @@ test('css permanece encapsulado y evita recorte u overflow horizontal intenciona
       /(^|[;\s])height\s*:/i.test(declarations),
   );
   assert.deepEqual(cardsWithFixedHeight, []);
-  assert.match(css, /grid-template-columns:\s*repeat\(3/);
+  assert.match(css, /\.sol-comp-catalog-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2/);
   assert.match(css, /@media \(max-width: 767px\)/);
   assert.match(css, /@media \(max-width: 479px\)/);
 });
@@ -212,4 +212,90 @@ test('barra de catalogo conserva controles y auxiliar una sola vez', async () =>
   assert.match(catalog, /sol-comp-catalog-filters__secondary/);
   assert.equal((catalog.match(/Los artículos sin stock o con stock bajo aparecen primero\./g) || []).length, 1);
   ['Todo el catálogo', 'Necesitan reposición', 'Limpiar filtros'].forEach((copy) => assert.match(catalog, new RegExp(copy)));
+});
+
+test('cards conservan estados stock contenido y accion para todos los articulos', async () => {
+  const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
+  ['SIN_STOCK', 'STOCK_BAJO', 'DISPONIBLE'].forEach((state) => assert.match(catalog, new RegExp(state)));
+  assert.match(catalog, /item\.cantidad \?\? 0/);
+  assert.match(catalog, /item\.stock_minimo \?\? 0/);
+  assert.match(catalog, /item\.unidad_base \|\| 'Unidad'/);
+  assert.match(catalog, /visibleItems\.map\(\(item\) => <CatalogItem/);
+  assert.doesNotMatch(catalog, /disabled=.*estado_stock|estado_stock.*disabled/);
+});
+
+test('presentacion conserva opcion base predeterminada equivalencia y payload visual', async () => {
+  const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
+  assert.match(catalog, /presentations\.find\(\(option\) => option\.es_predeterminada_compra\) \|\| presentations\[0\]/);
+  assert.match(catalog, /\{ value: 'base', label: `Unidad base/);
+  assert.match(catalog, /<AppSelect label="Presentación de compra"/);
+  assert.equal((catalog.match(/<small><i className="bi bi-arrow-left-right"/g) || []).length, 1);
+  assert.match(catalog, /id_presentacion_insumo: Number\(presentation\)/);
+  assert.match(catalog, /factor_conversion_visual: selected \? String\(visualFactor\) : null/);
+  assert.match(catalog, /unidad_base_visual: selected\?\.unidad_base \|\| item\.unidad_base \|\| null/);
+  assert.match(catalog, /nombre_presentacion_visual: selected\?\.nombre_presentacion \|\| null/);
+});
+
+test('cantidad del catalogo mantiene precision accesibilidad y limpieza selectiva', async () => {
+  const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
+  assert.match(catalog, /step=\{isSupply \? '0\.0001' : '1'\}/);
+  assert.match(catalog, /inputMode=\{isSupply \? 'decimal' : 'numeric'\}/);
+  assert.match(catalog, /aria-describedby=\{error \? quantityErrorId : undefined\}/);
+  assert.match(catalog, /id=\{quantityErrorId\}[^>]*role="alert"/);
+  assert.match(catalog, /setQuantity\(''\)/);
+  assert.doesNotMatch(catalog, /setPresentation\((?:''|'base'|null)\)/);
+  assert.match(catalog, /onClick=\{add\}/);
+});
+
+test('resumen conserva llave transaccional lineas y eliminacion accesible', async () => {
+  const summary = await read('../components/SolicitudCompraResumen.jsx');
+  assert.match(summary, /const lineKey = `\$\{line\.tipo_item\}-\$\{line\.id_item\}-\$\{line\.id_presentacion_insumo \|\| 'base'\}`/);
+  assert.match(summary, /key=\{lineKey\}/);
+  assert.doesNotMatch(summary, /key=\{index\}/);
+  assert.match(summary, /title="Eliminar línea"/);
+  assert.match(summary, /aria-label=\{`Eliminar \$\{line\.nombre\}`\}/);
+  assert.match(summary, /buildVisualEquivalence\(line\)/);
+});
+
+test('resumen muestra errores especificos vinculados sin cambiar validacion', async () => {
+  const summary = await read('../components/SolicitudCompraResumen.jsx');
+  assert.match(summary, /parseRequestedQuantity\(line\.cantidad, line\.tipo_item\)/);
+  assert.match(summary, /Ingresa una cantidad entera mayor que cero\./);
+  assert.match(summary, /Ingresa una cantidad mayor que cero con hasta cuatro decimales\./);
+  assert.match(summary, /aria-invalid=\{!valid\}/);
+  assert.match(summary, /aria-describedby=\{!valid \? errorId : undefined\}/);
+  assert.match(summary, /id=\{errorId\}[^>]*role="alert"/);
+  assert.match(summary, /step=\{line\.tipo_item === 'producto' \? '1' : '0\.0001'\}/);
+  assert.match(summary, /inputMode=\{line\.tipo_item === 'producto' \? 'numeric' : 'decimal'\}/);
+});
+
+test('observacion y envio conservan contrato y estados', async () => {
+  const summary = await read('../components/SolicitudCompraResumen.jsx');
+  assert.match(summary, /maxLength="1000"/);
+  assert.match(summary, /\{observation\.length\} \/ 1000/);
+  assert.match(summary, /setObservation\(event\.target\.value\)/);
+  assert.match(summary, /disabled=\{disabled \|\| submitting\}/);
+  assert.match(summary, /onClick=\{onSubmit\}/);
+  assert.match(summary, /submitting \? 'Enviando…'/);
+  assert.match(summary, /Verifica las cantidades antes de enviar/);
+});
+
+test('catalogo y resumen no introducen datos monetarios', async () => {
+  const source = `${await read('../components/SolicitudCompraCatalogo.jsx')}\n${await read('../components/SolicitudCompraResumen.jsx')}`;
+  assert.doesNotMatch(source, /precio|costo|impuesto|subtotal|total monetario/i);
+});
+
+test('css limita catalogo a dos columnas y evita scroll o alturas rigidas', async () => {
+  const css = await read('../solicitudesCompra.css');
+  assert.match(css, /\.sol-comp-catalog-grid\s*\{[^}]*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.doesNotMatch(css, /\.sol-comp-catalog-grid\s*\{[^}]*repeat\(3/);
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.sol-comp-catalog-grid,[\s\S]*grid-template-columns:\s*1fr/);
+  const protectedBlocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selectors]) =>
+    selectors.split(',').some((selector) => /^\s*\.sol-comp-(?:catalog-card|summary)\s*$/.test(selector))
+  );
+  protectedBlocks.forEach(([, , declarations]) => {
+    assert.doesNotMatch(declarations, /(?:^|;)\s*(?:height|min-height|max-height|overflow|overflow-y)\s*:/i);
+  });
+  assert.doesNotMatch(css, /\.sol-comp-catalog-card__description\s*\{[^}]*(?:line-clamp|text-overflow|overflow\s*:)/i);
+  assert.match(css, /\.sol-comp-add-row\s*\{[^}]*margin-top:\s*auto/);
 });
