@@ -31,6 +31,16 @@ test('componentes usan AppSelect para almacen y presentacion', async () => {
   const create = await read('../components/NuevaSolicitudCompra.jsx');
   const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
   assert.match(create, /import AppSelect/); assert.match(create, /<AppSelect/); assert.match(catalog, /import AppSelect/); assert.match(catalog, /<AppSelect/);
+  assert.match(create, /<AppSelect label="Almacén"/);
+  assert.match(catalog, /<AppSelect label="Tipo"/);
+  assert.doesNotMatch(`${create}\n${catalog}`, /<select\b/i);
+});
+
+test('AppSelect compartido permanece intacto', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const path = new URL('../../../../components/common/AppSelect.jsx', import.meta.url);
+  const hash = execFileSync('git', ['hash-object', path.pathname.replace(/^\/([A-Za-z]:)/, '$1')], { encoding: 'utf8' }).trim();
+  assert.equal(hash, 'a9d55bd685841ce9207dda0ea656d7769a264b99');
 });
 test('flujo no contiene polling ni modales', async () => {
   const hook = await read('../hooks/useSolicitudesCompra.js');
@@ -84,6 +94,18 @@ test('cambio de almacen reinicia catalogo y borrador sin mostrar resultados prev
   assert.match(catalog, /matchesWarehouse && !state\.loading \? state\.items : \[\]/);
 });
 
+test('indicador de pasos representa almacen catalogo y resumen sin ser navegacion', async () => {
+  const create = await read('../components/NuevaSolicitudCompra.jsx');
+  assert.match(create, /warehouse:\s*warehouseId \? 'is-complete' : 'is-current'/);
+  assert.match(create, /catalog:\s*!warehouseId \? 'is-pending' : lines\.length \? 'is-complete' : 'is-current'/);
+  assert.match(create, /summary:\s*warehouseId && lines\.length \? 'is-current' : 'is-pending'/);
+  assert.match(create, /className=\{stepState\.warehouse\}/);
+  assert.match(create, /className=\{stepState\.catalog\}/);
+  assert.match(create, /className=\{stepState\.summary\}/);
+  const steps = create.match(/<ol className="sol-comp-steps"[\s\S]*?<\/ol>/)?.[0] || '';
+  assert.doesNotMatch(steps, /<button\b/);
+});
+
 test('frontend conserva exactamente el orden recibido y no filtra disponibles', async () => {
   const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
   assert.match(catalog, /visibleItems\.map/);
@@ -132,7 +154,10 @@ test('css permanece encapsulado y evita recorte u overflow horizontal intenciona
   assert.ok(
     selectorBlockOpenings.every((selector) => selector.includes('.sol-comp-')),
   );
-  assert.doesNotMatch(css, /overflow-x\s*:|overflow\s*:\s*hidden/i);
+  assert.doesNotMatch(css, /overflow\s*:\s*hidden/i);
+  const horizontalOverflowSelectors = [...css.matchAll(/([^{}]+)\{([^{}]*overflow-x\s*:[^{}]*)\}/gi)]
+    .map(([, selectors]) => selectors.trim());
+  assert.ok(horizontalOverflowSelectors.every((selectors) => selectors.includes('.sol-comp-filters')));
   const cssRuleBlocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
   const cardsWithFixedHeight = cssRuleBlocks.filter(
     ([, selectors, declarations]) =>
@@ -150,4 +175,41 @@ test('css permanece encapsulado y evita recorte u overflow horizontal intenciona
   assert.match(css, /grid-template-columns:\s*repeat\(3/);
   assert.match(css, /@media \(max-width: 767px\)/);
   assert.match(css, /@media \(max-width: 479px\)/);
+});
+
+test('pulido visual usa tokens institucionales y corrige estructura superior', async () => {
+  const css = await read('../solicitudesCompra.css');
+  assert.match(css, /--sol-comp-primary:\s*var\(--c-accent\)/);
+  assert.doesNotMatch(css, /#0d6efd/i);
+  assert.doesNotMatch(css, /max-width:\s*620px/i);
+  assert.match(css, /\.sol-comp-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2/);
+  assert.match(css, /\.sol-comp-warehouse\s*\{[^}]*grid-template-columns:/);
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.sol-comp-warehouse,[\s\S]*grid-template-columns:\s*1fr/);
+  assert.match(css, /\.sol-comp-request-card__footer\s*\{[^}]*border-top:/);
+});
+
+test('AppSelect tiene integracion visual completa y scoped', async () => {
+  const css = await read('../solicitudesCompra.css');
+  const required = [
+    'app-select', 'app-select__label', 'app-select__trigger', 'app-select__value',
+    'app-select__placeholder', 'app-select__chevron', 'app-select__menu',
+    'app-select__search', 'app-select__list', 'app-select__option',
+    'app-select__helper'
+  ];
+  required.forEach((className) => assert.match(css, new RegExp(`\\.sol-comp-section \\.${className.replace('.', '\\.')}`)));
+  ['is-open', 'is-disabled', 'has-error'].forEach((state) => {
+    assert.match(css, new RegExp(`\\.sol-comp-section \\.app-select\\.${state}`));
+  });
+  assert.match(css, /\.sol-comp-section \.app-select__option\.is-selected/);
+  assert.match(css, /\.sol-comp-section \.app-select__trigger\s*\{[^}]*min-height:\s*44px/);
+  assert.match(css, /\.sol-comp-section \.app-select__menu\s*\{[^}]*min-width:\s*100%/);
+  assert.match(css, /\.sol-comp-section \.app-select__menu\s*\{[^}]*z-index:\s*80/);
+});
+
+test('barra de catalogo conserva controles y auxiliar una sola vez', async () => {
+  const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
+  assert.match(catalog, /sol-comp-catalog-filters__primary/);
+  assert.match(catalog, /sol-comp-catalog-filters__secondary/);
+  assert.equal((catalog.match(/Los artículos sin stock o con stock bajo aparecen primero\./g) || []).length, 1);
+  ['Todo el catálogo', 'Necesitan reposición', 'Limpiar filtros'].forEach((copy) => assert.match(catalog, new RegExp(copy)));
 });

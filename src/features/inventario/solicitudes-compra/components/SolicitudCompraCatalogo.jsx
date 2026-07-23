@@ -111,20 +111,23 @@ export default function SolicitudCompraCatalogo({ warehouseId, state, loadCatalo
 
   return (
     <section className="sol-comp-catalog" aria-labelledby="catalog-title">
-      <div className="sol-comp-panel-heading"><span aria-hidden="true"><i className="bi bi-grid-3x3-gap" /></span><div><h3 id="catalog-title">Catálogo del almacén</h3><p>Los artículos sin stock o con stock bajo aparecen primero.</p></div></div>
+      <div className="sol-comp-panel-heading"><span aria-hidden="true"><i className="bi bi-grid-3x3-gap" /></span><div><h3 id="catalog-title">Catálogo del almacén</h3></div></div>
       <div className="sol-comp-catalog-filters">
-        <label className="sol-comp-search-field">Buscar<input type="search" placeholder="Nombre o descripción" value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); load(1); } }} /></label>
-        <AppSelect label="Tipo" value={type} options={TYPE_OPTIONS} onChange={(value) => { setType(value); void loadCatalog(catalogOptions(1, { type: value })); }} />
-        <fieldset className="sol-comp-scope">
-          <legend>Alcance</legend>
-          <div>
-            <button type="button" aria-pressed={scope === 'all'} className={scope === 'all' ? 'is-active' : ''} onClick={() => changeScope('all')}>Todo el catálogo</button>
-            <button type="button" aria-pressed={scope === 'low'} className={scope === 'low' ? 'is-active' : ''} onClick={() => changeScope('low')}>Necesitan reposición</button>
-          </div>
-        </fieldset>
-        <div className="sol-comp-filter-actions">
+        <div className="sol-comp-catalog-filters__primary">
+          <label className="sol-comp-search-field">Buscar<input type="search" placeholder="Nombre o descripción" value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); load(1); } }} /></label>
+          <AppSelect label="Tipo" value={type} options={TYPE_OPTIONS} onChange={(value) => { setType(value); void loadCatalog(catalogOptions(1, { type: value })); }} />
           <button type="button" className="btn btn-primary" onClick={() => load(1)}><i className="bi bi-search" aria-hidden="true" /> Buscar</button>
           <button type="button" className="btn btn-outline-secondary" onClick={clearFilters}><i className="bi bi-arrow-counterclockwise" aria-hidden="true" /> Limpiar filtros</button>
+        </div>
+        <div className="sol-comp-catalog-filters__secondary">
+          <fieldset className="sol-comp-scope">
+            <legend>Alcance</legend>
+            <div>
+              <button type="button" aria-pressed={scope === 'all'} className={scope === 'all' ? 'is-active' : ''} onClick={() => changeScope('all')}>Todo el catálogo</button>
+              <button type="button" aria-pressed={scope === 'low'} className={scope === 'low' ? 'is-active' : ''} onClick={() => changeScope('low')}>Necesitan reposición</button>
+            </div>
+          </fieldset>
+          <p><i className="bi bi-info-circle" aria-hidden="true" /> Los artículos sin stock o con stock bajo aparecen primero.</p>
         </div>
       </div>
       <div aria-live="polite">
