@@ -1649,6 +1649,10 @@
     padding: 12px;
   }
 
+  .cierres-caja-close-modal .cierres-caja-compact-modal__body {
+    padding-inline: 14px;
+  }
+
   .cierres-caja-compact-modal .cierres-caja-action-modal__grid {
     grid-template-columns: 1fr;
   }

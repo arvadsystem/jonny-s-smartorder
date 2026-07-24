@@ -11,6 +11,47 @@ const buildInitialState = () => ({
 });
 
 const normalizeMethodCode = (value) => String(value || '').trim().toUpperCase();
+const resolveApiErrorCode = (error) => String(error?.data?.code || error?.code || '').trim();
+const resolveApiErrorDetails = (error) => error?.data?.details || error?.details || {};
+const resolveApiErrorMessage = (error, fallback) =>
+  String(error?.data?.message || error?.message || fallback || '').trim() || fallback;
+
+const formatApiError = (error, fallback) => {
+  const code = resolveApiErrorCode(error);
+  const message = resolveApiErrorMessage(error, fallback);
+  return code ? `Código ${code}: ${message}` : message;
+};
+
+const STALE_FIELD_LABELS = Object.freeze({
+  cantidad_cobros: 'cantidad de cobros',
+  max_id_factura_cobro: 'último cobro',
+  total_cobros: 'total cobrado',
+  cantidad_movimientos: 'cantidad de movimientos',
+  max_id_movimiento_caja: 'último movimiento',
+  total_ingresos_manuales: 'ingresos manuales',
+  total_egresos_manuales: 'egresos manuales',
+  cantidad_reversiones: 'cantidad de reversiones',
+  max_id_reversion: 'última reversión',
+  total_reversado: 'total revertido',
+  efectivo_teorico: 'efectivo del sistema',
+  tarjeta_teorico: 'tarjeta del sistema',
+  transferencia_teorico: 'transferencia del sistema',
+  total_teorico: 'total del sistema'
+});
+
+const resolveStaleNotice = (error) => {
+  const details = resolveApiErrorDetails(error);
+  const changedFields = Array.isArray(details.campos_cambiados)
+    ? details.campos_cambiados
+    : (Array.isArray(details.campos) ? details.campos : []);
+  const labels = [...new Set(changedFields.map((field) => {
+    const normalized = String(field || '').trim();
+    if (normalized.startsWith('catalogo_') || normalized.startsWith('CATALOGO.')) return 'catálogo financiero';
+    return STALE_FIELD_LABELS[normalized] || null;
+  }).filter(Boolean))];
+  const suffix = labels.length > 0 ? ` Cambios detectados: ${labels.join(', ')}.` : '';
+  return `Hubo actividad posterior a la revisión. Verifica los valores y genera una única revisión nueva.${suffix}`;
+};
 
 const resolveObservationError = (error) => {
   const code = normalizeMethodCode(error?.code || error?.data?.code);
@@ -18,7 +59,9 @@ const resolveObservationError = (error) => {
 
   const details = error?.data?.details || error?.details || {};
   const focusMethod = String(details.focus_target || '').split('.')[1] || '';
-  const methodCode = normalizeMethodCode(details.metodo_pago_codigo || details.step || focusMethod || 'EFECTIVO');
+  const methodCode = normalizeMethodCode(
+    details.method || details.metodo_pago_codigo || details.step || focusMethod || 'EFECTIVO'
+  );
   if (!STEP_ORDER.includes(methodCode) || methodCode === 'RESUMEN') return null;
 
   return {
@@ -50,6 +93,7 @@ export default function CierreCajaCerrarModal({
   const [stepIndex, setStepIndex] = useState(0);
   const [form, setForm] = useState(buildInitialState);
   const [validationLoading, setValidationLoading] = useState(false);
+  const [operationInFlight, setOperationInFlight] = useState(false);
   const [validationError, setValidationError] = useState('');
   const [validationData, setValidationData] = useState(null);
   const [inlineMethodErrors, setInlineMethodErrors] = useState({});
@@ -63,9 +107,10 @@ export default function CierreCajaCerrarModal({
   const efectivoObservacionRef = useRef(null);
   const tarjetaObservacionRef = useRef(null);
   const transferenciaObservacionRef = useRef(null);
-  const validationLoadingRef = useRef(false);
+  const validationOrCloseInFlightRef = useRef(false);
   const validationRequestIdRef = useRef(0);
   const validationPayloadKeyRef = useRef('');
+  const pendingFocusTargetRef = useRef(null);
 
   const fieldRefs = useMemo(() => ({
     EFECTIVO: {
@@ -169,13 +214,30 @@ export default function CierreCajaCerrarModal({
   const focusMethodField = useCallback((methodCode, field = 'observacion') => {
     const normalizedMethod = normalizeMethodCode(methodCode);
     const targetIndex = STEP_ORDER.indexOf(normalizedMethod);
-    if (targetIndex >= 0) setStepIndex(targetIndex);
-    window.setTimeout(() => {
+    if (targetIndex < 0) return;
+
+    pendingFocusTargetRef.current = { methodCode: normalizedMethod, field };
+    if (targetIndex === stepIndex) {
       const targetRef = fieldRefs[normalizedMethod]?.[field] || fieldRefs[normalizedMethod]?.observacion;
+      pendingFocusTargetRef.current = null;
       targetRef?.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       targetRef?.current?.focus();
-    }, 0);
-  }, [fieldRefs]);
+      return;
+    }
+    setStepIndex(targetIndex);
+  }, [fieldRefs, stepIndex]);
+
+  useEffect(() => {
+    const pendingTarget = pendingFocusTargetRef.current;
+    if (!pendingTarget || STEP_ORDER[stepIndex] !== pendingTarget.methodCode) return;
+
+    const targetRef =
+      fieldRefs[pendingTarget.methodCode]?.[pendingTarget.field] ||
+      fieldRefs[pendingTarget.methodCode]?.observacion;
+    pendingFocusTargetRef.current = null;
+    targetRef?.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    targetRef?.current?.focus();
+  }, [fieldRefs, stepIndex]);
 
   const handleExpectedValidationError = useCallback((error, focusOnError = true) => {
     const observationError = resolveObservationError(error);
@@ -190,46 +252,85 @@ export default function CierreCajaCerrarModal({
     return true;
   }, [focusMethodField]);
 
-  const runValidation = useCallback(async ({ focusOnError = true } = {}) => {
-    if (!canSubmit || typeof onValidate !== 'function' || validationLoadingRef.current) return null;
+  const clearStaleValidation = useCallback((message) => {
+    validationPayloadKeyRef.current = '';
+    setValidationData(null);
+    setStaleValidationNotice(message);
+    setStepIndex(STEP_ORDER.indexOf('RESUMEN'));
+  }, []);
+
+  const runValidation = useCallback(async ({ focusOnError = true, flowLockHeld = false } = {}) => {
+    if (!canSubmit || typeof onValidate !== 'function') return null;
+
+    const payload = buildArqueosPayload();
+    const payloadKey = JSON.stringify(payload);
+    if (validationData && validationPayloadKeyRef.current === payloadKey) {
+      setValidationError('');
+      setStaleValidationNotice('');
+      return validationData;
+    }
+    if (!flowLockHeld && validationOrCloseInFlightRef.current) return null;
 
     const requestId = validationRequestIdRef.current + 1;
     validationRequestIdRef.current = requestId;
-    validationLoadingRef.current = true;
+    if (!flowLockHeld) {
+      validationOrCloseInFlightRef.current = true;
+      setOperationInFlight(true);
+    }
     setValidationLoading(true);
     setValidationError('');
     setStaleValidationNotice('');
 
     try {
-      const payload = buildArqueosPayload();
-      const payloadKey = JSON.stringify(payload);
       const response = await onValidate(payload, { silent: true });
       if (validationRequestIdRef.current !== requestId) return null;
-      if (payloadKey !== JSON.stringify(buildArqueosPayload())) return null;
+      if (payloadKey !== JSON.stringify(buildArqueosPayload())) {
+        clearStaleValidation('El formulario cambió durante la revisión. Verifica los valores antes de intentarlo nuevamente.');
+        return null;
+      }
       validationPayloadKeyRef.current = payloadKey;
       setValidationData(response || null);
       setInlineMethodErrors({});
+      if (!response?.id_validacion_cierre) {
+        validationPayloadKeyRef.current = '';
+        setValidationData(null);
+        setValidationError('La revisión no devolvió un identificador válido. No se intentó cerrar la sesión.');
+        return null;
+      }
       return response || null;
     } catch (error) {
       if (validationRequestIdRef.current !== requestId) return null;
-      setValidationData(null);
-      if (!handleExpectedValidationError(error, focusOnError)) {
-        setValidationError(error?.message || 'No se pudo revisar las diferencias.');
+      const code = resolveApiErrorCode(error);
+      if (code === 'VENTAS_CAJAS_CLOSE_VALIDATION_STALE') {
+        clearStaleValidation(resolveStaleNotice(error));
+      } else if (!handleExpectedValidationError(error, focusOnError)) {
+        setValidationError(formatApiError(error, 'No se pudo revisar las diferencias.'));
       }
       return null;
     } finally {
       if (validationRequestIdRef.current === requestId) {
-        validationLoadingRef.current = false;
         setValidationLoading(false);
       }
+      if (!flowLockHeld) {
+        validationOrCloseInFlightRef.current = false;
+        setOperationInFlight(false);
+      }
     }
-  }, [buildArqueosPayload, canSubmit, handleExpectedValidationError, onValidate]);
+  }, [
+    buildArqueosPayload,
+    canSubmit,
+    clearStaleValidation,
+    handleExpectedValidationError,
+    onValidate,
+    validationData
+  ]);
 
   useEffect(() => {
     if (!open) return;
     validationRequestIdRef.current += 1;
-    validationLoadingRef.current = false;
+    validationOrCloseInFlightRef.current = false;
     setValidationLoading(false);
+    setOperationInFlight(false);
     setValidationData(null);
     validationPayloadKeyRef.current = '';
     setValidationError('');
@@ -239,16 +340,18 @@ export default function CierreCajaCerrarModal({
 
   useEffect(() => {
     if (!open) {
-      validationLoadingRef.current = false;
+      validationOrCloseInFlightRef.current = false;
       validationRequestIdRef.current += 1;
+      setOperationInFlight(false);
     }
   }, [open]);
 
   useEffect(() => {
     if (!open || !externalInvalidationKey) return;
     validationRequestIdRef.current += 1;
-    validationLoadingRef.current = false;
+    validationOrCloseInFlightRef.current = false;
     setValidationLoading(false);
+    setOperationInFlight(false);
     setValidationData(null);
     validationPayloadKeyRef.current = '';
     setValidationError('');
@@ -259,12 +362,11 @@ export default function CierreCajaCerrarModal({
 
   const invalidateValidation = () => {
     validationRequestIdRef.current += 1;
-    validationLoadingRef.current = false;
     setValidationLoading(false);
     validationPayloadKeyRef.current = '';
     setValidationData((current) => {
       if (!current) return current;
-      setStaleValidationNotice('Cambiaste el formulario despues de revisar diferencias. Debes revisar diferencias nuevamente.');
+      setStaleValidationNotice('Cambiaste el formulario después de la revisión. Verifica los valores y genera una revisión nueva.');
       return null;
     });
   };
@@ -292,30 +394,31 @@ export default function CierreCajaCerrarModal({
   };
 
   const goNext = () => {
-    if (!stepValid || stepIndex >= STEP_ORDER.length - 1 || saving || validationLoading) return;
+    if (!stepValid || stepIndex >= STEP_ORDER.length - 1 || saving || operationInFlight) return;
     setStepIndex((current) => current + 1);
   };
 
   const goBack = () => {
-    if (stepIndex <= 0 || saving || validationLoading) return;
+    if (stepIndex <= 0 || saving || operationInFlight) return;
     setStepIndex((current) => current - 1);
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!canSubmit || saving || validationLoading) return;
+    if (!canSubmit || saving || validationOrCloseInFlightRef.current) return;
 
+    validationOrCloseInFlightRef.current = true;
+    setOperationInFlight(true);
+    setValidationError('');
     try {
       const payload = buildArqueosPayload();
       const payloadKey = JSON.stringify(payload);
       const currentValidation = validationData && validationPayloadKeyRef.current === payloadKey
         ? validationData
-        : await runValidation({ focusOnError: true });
+        : await runValidation({ focusOnError: true, flowLockHeld: true });
       if (!currentValidation) return;
       if (validationPayloadKeyRef.current !== JSON.stringify(buildArqueosPayload())) {
-        setValidationData(null);
-        validationPayloadKeyRef.current = '';
-        setStaleValidationNotice('El formulario cambio despues de revisar diferencias. Debes revisar diferencias nuevamente.');
+        clearStaleValidation('El formulario cambió después de la revisión. Verifica los valores y genera una revisión nueva.');
         return;
       }
       await onSubmit({
@@ -323,15 +426,15 @@ export default function CierreCajaCerrarModal({
         id_validacion_cierre: currentValidation.id_validacion_cierre || null
       });
     } catch (error) {
-      const code = error?.data?.code || error?.code;
+      const code = resolveApiErrorCode(error);
       if (code === 'VENTAS_CAJAS_CLOSE_VALIDATION_STALE') {
-        validationPayloadKeyRef.current = '';
-        setValidationData(null);
-        setStaleValidationNotice('La sesion cambio. Revisa las diferencias nuevamente.');
-        setStepIndex(STEP_ORDER.indexOf('RESUMEN'));
+        clearStaleValidation(resolveStaleNotice(error));
       } else if (!handleExpectedValidationError(error, true)) {
-        setValidationError(error?.message || 'No se pudo registrar el cierre de caja.');
+        setValidationError(formatApiError(error, 'No se pudo registrar el cierre de caja.'));
       }
+    } finally {
+      validationOrCloseInFlightRef.current = false;
+      setOperationInFlight(false);
     }
   };
 
@@ -342,6 +445,7 @@ export default function CierreCajaCerrarModal({
       : [];
   const rowsWithDifference = methodRows.filter((row) => Number(row?.diferencia || 0) !== 0);
   const requiredObservationCount = methodRows.filter((row) => row?.observacion_requerida && !row?.observacion_presente).length;
+  const controlsDisabled = saving || operationInFlight;
 
   const renderMethodActions = (row) => {
     const methodCode = normalizeMethodCode(row?.metodo_pago_codigo);
@@ -350,7 +454,7 @@ export default function CierreCajaCerrarModal({
       <div className="cierres-caja-review-card__actions">
         {methodCode === 'EFECTIVO' ? (
           <>
-            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => focusMethodField('EFECTIVO', 'monto')}>
+            <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => focusMethodField('EFECTIVO', 'monto')} disabled={controlsDisabled}>
               Volver a contar efectivo
             </button>
             {diferencia < 0 ? (
@@ -358,6 +462,7 @@ export default function CierreCajaCerrarModal({
                 type="button"
                 className="btn btn-sm btn-outline-danger"
                 onClick={() => onOpenMovimientoManual?.({ source: 'cierre', methodCode, tipoInicial: 'EGRESO' })}
+                disabled={controlsDisabled}
               >
                 Registrar egreso
               </button>
@@ -367,6 +472,7 @@ export default function CierreCajaCerrarModal({
                 type="button"
                 className="btn btn-sm btn-outline-success"
                 onClick={() => onOpenMovimientoManual?.({ source: 'cierre', methodCode, tipoInicial: 'INGRESO' })}
+                disabled={controlsDisabled}
               >
                 Registrar ingreso
               </button>
@@ -377,11 +483,12 @@ export default function CierreCajaCerrarModal({
             type="button"
             className="btn btn-sm btn-outline-secondary"
             onClick={() => focusMethodField(methodCode, methodCode === 'TARJETA' ? 'cantidad_referencias' : 'cantidad_referencias')}
+            disabled={controlsDisabled}
           >
             {methodCode === 'TARJETA' ? 'Revisar vouchers/referencias' : 'Revisar comprobantes/referencias'}
           </button>
         )}
-        <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => focusMethodField(methodCode, 'observacion')}>
+        <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => focusMethodField(methodCode, 'observacion')} disabled={controlsDisabled}>
           Agregar observación
         </button>
       </div>
@@ -415,7 +522,7 @@ export default function CierreCajaCerrarModal({
             className="ventas-modal__close-btn"
             onClick={onClose}
             aria-label="Cerrar"
-            disabled={saving || validationLoading}
+            disabled={controlsDisabled}
           >
             <i className="bi bi-x-lg" />
           </button>
@@ -447,6 +554,7 @@ export default function CierreCajaCerrarModal({
                   step="0.01"
                   value={form[step].monto}
                   onChange={(event) => setMethodField(step, 'monto', event.target.value)}
+                  disabled={controlsDisabled}
                 />
               </label>
 
@@ -460,6 +568,7 @@ export default function CierreCajaCerrarModal({
                     step="1"
                     value={form[step].cantidad_referencias}
                     onChange={(event) => setMethodField(step, 'cantidad_referencias', event.target.value)}
+                    disabled={controlsDisabled}
                   />
                 </label>
               ) : null}
@@ -472,6 +581,7 @@ export default function CierreCajaCerrarModal({
                   rows="2"
                   value={form[step].observacion}
                   onChange={(event) => setMethodField(step, 'observacion', event.target.value)}
+                  disabled={controlsDisabled}
                   placeholder={`Observación para ${step.toLowerCase()}...`}
                 />
               </label>
@@ -494,7 +604,10 @@ export default function CierreCajaCerrarModal({
               ) : null}
               {validationData?.numero_intento ? (
                 <div className="alert alert-success mb-0">
-                  Intento de revisión #{validationData.numero_intento}
+                  <strong>Revisión actual #{validationData.numero_intento}</strong>
+                  {validationData?.reutilizada ? (
+                    <div className="small">Se reutilizó la revisión vigente; no se creó un recuento nuevo.</div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -593,6 +706,7 @@ export default function CierreCajaCerrarModal({
                   }}
                   placeholder={isAdministrativeClose ? 'Motivo obligatorio del cierre administrativo...' : 'Observación general opcional...'}
                   required={isAdministrativeClose}
+                  disabled={controlsDisabled}
                 />
               </label>
               {isAdministrativeClose && !form.observacion_cierre.trim() ? (
@@ -605,14 +719,14 @@ export default function CierreCajaCerrarModal({
 
           <footer className="ventas-detail-modal__footer">
             <div className="ventas-detail-modal__footer-actions">
-              <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving || validationLoading}>
+              <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={controlsDisabled}>
                 Cancelar
               </button>
-              <button type="button" className="btn btn-outline-secondary" onClick={goBack} disabled={saving || validationLoading || stepIndex === 0}>
+              <button type="button" className="btn btn-outline-secondary" onClick={goBack} disabled={controlsDisabled || stepIndex === 0}>
                 Atrás
               </button>
               {step !== 'RESUMEN' ? (
-                <button type="button" className="btn btn-danger" onClick={goNext} disabled={!stepValid || saving || validationLoading}>
+                <button type="button" className="btn btn-danger" onClick={goNext} disabled={!stepValid || controlsDisabled}>
                   Siguiente
                 </button>
               ) : (
@@ -621,12 +735,16 @@ export default function CierreCajaCerrarModal({
                     type="button"
                     className="btn btn-outline-danger"
                     onClick={() => void runValidation({ focusOnError: true })}
-                    disabled={!canSubmit || saving || validationLoading}
+                    disabled={!canSubmit || controlsDisabled}
                   >
                     {validationLoading ? 'Revisando...' : 'Revisar diferencias'}
                   </button>
-                  <button type="submit" className="btn btn-danger" disabled={!canSubmit || saving || validationLoading}>
-                    {saving ? 'Guardando...' : 'Enviar a revisión'}
+                  <button type="submit" className="btn btn-danger" disabled={!canSubmit || controlsDisabled}>
+                    {saving
+                      ? 'Guardando...'
+                      : operationInFlight
+                        ? (validationLoading ? 'Validando...' : 'Enviando...')
+                        : 'Enviar a revisión'}
                   </button>
                 </>
               )}

@@ -67,6 +67,25 @@ const formatMoneyOrLabel = (value, fallback = 'No disponible') =>
 const firstPresent = (...values) =>
   values.find((value) => value !== null && value !== undefined);
 
+const normalizeEntityId = (value) => {
+  const text = String(value ?? '').trim();
+  return /^\d+$/.test(text) && text !== '0' ? text.replace(/^0+(?=\d)/, '') : '';
+};
+
+const sortRecuentosNewestFirst = (left, right) => {
+  const attemptDifference = Number(right?.numero_intento || 0) - Number(left?.numero_intento || 0);
+  if (attemptDifference !== 0) return attemptDifference;
+  const leftDate = new Date(left?.fecha_validacion || 0).getTime();
+  const rightDate = new Date(right?.fecha_validacion || 0).getTime();
+  if (Number.isFinite(leftDate) && Number.isFinite(rightDate) && leftDate !== rightDate) {
+    return rightDate - leftDate;
+  }
+  const leftId = normalizeEntityId(left?.id_validacion_cierre);
+  const rightId = normalizeEntityId(right?.id_validacion_cierre);
+  if (!leftId || !rightId || leftId === rightId) return 0;
+  return BigInt(rightId) > BigInt(leftId) ? 1 : -1;
+};
+
 const AmountCard = ({ label, value, tone = 'neutral', icon = 'bi-cash-stack', fallback = 'No disponible' }) => (
   <article className={`cierres-caja-detail-amount-card is-${tone}`}>
     <span className="cierres-caja-detail-amount-card__icon">
@@ -160,9 +179,28 @@ export default function CierreCajaDetalleModal({
     () => (Array.isArray(detalle?.movimientos) ? detalle.movimientos : []),
     [detalle?.movimientos]
   );
-  const recuentos = Array.isArray(detalle?.recuentos)
-    ? detalle.recuentos
-    : (Array.isArray(detalle?.validaciones_cierre) ? detalle.validaciones_cierre : []);
+  const recuentos = useMemo(() => {
+    const currentSessionId = normalizeEntityId(sesion?.id_sesion_caja);
+    const rawRecuentos = Array.isArray(detalle?.recuentos)
+      ? detalle.recuentos
+      : (Array.isArray(detalle?.validaciones_cierre) ? detalle.validaciones_cierre : []);
+    const seenValidationIds = new Set();
+    return rawRecuentos
+      .filter((recuento) => {
+        const recuentoSessionId = normalizeEntityId(recuento?.id_sesion_caja);
+        return !recuentoSessionId || !currentSessionId || recuentoSessionId === currentSessionId;
+      })
+      .filter((recuento) => {
+        const validationId = normalizeEntityId(recuento?.id_validacion_cierre);
+        if (!validationId) return true;
+        if (seenValidationIds.has(validationId)) return false;
+        seenValidationIds.add(validationId);
+        return true;
+      })
+      .sort(sortRecuentosNewestFirst);
+  }, [detalle?.recuentos, detalle?.validaciones_cierre, sesion?.id_sesion_caja]);
+  const currentRecuento = recuentos[0] || null;
+  const previousRecuentos = currentRecuento ? recuentos.slice(1) : [];
   const recuentoUsadoParaCierre = recuentos.find((recuento) => recuento?.usado_para_cierre) || null;
   const isOpen = sesion?.estado_codigo === 'ABIERTA';
   const sessionCode = formatSessionCode(sesion?.id_sesion_caja);
@@ -589,6 +627,119 @@ export default function CierreCajaDetalleModal({
     </section>
   );
 
+  const renderRecuentoCard = (recuento, { isCurrent = false } = {}) => {
+    const difference = recuento.diferencia_total;
+    const metodosRecuento = Array.isArray(recuento.metodos) ? recuento.metodos : [];
+    const differenceLabel = difference === null || difference === undefined
+      ? 'No visible'
+      : `L. ${formatCajaCurrency(difference)}`;
+    return (
+      <article
+        key={recuento.id_validacion_cierre || recuento.numero_intento}
+        className={`cierres-caja-review-card ${recuento.usado_para_cierre ? 'border border-success' : ''}`}
+      >
+        <div className="cierres-caja-review-card__head">
+          <div>
+            <strong>Revisión #{recuento.numero_intento || '-'}</strong>
+            <div className="text-muted small fw-semibold">
+              {recuento.usuario_valida_nombre || 'Usuario no disponible'} - {formatCajaDateTimeHN(recuento.fecha_validacion)}
+            </div>
+          </div>
+          <div className="d-flex flex-wrap justify-content-end gap-2">
+            <span className={`ventas-page__table-pill ${isCurrent ? 'bg-danger border-danger text-white' : 'bg-light border-secondary text-secondary'}`}>
+              {isCurrent ? 'Revisión actual' : 'Revisión anterior'}
+            </span>
+            {recuento.usado_para_cierre ? (
+              <span className="ventas-page__table-pill bg-success border-success text-white">
+                Usada para cierre
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="cierres-caja-review-card__grid">
+          {canViewCajaTheoreticalAmounts ? (
+            <div>
+              <span>Sistema</span>
+              <strong>
+                {recuento.total_teorico === null || recuento.total_teorico === undefined
+                  ? 'No visible'
+                  : `L. ${formatCajaCurrency(recuento.total_teorico)}`}
+              </strong>
+            </div>
+          ) : null}
+          <div>
+            <span>Declarado</span>
+            <strong>
+              {recuento.total_declarado === null || recuento.total_declarado === undefined
+                ? 'No disponible'
+                : `L. ${formatCajaCurrency(recuento.total_declarado)}`}
+            </strong>
+          </div>
+          {canViewCajaTheoreticalAmounts ? (
+            <div>
+              <span>Diferencia</span>
+              <strong>{differenceLabel}</strong>
+            </div>
+          ) : null}
+          <div>
+            <span>Observación</span>
+            <strong>{recuento.observacion_general || 'Sin observación'}</strong>
+          </div>
+        </div>
+
+        <div className="ventas-page__table-wrap cierres-caja-detail__table-wrap mt-3">
+          <table className="table ventas-page__table cierres-caja-detail-table">
+            <thead>
+              <tr>
+                <th>Método</th>
+                {canViewCajaTheoreticalAmounts ? <th className="text-end">Sistema</th> : null}
+                <th className="text-end">Declarado</th>
+                {canViewCajaTheoreticalAmounts ? <th className="text-end">Diferencia</th> : null}
+                <th className="text-center">Refs.</th>
+                <th>Resultado</th>
+                <th>Observación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {metodosRecuento.length === 0 ? (
+                renderEmptyRow('Sin detalle por método.', canViewCajaTheoreticalAmounts ? 7 : 5)
+              ) : (
+                metodosRecuento.map((metodo) => (
+                  <tr key={`${recuento.id_validacion_cierre}-${metodo.metodo_pago_codigo}`}>
+                    <td>{metodo.metodo_pago_codigo || '-'}</td>
+                    {canViewCajaTheoreticalAmounts ? (
+                      <td className="text-end">
+                        {metodo.monto_teorico === null || metodo.monto_teorico === undefined
+                          ? '-'
+                          : `L. ${formatCajaCurrency(metodo.monto_teorico)}`}
+                      </td>
+                    ) : null}
+                    <td className="text-end">L. {formatCajaCurrency(metodo.monto_declarado)}</td>
+                    {canViewCajaTheoreticalAmounts ? (
+                      <td className="text-end">
+                        {metodo.diferencia === null || metodo.diferencia === undefined
+                          ? '-'
+                          : `L. ${formatCajaCurrency(metodo.diferencia)}`}
+                      </td>
+                    ) : null}
+                    <td className="text-center">{metodo.cantidad_referencias ?? '-'}</td>
+                    <td>
+                      <span className={`ventas-page__table-pill ${metodo.requiere_revision ? 'bg-warning border-warning text-dark' : 'bg-success border-success text-white'}`}>
+                        {metodo.resultado || 'CUADRADO'}
+                      </span>
+                    </td>
+                    <td>{metodo.observacion || '-'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    );
+  };
+
   const renderRecuentos = () => (
     <section className="cierres-caja-detail-panel">
       <div className="inv-prod-title-row mb-2">
@@ -596,126 +747,26 @@ export default function CierreCajaDetalleModal({
         <span className="inv-prod-title">Recuentos de cierre</span>
       </div>
 
-      {recuentos.length === 0 ? (
+      {!currentRecuento ? (
         <div className="ventas-create-modal__empty shadow-none border-0">
           <div className="ventas-create-modal__cart-empty-icon">
             <i className="bi bi-journal-x text-secondary" />
           </div>
-          <span>No hay revisiones registradas para esta sesion.</span>
+          <span>No hay revisiones registradas para {sessionCode}.</span>
         </div>
       ) : (
         <div className="d-grid gap-3">
-          {recuentos.map((recuento) => {
-            const difference = recuento.diferencia_total;
-            const metodosRecuento = Array.isArray(recuento.metodos) ? recuento.metodos : [];
-            const differenceLabel = difference === null || difference === undefined
-              ? 'No visible'
-              : `L. ${formatCajaCurrency(difference)}`;
-            return (
-              <article
-                key={recuento.id_validacion_cierre || recuento.numero_intento}
-                className={`cierres-caja-review-card ${recuento.usado_para_cierre ? 'border border-success' : ''}`}
-              >
-                <div className="cierres-caja-review-card__head">
-                  <div>
-                    <strong>Revision #{recuento.numero_intento || '-'}</strong>
-                    <div className="text-muted small fw-semibold">
-                      {recuento.usuario_valida_nombre || 'Usuario no disponible'} - {formatCajaDateTimeHN(recuento.fecha_validacion)}
-                    </div>
-                  </div>
-                  {recuento.usado_para_cierre ? (
-                    <span className="ventas-page__table-pill bg-success border-success text-white">
-                      Usado para cierre
-                    </span>
-                  ) : (
-                    <span className="ventas-page__table-pill bg-light border-secondary text-secondary">
-                      Revision previa
-                    </span>
-                  )}
-                </div>
-
-                <div className="cierres-caja-review-card__grid">
-                  {canViewCajaTheoreticalAmounts ? (
-                    <div>
-                      <span>Sistema</span>
-                      <strong>
-                        {recuento.total_teorico === null || recuento.total_teorico === undefined
-                          ? 'No visible'
-                          : `L. ${formatCajaCurrency(recuento.total_teorico)}`}
-                      </strong>
-                    </div>
-                  ) : null}
-                  <div>
-                    <span>Declarado</span>
-                    <strong>
-                      {recuento.total_declarado === null || recuento.total_declarado === undefined
-                        ? 'No disponible'
-                        : `L. ${formatCajaCurrency(recuento.total_declarado)}`}
-                    </strong>
-                  </div>
-                  {canViewCajaTheoreticalAmounts ? (
-                    <div>
-                      <span>Diferencia</span>
-                      <strong>{differenceLabel}</strong>
-                    </div>
-                  ) : null}
-                  <div>
-                    <span>Observacion</span>
-                    <strong>{recuento.observacion_general || 'Sin observacion'}</strong>
-                  </div>
-                </div>
-
-                <div className="ventas-page__table-wrap cierres-caja-detail__table-wrap mt-3">
-                  <table className="table ventas-page__table cierres-caja-detail-table">
-                    <thead>
-                      <tr>
-                        <th>Metodo</th>
-                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Sistema</th> : null}
-                        <th className="text-end">Declarado</th>
-                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Diferencia</th> : null}
-                        <th className="text-center">Refs.</th>
-                        <th>Resultado</th>
-                        <th>Observacion</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {metodosRecuento.length === 0 ? (
-                        renderEmptyRow('Sin detalle por metodo.', canViewCajaTheoreticalAmounts ? 7 : 5)
-                      ) : (
-                        metodosRecuento.map((metodo) => (
-                          <tr key={`${recuento.id_validacion_cierre}-${metodo.metodo_pago_codigo}`}>
-                            <td>{metodo.metodo_pago_codigo || '-'}</td>
-                            {canViewCajaTheoreticalAmounts ? (
-                              <td className="text-end">
-                                {metodo.monto_teorico === null || metodo.monto_teorico === undefined
-                                  ? '-'
-                                  : `L. ${formatCajaCurrency(metodo.monto_teorico)}`}
-                              </td>
-                            ) : null}
-                            <td className="text-end">L. {formatCajaCurrency(metodo.monto_declarado)}</td>
-                            {canViewCajaTheoreticalAmounts ? (
-                              <td className="text-end">
-                                {metodo.diferencia === null || metodo.diferencia === undefined
-                                  ? '-'
-                                  : `L. ${formatCajaCurrency(metodo.diferencia)}`}
-                              </td>
-                            ) : null}
-                            <td className="text-center">{metodo.cantidad_referencias ?? '-'}</td>
-                            <td>
-                              <span className={`ventas-page__table-pill ${metodo.requiere_revision ? 'bg-warning border-warning text-dark' : 'bg-success border-success text-white'}`}>
-                                {metodo.resultado || 'CUADRADO'}
-                              </span>
-                            </td>
-                            <td>{metodo.observacion || '-'}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </article>
-            );
-          })}
+          {renderRecuentoCard(currentRecuento, { isCurrent: true })}
+          {previousRecuentos.length > 0 ? (
+            <details className="border rounded-3 p-3 bg-light">
+              <summary className="fw-bold text-danger">
+                Revisiones anteriores ({previousRecuentos.length})
+              </summary>
+              <div className="d-grid gap-3 mt-3">
+                {previousRecuentos.map((recuento) => renderRecuentoCard(recuento))}
+              </div>
+            </details>
+          ) : null}
         </div>
       )}
     </section>
