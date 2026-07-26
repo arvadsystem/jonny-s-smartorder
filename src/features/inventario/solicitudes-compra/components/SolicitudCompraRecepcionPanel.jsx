@@ -1,6 +1,7 @@
 import useSolicitudCompraRecepcion from '../hooks/useSolicitudCompraRecepcion';
 import { formatFileSize } from '../utils/solicitudesCompraRecepcionUtils';
 import SolicitudCompraRecepcionLinea from './SolicitudCompraRecepcionLinea';
+import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
 export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, canReceive, reloadDetail, reloadList, openToast }) {
   const reception = useSolicitudCompraRecepcion({ solicitud, detalles, canReceive, reloadDetail, reloadList, openToast });
@@ -107,6 +108,17 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
             <span className="sol-comp-inline-confirm__icon" aria-hidden="true"><i className="bi bi-box-arrow-in-down" /></span>
             <strong id="sol-comp-receive-confirm-title">Confirmar recepción final</strong>
             <p>La factura se guardará y las cantidades recibidas se aplicarán al inventario. Esta operación no puede repetirse en esta versión.</p>
+            <ul className="sol-comp-conversion-confirmation">{reception.lines.map((line) => {
+              const preview = buildConversionPreview({
+                quantity: line.cantidad_recibida,
+                presentationLabel: resolvePresentationLabel(line),
+                baseUnit: line.unidad_base,
+                factor: line.factor_conversion_snapshot || '1',
+                baseOnly: isBaseOnlyLine(line)
+              });
+              return <li key={line.id_solicitud_detalle}><strong>{line.nombre}</strong><span>{preview.valid ? `${preview.quantity} ${preview.baseOnly ? preview.baseUnit : preview.presentationLabel}` : 'Cantidad pendiente'}</span><small>{preview.valid ? `Al confirmar, el sistema agregará automáticamente ${preview.baseQuantity} ${preview.baseUnit} al inventario del almacén.` : ''}</small></li>;
+            })}</ul>
+            <p className="sol-comp-inventory-warning"><strong>Al confirmar, el sistema agregará automáticamente las cantidades base indicadas al inventario del almacén.</strong> No realice un ajuste manual adicional, porque esta recepción aplica la entrada automáticamente.</p>
             <ul>
               <li>{reception.lines.length} líneas</li>
               <li>{reception.differences.length} diferencias</li>

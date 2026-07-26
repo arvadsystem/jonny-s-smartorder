@@ -1,3 +1,10 @@
+import {
+  buildConversionPreview,
+  formatConversionQuantity,
+  isBaseOnlyLine,
+  resolvePresentationLabel
+} from './solicitudesCompraConversionUtils.js';
+
 export const SOLICITUD_ESTADOS = Object.freeze({
   PENDIENTE: { label: 'Pendiente', message: 'Administración revisará la solicitud.' },
   APROBADA: { label: 'Aprobada', message: 'La solicitud fue aprobada y está pendiente de recepción.' },
@@ -48,29 +55,18 @@ export const addDecimalQuantities = (left, right) => {
   return scaled4ToCanonical(leftScaled + rightScaled);
 };
 
-const multiplyVisualQuantity = (quantity, factor) => {
-  const quantityScaled = decimalToScaled4(quantity);
-  const factorScaled = decimalToScaled4(factor);
-  if (quantityScaled === null || factorScaled === null) return null;
-  const raw = quantityScaled * factorScaled;
-  const roundedScaled = (raw + DECIMAL_SCALE / 2n) / DECIMAL_SCALE;
-  return scaled4ToCanonical(roundedScaled);
-};
-
-const formatVisualNumber = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed)
-    ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 4, useGrouping: true }).format(parsed)
-    : String(value);
-};
-
 export const buildVisualEquivalence = (line) => {
-  if (!line?.id_presentacion_insumo || !line?.factor_conversion_visual) return null;
-  const baseQuantity = multiplyVisualQuantity(line.cantidad, line.factor_conversion_visual);
-  if (baseQuantity === null) return null;
-  const presentation = String(line.nombre_presentacion_visual || line.presentacion || 'Presentación');
-  const baseUnit = String(line.unidad_base_visual || 'Unidad base');
-  return `${formatVisualNumber(line.cantidad)} ${presentation} ≈ ${formatVisualNumber(baseQuantity)} ${baseUnit}`;
+  if (!line?.id_presentacion_insumo) return null;
+  const preview = buildConversionPreview({
+    quantity: line?.cantidad,
+    presentationLabel: resolvePresentationLabel(line),
+    baseUnit: line?.unidad_base_visual || line?.unidad_base,
+    factor: line?.factor_conversion_visual || '1',
+    baseOnly: isBaseOnlyLine(line)
+  });
+  return preview.valid && !preview.baseOnly
+    ? `${formatConversionQuantity(preview.quantity)} ${preview.presentationLabel} ≈ ${formatConversionQuantity(preview.baseQuantity)} ${preview.baseUnit}`
+    : null;
 };
 
 export const createEmptyCatalogState = (warehouseId = null, loading = false) => ({

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AppSelect from '../../../../components/common/AppSelect';
 import { parseRequestedQuantity } from '../utils/solicitudesCompraUtils';
+import { buildConversionPreview, normalizeConversionDecimal } from '../utils/solicitudesCompraConversionUtils';
 
 const STOCK_LABELS = { SIN_STOCK: 'Sin stock', STOCK_BAJO: 'Stock bajo', DISPONIBLE: 'Disponible' };
 const TYPE_OPTIONS = [{ value: '', label: 'Todos' }, { value: 'producto', label: 'Productos' }, { value: 'insumo', label: 'Insumos' }];
@@ -14,6 +15,14 @@ function CatalogItem({ item, onAdd }) {
   const [quantity, setQuantity] = useState('');
   const [error, setError] = useState('');
   const selected = presentations.find((option) => String(option.id_presentacion) === presentation);
+  const selectedFactor = selected ? normalizeConversionDecimal(selected.factor_conversion) : '1';
+  const conversionPreview = buildConversionPreview({
+    quantity,
+    presentationLabel: selected?.unidad_presentacion || selected?.nombre_presentacion || (isSupply ? item.unidad_base : 'Unidades'),
+    baseUnit: isSupply ? (selected?.unidad_base || item.unidad_base || 'Unidad base') : 'Unidades',
+    factor: selectedFactor || '1',
+    baseOnly: !selected
+  });
   const quantityErrorId = `sol-comp-catalog-quantity-${item.tipo_item}-${item.id_item}`;
   const unavailableMessageId = `sol-comp-catalog-unavailable-${item.tipo_item}-${item.id_item}`;
   const options = useMemo(() => [
@@ -33,9 +42,7 @@ function CatalogItem({ item, onAdd }) {
       return;
     }
     setError('');
-    const presentationQuantity = Number(selected?.cantidad_presentacion || 1);
-    const derivedFactor = Number(selected?.cantidad_base) / presentationQuantity;
-    const visualFactor = selected?.factor_conversion ?? (Number.isFinite(derivedFactor) ? derivedFactor : 1);
+    const visualFactor = selectedFactor || '1';
     onAdd({
       tipo_item: String(item.tipo_item).toLowerCase(),
       id_item: Number(item.id_item),
@@ -44,8 +51,10 @@ function CatalogItem({ item, onAdd }) {
       ...(isSupply && presentation !== 'base' ? { id_presentacion_insumo: Number(presentation) } : {}),
       presentacion: selected?.nombre_presentacion || item.unidad_base || 'Unidad base',
       nombre_presentacion_visual: selected?.nombre_presentacion || null,
-      factor_conversion_visual: selected ? String(visualFactor) : null,
-      unidad_base_visual: selected?.unidad_base || item.unidad_base || null
+      factor_conversion_visual: String(visualFactor),
+      unidad_base_visual: isSupply ? (selected?.unidad_base || item.unidad_base || null) : 'Unidades',
+      unidad_presentacion_visual: selected?.unidad_presentacion || null,
+      cantidad_presentacion_visual: selected?.cantidad_presentacion ?? null
     });
     setQuantity('');
   };
@@ -72,9 +81,13 @@ function CatalogItem({ item, onAdd }) {
       {isSupply && presentations.length ? (
         <div className="sol-comp-presentation">
           <AppSelect label="Presentación de compra" value={presentation} options={options} onChange={setPresentation} disabled={!isSolicitable} helperText={!isSolicitable ? 'Configuración pendiente' : ''} />
-          {selected ? <small><i className="bi bi-arrow-left-right" aria-hidden="true" /> {selected.cantidad_presentacion || 1} {selected.unidad_presentacion || selected.nombre_presentacion} equivale a {selected.cantidad_base} {selected.unidad_base || item.unidad_base}</small> : null}
+          {selected ? <div className="sol-comp-conversion-info">
+            <strong>{selected.nombre_presentacion}</strong>
+            <small><i className="bi bi-arrow-left-right" aria-hidden="true" /> {selected.cantidad_presentacion || 1} {selected.unidad_presentacion || 'Unidad de presentación'} equivale a {selected.cantidad_base} {selected.unidad_base || item.unidad_base}</small>
+            <small>Conversión tomada de Presentaciones y conversiones.</small>
+          </div> : <div className="sol-comp-conversion-info"><strong>Solo unidad base</strong><small>Sin presentación de compra seleccionada. Se solicitará directamente en {item.unidad_base}.</small></div>}
         </div>
-      ) : <div className="sol-comp-base-presentation"><i className={`bi ${isSolicitable ? 'bi-box' : 'bi-exclamation-circle'}`} aria-hidden="true" /> {isSolicitable ? 'Solicitud en unidad base' : 'Unidad base sin configurar'}</div>}
+      ) : <div className="sol-comp-base-presentation"><i className={`bi ${isSolicitable ? 'bi-box' : 'bi-exclamation-circle'}`} aria-hidden="true" /><span><strong>{isSupply ? (isSolicitable ? 'Solo unidad base' : 'Unidad base sin configurar') : 'Solicitud por unidad'}</strong>{isSolicitable ? <small>{isSupply ? `Este insumo no tiene una presentación de compra configurada. Se solicitará directamente en ${item.unidad_base}.` : 'Se solicitará directamente en Unidades.'}</small> : null}</span></div>}
       <div className="sol-comp-add-row">
         <label>Cantidad solicitada
           <input aria-invalid={Boolean(error)} aria-disabled={!isSolicitable} aria-describedby={error ? quantityErrorId : (!isSolicitable ? unavailableMessageId : undefined)} disabled={!isSolicitable} type="number" min="0" step={isSupply ? '0.0001' : '1'} inputMode={isSupply ? 'decimal' : 'numeric'} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
@@ -82,6 +95,7 @@ function CatalogItem({ item, onAdd }) {
         </label>
         <button type="button" className="btn sol-comp-add-action" disabled={!isSolicitable} aria-disabled={!isSolicitable} aria-describedby={!isSolicitable ? unavailableMessageId : undefined} onClick={add}><i className={`bi ${isSolicitable ? 'bi-plus-circle' : 'bi-exclamation-circle'}`} aria-hidden="true" /> {isSolicitable ? 'Agregar' : 'No disponible'}</button>
       </div>
+      {isSolicitable && conversionPreview.valid ? <div className="sol-comp-conversion-preview" aria-live="polite"><small>Entrada estimada al inventario:</small><strong>{conversionPreview.baseQuantity} {conversionPreview.baseUnit}</strong></div> : null}
     </article>
   );
 }

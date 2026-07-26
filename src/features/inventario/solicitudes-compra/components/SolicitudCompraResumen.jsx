@@ -1,4 +1,5 @@
-import { buildVisualEquivalence, parseRequestedQuantity } from '../utils/solicitudesCompraUtils';
+import { parseRequestedQuantity } from '../utils/solicitudesCompraUtils';
+import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
 export default function SolicitudCompraResumen({ lines, onChange, onRemove, observation, setObservation, submitting, onSubmit, disabled }) {
   return (
@@ -9,7 +10,14 @@ export default function SolicitudCompraResumen({ lines, onChange, onRemove, obse
       </div>
       {!lines.length ? <div className="sol-comp-summary-empty"><i className="bi bi-basket" aria-hidden="true" /><strong>Tu solicitud está vacía</strong><span>Agrega productos o insumos desde el catálogo.</span><small>El resumen se actualizará automáticamente.</small></div> : <div className="sol-comp-summary__lines">{lines.map((line, index) => {
         const valid = parseRequestedQuantity(line.cantidad, line.tipo_item);
-        const visualEquivalence = buildVisualEquivalence(line);
+        const baseOnly = isBaseOnlyLine(line);
+        const conversion = buildConversionPreview({
+          quantity: line.cantidad,
+          presentationLabel: resolvePresentationLabel(line),
+          baseUnit: line.unidad_base_visual || 'Unidad',
+          factor: line.factor_conversion_visual || '1',
+          baseOnly
+        });
         const lineKey = `${line.tipo_item}-${line.id_item}-${line.id_presentacion_insumo || 'base'}`;
         const errorId = `sol-comp-summary-quantity-${lineKey}`;
         const errorMessage = line.tipo_item === 'producto'
@@ -20,12 +28,15 @@ export default function SolicitudCompraResumen({ lines, onChange, onRemove, obse
             <strong>{line.nombre}</strong>
             <button type="button" className="sol-comp-remove-line" aria-label={`Eliminar ${line.nombre}`} title="Eliminar línea" onClick={() => onRemove(index)}><i className="bi bi-trash" aria-hidden="true" /></button>
           </div>
-          <div className="sol-comp-summary-line__meta"><span>{line.tipo_item === 'producto' ? 'Producto' : 'Insumo'}</span><span>{line.presentacion}</span></div>
-          {visualEquivalence ? <small className="sol-comp-equivalence"><i className="bi bi-arrow-left-right" aria-hidden="true" /> {visualEquivalence}</small> : null}
-          <label>Cantidad
+          <div className="sol-comp-summary-line__meta"><span>{line.tipo_item === 'producto' ? 'Producto' : 'Insumo'}</span><span>Presentación: {line.nombre_presentacion_visual || line.presentacion}</span></div>
+          <label>Cantidad solicitada
             <input type="number" min="0" step={line.tipo_item === 'producto' ? '1' : '0.0001'} inputMode={line.tipo_item === 'producto' ? 'numeric' : 'decimal'} value={line.cantidad} aria-invalid={!valid} aria-describedby={!valid ? errorId : undefined} onChange={(event) => onChange(index, event.target.value)} />
             {!valid ? <small id={errorId} className="sol-comp-field-error" role="alert">{errorMessage}</small> : null}
           </label>
+          {conversion.valid ? baseOnly
+            ? <div className="sol-comp-equivalence"><strong>{conversion.quantity} {conversion.baseUnit}</strong><small>Sin presentación de compra. Solicitud directa en unidad base.</small></div>
+            : <div className="sol-comp-equivalence"><small>Equivalencia</small><strong>{conversion.quantity} {conversion.presentationLabel} = {conversion.baseQuantity} {conversion.baseUnit}</strong></div>
+            : null}
         </article>;
       })}</div>}
       <div className="sol-comp-summary__observation">

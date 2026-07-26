@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import useSolicitudCompraRevision from '../hooks/useSolicitudCompraRevision';
 import SolicitudCompraRevisionLinea from './SolicitudCompraRevisionLinea';
+import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
 export default function SolicitudCompraRevisionPanel({ solicitud, detalles, canApprove, canReject, reloadDetail, reloadList, openToast }) {
   const review = useSolicitudCompraRevision({ solicitud, detalles, canApprove, canReject, reloadDetail, reloadList, openToast });
@@ -76,6 +77,16 @@ export default function SolicitudCompraRevisionPanel({ solicitud, detalles, canA
             <p>{review.confirmation === 'approve'
               ? 'Se aprobarán todas las líneas con las cantidades y proveedores seleccionados.'
               : 'La solicitud quedará rechazada con el comentario registrado.'}</p>
+            {review.confirmation === 'approve' ? <ul className="sol-comp-conversion-confirmation">{review.lines.map((line) => {
+              const preview = buildConversionPreview({
+                quantity: line.cantidad_aprobada,
+                presentationLabel: resolvePresentationLabel(line),
+                baseUnit: line.unidad_base,
+                factor: line.factor_conversion_snapshot || '1',
+                baseOnly: isBaseOnlyLine(line)
+              });
+              return <li key={line.id_solicitud_detalle}><strong>{line.nombre}</strong><span>{preview.valid ? `${preview.quantity} ${preview.baseOnly ? preview.baseUnit : preview.presentationLabel} = ${preview.baseQuantity} ${preview.baseUnit}` : 'Cantidad pendiente'}</span><small>Proveedor: {providerOptions.find((option) => option.value === String(line.id_proveedor))?.label || 'Sin seleccionar'}</small></li>;
+            })}</ul> : null}
           </div>
           <div>
             <button type="button" className="btn btn-outline-secondary" disabled={Boolean(review.busyAction)} onClick={() => review.setConfirmation(null)}>Volver</button>

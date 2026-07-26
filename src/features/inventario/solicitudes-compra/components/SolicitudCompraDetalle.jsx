@@ -3,10 +3,27 @@ import SolicitudCompraRevisionPanel from './SolicitudCompraRevisionPanel';
 import SolicitudCompraRecepcionPanel from './SolicitudCompraRecepcionPanel';
 import SolicitudCompraEvidencias from './SolicitudCompraEvidencias';
 import { formatDateTime } from '../utils/solicitudesCompraUtils';
+import { isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
 const value = (raw) => raw === null || raw === undefined ? '—' : raw;
-const baseValue = (raw, unit) => raw === null || raw === undefined ? '—' : `${raw}${unit ? ` ${unit}` : ''}`;
 const STOCK_LABELS = { SIN_STOCK: 'Sin stock', STOCK_BAJO: 'Stock bajo', DISPONIBLE: 'Disponible' };
+
+const QuantityStage = ({ label, quantity, baseQuantity, line, received = false }) => {
+  if (quantity === null || quantity === undefined) {
+    return <div className="sol-comp-quantity"><small>{label}</small><span>Pendiente</span></div>;
+  }
+  const baseOnly = isBaseOnlyLine(line);
+  const presentation = resolvePresentationLabel(line);
+  const baseUnit = line.unidad_base || (line.tipo_item === 'PRODUCTO' ? 'Unidades' : 'Unidad base');
+  const tone = received ? 'received' : label === 'Aprobado' ? 'approved' : 'requested';
+  return <div className={`sol-comp-quantity sol-comp-quantity--${tone}`}>
+    <small>{label}</small>
+    <span>{quantity} {baseOnly ? baseUnit : presentation}</span>
+    <em>{baseOnly
+      ? 'Solicitud directa en unidad base'
+      : `${received ? 'Entrada aplicada' : 'Equivale a'}: ${baseQuantity} ${baseUnit}`}</em>
+  </div>;
+};
 
 const TraceItem = ({ icon, label, children, tone = 'neutral' }) => (
   <span className={`sol-comp-trace-item sol-comp-trace-item--${tone}`}><i className={`bi ${icon}`} aria-hidden="true" /><small>{label}</small><b>{children}</b></span>
@@ -60,12 +77,12 @@ export default function SolicitudCompraDetalle({ state, onBack, onRetry, reloadD
             <div className="sol-comp-line-meta">
               <span><small>Categoría</small><b>{line.categoria || '—'}</b></span>
               <span><small>Presentación</small><b>{line.presentacion_snapshot || '—'}</b></span>
-              <span><small>Unidad base</small><b>{line.unidad_base || '—'}</b></span>
+              <span><small>Unidad base</small><b>{line.unidad_base || (line.tipo_item === 'PRODUCTO' ? 'Unidades' : '—')}</b></span>
             </div>
             <div className="sol-comp-quantity-groups">
-              <div className="sol-comp-quantity sol-comp-quantity--requested"><small>Solicitado</small><span>{value(line.cantidad_solicitada)}</span><em>Base: {baseValue(line.cantidad_base_solicitada, line.unidad_base)}</em></div>
-              <div className="sol-comp-quantity sol-comp-quantity--approved"><small>Aprobado</small><span>{value(line.cantidad_aprobada)}</span><em>Base: {baseValue(line.cantidad_base_aprobada, line.unidad_base)}</em></div>
-              <div className="sol-comp-quantity sol-comp-quantity--received"><small>Recibido</small><span>{value(line.cantidad_recibida)}</span><em>Base: {baseValue(line.cantidad_base_recibida, line.unidad_base)}</em></div>
+              <QuantityStage label="Solicitado" quantity={line.cantidad_solicitada} baseQuantity={line.cantidad_base_solicitada} line={line} />
+              <QuantityStage label="Aprobado" quantity={line.cantidad_aprobada} baseQuantity={line.cantidad_base_aprobada} line={line} />
+              <QuantityStage label="Recibido" quantity={line.cantidad_recibida} baseQuantity={line.cantidad_base_recibida} line={line} received />
             </div>
             <div className="sol-comp-line-context">
               <span><i className="bi bi-boxes" aria-hidden="true" /><small>Stock actual</small><b>{value(line.stock_actual)}</b></span>

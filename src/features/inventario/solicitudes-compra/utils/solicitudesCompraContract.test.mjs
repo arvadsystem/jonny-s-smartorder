@@ -231,8 +231,8 @@ test('presentacion conserva opcion base predeterminada equivalencia y payload vi
   assert.match(catalog, /<AppSelect label="Presentación de compra"/);
   assert.equal((catalog.match(/<small><i className="bi bi-arrow-left-right"/g) || []).length, 1);
   assert.match(catalog, /id_presentacion_insumo: Number\(presentation\)/);
-  assert.match(catalog, /factor_conversion_visual: selected \? String\(visualFactor\) : null/);
-  assert.match(catalog, /unidad_base_visual: selected\?\.unidad_base \|\| item\.unidad_base \|\| null/);
+  assert.match(catalog, /factor_conversion_visual: String\(visualFactor\)/);
+  assert.match(catalog, /unidad_base_visual: isSupply \? \(selected\?\.unidad_base \|\| item\.unidad_base/);
   assert.match(catalog, /nombre_presentacion_visual: selected\?\.nombre_presentacion \|\| null/);
 });
 
@@ -254,7 +254,7 @@ test('resumen conserva llave transaccional lineas y eliminacion accesible', asyn
   assert.doesNotMatch(summary, /key=\{index\}/);
   assert.match(summary, /title="Eliminar línea"/);
   assert.match(summary, /aria-label=\{`Eliminar \$\{line\.nombre\}`\}/);
-  assert.match(summary, /buildVisualEquivalence\(line\)/);
+  assert.match(summary, /buildConversionPreview\(\{/);
 });
 
 test('resumen muestra errores especificos vinculados sin cambiar validacion', async () => {
@@ -441,7 +441,7 @@ test('recepcion conserva hook lineas validacion decimal y estados comparativos',
   assert.match(line, /Cantidad inválida/);
   assert.match(line, /Diferencia/);
   assert.match(line, /Igual/);
-  assert.match(line, /Aprobada: \{value\(line\.cantidad_aprobada\)\} · Recibida: \{value\(line\.cantidad_recibida\)\}/);
+  assert.match(line, /subtractConversionDecimal\(line\.cantidad_recibida, line\.cantidad_aprobada\)/);
 });
 
 test('recepcion conserva diferencias observacion y factura accesible', async () => {

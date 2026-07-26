@@ -44,10 +44,11 @@ export const createReceptionDraft = (details) => (Array.isArray(details) ? detai
   nombre: detail?.nombre || '',
   categoria: detail?.categoria || '',
   presentacion_snapshot: detail?.presentacion_snapshot || '',
+  factor_conversion_snapshot: String(detail?.factor_conversion_snapshot ?? '1'),
   cantidad_aprobada: detail?.cantidad_aprobada,
   cantidad_base_aprobada: detail?.cantidad_base_aprobada,
   proveedor: detail?.proveedor || null,
-  unidad_base: detail?.unidad_base || '',
+  unidad_base: detail?.unidad_base || (String(detail?.tipo_item).toUpperCase() === 'PRODUCTO' ? 'Unidades' : ''),
   stock_actual: detail?.stock_actual,
   stock_minimo: detail?.stock_minimo,
   cantidad_recibida: String(detail?.cantidad_recibida ?? detail?.cantidad_aprobada ?? '')
