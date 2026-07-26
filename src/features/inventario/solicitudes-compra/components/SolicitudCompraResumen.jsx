@@ -22,7 +22,7 @@ export default function SolicitudCompraResumen({ lines, onChange, onRemove, obse
         const errorId = `sol-comp-summary-quantity-${lineKey}`;
         const errorMessage = line.tipo_item === 'producto'
           ? 'Ingresa una cantidad entera mayor que cero.'
-          : 'Ingresa una cantidad mayor que cero con hasta cuatro decimales.';
+          : 'Ingresa una cantidad mayor que cero con hasta seis decimales.';
         return <article className="sol-comp-summary-line" key={lineKey}>
           <div className="sol-comp-summary-line__top">
             <strong>{line.nombre}</strong>
@@ -30,7 +30,7 @@ export default function SolicitudCompraResumen({ lines, onChange, onRemove, obse
           </div>
           <div className="sol-comp-summary-line__meta"><span>{line.tipo_item === 'producto' ? 'Producto' : 'Insumo'}</span><span>Presentación: {line.nombre_presentacion_visual || line.presentacion}</span></div>
           <label>Cantidad solicitada
-            <input type="number" min="0" step={line.tipo_item === 'producto' ? '1' : '0.0001'} inputMode={line.tipo_item === 'producto' ? 'numeric' : 'decimal'} value={line.cantidad} aria-invalid={!valid} aria-describedby={!valid ? errorId : undefined} onChange={(event) => onChange(index, event.target.value)} />
+            <input type="number" min="0" step={line.tipo_item === 'producto' ? '1' : '0.000001'} inputMode={line.tipo_item === 'producto' ? 'numeric' : 'decimal'} value={line.cantidad} aria-invalid={!valid} aria-describedby={!valid ? errorId : undefined} onChange={(event) => onChange(index, event.target.value)} />
             {!valid ? <small id={errorId} className="sol-comp-field-error" role="alert">{errorMessage}</small> : null}
           </label>
           {conversion.valid ? baseOnly

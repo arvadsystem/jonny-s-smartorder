@@ -2,6 +2,7 @@ import {
   buildConversionPreview,
   formatConversionQuantity,
   isBaseOnlyLine,
+  normalizeConversionDecimal,
   resolvePresentationLabel
 } from './solicitudesCompraConversionUtils.js';
 
@@ -22,9 +23,10 @@ export const normalizeObservation = (value) => {
 
 export const parseRequestedQuantity = (value, type) => {
   const text = String(value ?? '').trim();
-  const pattern = String(type).toLowerCase() === 'producto' ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/;
-  if (!pattern.test(text) || Number(text) <= 0) return null;
-  return Number(text);
+  const product = String(type).toLowerCase() === 'producto';
+  const pattern = product ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
+  if (!pattern.test(text) || BigInt(text.replace('.', '')) === 0n) return null;
+  return product ? Number(text) : normalizeConversionDecimal(text);
 };
 
 export const getDraftLineKey = (line) => [
@@ -33,26 +35,26 @@ export const getDraftLineKey = (line) => [
   line?.id_presentacion_insumo ? Number(line.id_presentacion_insumo) : 'base'
 ].join(':');
 
-const DECIMAL_SCALE = 10_000n;
+const DECIMAL_SCALE = 1_000_000n;
 
-const decimalToScaled4 = (value) => {
+const decimalToScaled6 = (value) => {
   const text = String(value ?? '').trim();
-  if (!/^\d+(?:\.\d{1,4})?$/.test(text)) return null;
+  if (!/^\d+(?:\.\d{1,6})?$/.test(text)) return null;
   const [whole, fraction = ''] = text.split('.');
-  return BigInt(whole) * DECIMAL_SCALE + BigInt(fraction.padEnd(4, '0') || '0');
+  return BigInt(whole) * DECIMAL_SCALE + BigInt(fraction.padEnd(6, '0') || '0');
 };
 
-const scaled4ToCanonical = (scaled) => {
+const scaled6ToCanonical = (scaled) => {
   const integer = scaled / DECIMAL_SCALE;
-  const fraction = String(scaled % DECIMAL_SCALE).padStart(4, '0').replace(/0+$/, '');
+  const fraction = String(scaled % DECIMAL_SCALE).padStart(6, '0').replace(/0+$/, '');
   return fraction ? `${integer}.${fraction}` : String(integer);
 };
 
 export const addDecimalQuantities = (left, right) => {
-  const leftScaled = decimalToScaled4(left);
-  const rightScaled = decimalToScaled4(right);
+  const leftScaled = decimalToScaled6(left);
+  const rightScaled = decimalToScaled6(right);
   if (leftScaled === null || rightScaled === null) return null;
-  return scaled4ToCanonical(leftScaled + rightScaled);
+  return scaled6ToCanonical(leftScaled + rightScaled);
 };
 
 export const buildVisualEquivalence = (line) => {
@@ -112,7 +114,9 @@ export const buildSolicitudPayload = ({ idAlmacen, observacion, detalles }) => (
     const detail = {
       tipo_item: String(line.tipo_item).toLowerCase(),
       id_item: Number(line.id_item),
-      cantidad: Number(line.cantidad)
+      cantidad: String(line.tipo_item).toLowerCase() === 'insumo'
+        ? parseRequestedQuantity(line.cantidad, 'insumo')
+        : parseRequestedQuantity(line.cantidad, 'producto')
     };
     if (detail.tipo_item === 'insumo' && line.id_presentacion_insumo) {
       detail.id_presentacion_insumo = Number(line.id_presentacion_insumo);

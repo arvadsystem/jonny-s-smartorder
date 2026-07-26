@@ -43,8 +43,8 @@ export default function SolicitudCompraRecepcionLinea({ line, errors, disabled, 
         <input
           id={`sol-comp-received-${line.id_solicitud_detalle}`}
           type="number"
-          min={isProduct ? '1' : '0.0001'}
-          step={isProduct ? '1' : '0.0001'}
+          min={isProduct ? '1' : '0.000001'}
+          step={isProduct ? '1' : '0.000001'}
           inputMode={isProduct ? 'numeric' : 'decimal'}
           value={line.cantidad_recibida}
           disabled={disabled}

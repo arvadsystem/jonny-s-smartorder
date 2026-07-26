@@ -62,9 +62,9 @@ test('producto acepta entero y rechaza decimal', () => {
   assert.equal(parseApprovedQuantity('3.5', 'PRODUCTO'), null);
 });
 
-test('insumo acepta cuatro decimales y rechaza cinco', () => {
-  assert.equal(parseApprovedQuantity('1.2345', 'INSUMO'), 1.2345);
-  assert.equal(parseApprovedQuantity('1.23456', 'INSUMO'), null);
+test('insumo acepta seis decimales como texto y rechaza siete', () => {
+  assert.equal(parseApprovedQuantity('1.123456', 'INSUMO'), '1.123456');
+  assert.equal(parseApprovedQuantity('1.1234567', 'INSUMO'), null);
 });
 
 for (const value of ['0', '-1']) test(`cantidad ${value} se rechaza`, () => {
@@ -95,7 +95,7 @@ test('payload de aprobacion contiene exclusivamente campos autorizados', () => {
   const payload = buildApprovalPayload({ comentario: '  compra   urgente ', detalles: draft });
   assert.deepEqual(payload, {
     comentario_revision: 'compra urgente',
-    detalles: [{ id_solicitud_detalle: 15, cantidad_aprobada: 2, id_proveedor: 5 }]
+    detalles: [{ id_solicitud_detalle: 15, cantidad_aprobada: '2', id_proveedor: 5 }]
   });
   assert.doesNotMatch(JSON.stringify(payload), /id_item|tipo_item|nombre|presentacion|stock|cantidad_solicitada|cantidad_base|precio|costo|impuesto|total/);
 });

@@ -13,9 +13,12 @@ const positiveInteger = (value) => {
 export const parseApprovedQuantity = (value, type) => {
   const text = String(value ?? '').trim();
   const product = String(type || '').toUpperCase() === 'PRODUCTO';
-  const pattern = product ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/;
-  if (!pattern.test(text) || Number(text) <= 0) return null;
-  return Number(text);
+  const pattern = product ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
+  if (!pattern.test(text) || BigInt(text.replace('.', '')) === 0n) return null;
+  if (product) return Number(text);
+  const [whole, fraction = ''] = text.split('.');
+  const normalizedFraction = fraction.replace(/0+$/, '');
+  return normalizedFraction ? `${whole}.${normalizedFraction}` : whole;
 };
 
 export const createApprovalDraft = (details) => (Array.isArray(details) ? details : []).map((detail) => ({
@@ -66,7 +69,7 @@ export const validateApprovalDraft = (lines) => {
     if (parseApprovedQuantity(line?.cantidad_aprobada, line?.tipo_item) === null) {
       lineErrors.cantidad = String(line?.tipo_item).toUpperCase() === 'PRODUCTO'
         ? 'Ingresa una cantidad entera positiva.'
-        : 'Ingresa una cantidad positiva con hasta cuatro decimales.';
+        : 'Ingresa una cantidad positiva con hasta seis decimales.';
     }
     if (!positiveInteger(line?.id_proveedor)) lineErrors.proveedor = 'Selecciona un proveedor.';
     if (Object.keys(lineErrors).length) errors[key] = lineErrors;

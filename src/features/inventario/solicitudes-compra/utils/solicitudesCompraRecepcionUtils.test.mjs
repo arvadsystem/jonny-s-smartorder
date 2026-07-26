@@ -58,18 +58,18 @@ test('producto acepta entero positivo y rechaza decimal, cero y negativos', () =
   assert.equal(parseReceivedQuantity('-1', 'PRODUCTO'), null);
 });
 
-test('insumo acepta cuatro decimales y rechaza cinco, cero y negativos', () => {
-  assert.equal(parseReceivedQuantity('2.1234', 'INSUMO'), 2.1234);
-  assert.equal(parseReceivedQuantity('2.12345', 'INSUMO'), null);
+test('insumo acepta seis decimales como texto y rechaza siete, cero y negativos', () => {
+  assert.equal(parseReceivedQuantity('2.123456', 'INSUMO'), '2.123456');
+  assert.equal(parseReceivedQuantity('2.1234567', 'INSUMO'), null);
   assert.equal(parseReceivedQuantity('0', 'INSUMO'), null);
   assert.equal(parseReceivedQuantity('-0.5', 'INSUMO'), null);
 });
 
-test('comparacion decimal normaliza escala exacta de cuatro decimales', () => {
+test('comparacion decimal normaliza escala exacta de seis decimales', () => {
   assert.equal(compareDecimalQuantities('2', '2.0'), 0);
   assert.equal(compareDecimalQuantities('2.0000', '2'), 0);
-  assert.equal(compareDecimalQuantities('1.9999', '2'), -1);
-  assert.equal(compareDecimalQuantities('2.0001', '2'), 1);
+  assert.equal(compareDecimalQuantities('1.999999', '2'), -1);
+  assert.equal(compareDecimalQuantities('2.000001', '2'), 1);
 });
 
 test('diferencias identifican cantidades menores y mayores', () => {

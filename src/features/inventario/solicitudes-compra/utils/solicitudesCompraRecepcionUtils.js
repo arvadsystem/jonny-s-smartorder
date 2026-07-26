@@ -2,27 +2,29 @@ export const MAX_RECEPTION_OBSERVATION_LENGTH = 1000;
 export const MAX_INVOICE_SIZE = 6 * 1024 * 1024;
 export const ALLOWED_INVOICE_MIME_TYPES = Object.freeze(['image/jpeg', 'image/png', 'image/webp']);
 
-const DECIMAL_SCALE = 10_000n;
+const DECIMAL_SCALE = 1_000_000n;
 
 const positiveInteger = (value) => {
   const text = String(value ?? '').trim();
   return /^[1-9]\d*$/.test(text) ? Number(text) : null;
 };
 
-const decimalToScaled4 = (value) => {
+const decimalToScaled6 = (value) => {
   const text = String(value ?? '').trim();
-  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(text)) return null;
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(text)) return null;
   const [whole, fraction = ''] = text.split('.');
-  return BigInt(whole) * DECIMAL_SCALE + BigInt(fraction.padEnd(4, '0'));
+  return BigInt(whole) * DECIMAL_SCALE + BigInt(fraction.padEnd(6, '0'));
 };
 
 export const parseReceivedQuantity = (value, type) => {
   const text = String(value ?? '').trim();
   const isProduct = String(type || '').toUpperCase() === 'PRODUCTO';
-  const pattern = isProduct ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/;
-  const parsed = Number(text);
-  if (!pattern.test(text) || !Number.isFinite(parsed) || parsed <= 0 || (isProduct && !Number.isSafeInteger(parsed))) return null;
-  return parsed;
+  const pattern = isProduct ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
+  if (!pattern.test(text) || BigInt(text.replace('.', '')) === 0n) return null;
+  if (isProduct) return Number(text);
+  const [whole, fraction = ''] = text.split('.');
+  const normalizedFraction = fraction.replace(/0+$/, '');
+  return normalizedFraction ? `${whole}.${normalizedFraction}` : whole;
 };
 
 export const normalizeReceptionObservation = (value) => {
@@ -31,8 +33,8 @@ export const normalizeReceptionObservation = (value) => {
 };
 
 export const compareDecimalQuantities = (left, right) => {
-  const leftScaled = decimalToScaled4(left);
-  const rightScaled = decimalToScaled4(right);
+  const leftScaled = decimalToScaled6(left);
+  const rightScaled = decimalToScaled6(right);
   if (leftScaled === null || rightScaled === null) return null;
   if (leftScaled === rightScaled) return 0;
   return leftScaled < rightScaled ? -1 : 1;
@@ -88,12 +90,12 @@ export const validateReceptionDraft = (lines) => {
     if (parseReceivedQuantity(line?.cantidad_recibida, line?.tipo_item) === null) {
       lineErrors.cantidad = String(line?.tipo_item).toUpperCase() === 'PRODUCTO'
         ? 'Ingresa una cantidad entera positiva.'
-        : 'Ingresa una cantidad positiva con hasta cuatro decimales.';
+        : 'Ingresa una cantidad positiva con hasta seis decimales.';
     }
     if (parseReceivedQuantity(line?.cantidad_aprobada, line?.tipo_item) === null) {
       integrityErrors.push('La cantidad aprobada no es válida.');
     }
-    const baseApproved = decimalToScaled4(line?.cantidad_base_aprobada);
+    const baseApproved = decimalToScaled6(line?.cantidad_base_aprobada);
     if (baseApproved === null || baseApproved <= 0n) {
       integrityErrors.push('La cantidad base aprobada no es válida.');
     }

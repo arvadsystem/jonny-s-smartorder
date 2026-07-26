@@ -16,17 +16,21 @@ test('multiplicacion decimal exacta cubre conversiones operativas', () => {
   assert.equal(multiplyConversionDecimal('0.1', '3'), '0.3');
 });
 
-test('multiplicacion redondea a cuatro decimales sin usar Number como fuente', () => {
-  assert.equal(multiplyConversionDecimal('1.2345', '1.0001'), '1.2346');
-  assert.equal(multiplyConversionDecimal('0.0001', '0.5'), '0.0001');
+test('multiplicacion redondea half-up a seis decimales sin usar Number como fuente', () => {
+  assert.equal(multiplyConversionDecimal('1.234567', '1.000001'), '1.234568');
+  assert.equal(multiplyConversionDecimal('0.000001', '0.5'), '0.000001');
+  assert.equal(multiplyConversionDecimal('3', '0.166667'), '0.500001');
 });
 
 test('normalizacion rechaza valores no contractuales', () => {
-  for (const value of ['0', '-1', '1.23456', '1e3', 'NaN', '']) {
+  for (const value of ['0', '-1', '1.1234567', '1e3', 'NaN', '']) {
     assert.equal(normalizeConversionDecimal(value), null);
   }
-  assert.equal(normalizeConversionDecimal('2.5000'), '2.5');
-  assert.equal(formatConversionQuantity('1200.5000'), '1,200.5');
+  assert.equal(normalizeConversionDecimal('200.000000'), '200');
+  assert.equal(normalizeConversionDecimal('1.000000'), '1');
+  assert.equal(normalizeConversionDecimal('0.166667'), '0.166667');
+  assert.equal(normalizeConversionDecimal('0.000001'), '0.000001');
+  assert.equal(formatConversionQuantity('1200.500000'), '1,200.5');
 });
 
 test('preview conserva presentacion configurada y calcula base', () => {

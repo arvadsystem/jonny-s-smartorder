@@ -121,7 +121,7 @@ test('catalogo conserva badges presentaciones equivalencia y validaciones', asyn
   assert.match(catalog, /DISPONIBLE: 'Disponible'/);
   assert.match(catalog, /import AppSelect/);
   assert.match(catalog, /equivale a/);
-  assert.match(catalog, /hasta 4 decimales/);
+  assert.match(catalog, /hasta 6 decimales/);
   assert.match(catalog, /entera positiva/);
 });
 
@@ -238,7 +238,7 @@ test('presentacion conserva opcion base predeterminada equivalencia y payload vi
 
 test('cantidad del catalogo mantiene precision accesibilidad y limpieza selectiva', async () => {
   const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
-  assert.match(catalog, /step=\{isSupply \? '0\.0001' : '1'\}/);
+  assert.match(catalog, /step=\{isSupply \? '0\.000001' : '1'\}/);
   assert.match(catalog, /inputMode=\{isSupply \? 'decimal' : 'numeric'\}/);
   assert.match(catalog, /aria-describedby=\{error \? quantityErrorId : \(!isSolicitable \? unavailableMessageId : undefined\)\}/);
   assert.match(catalog, /id=\{quantityErrorId\}[^>]*role="alert"/);
@@ -261,11 +261,11 @@ test('resumen muestra errores especificos vinculados sin cambiar validacion', as
   const summary = await read('../components/SolicitudCompraResumen.jsx');
   assert.match(summary, /parseRequestedQuantity\(line\.cantidad, line\.tipo_item\)/);
   assert.match(summary, /Ingresa una cantidad entera mayor que cero\./);
-  assert.match(summary, /Ingresa una cantidad mayor que cero con hasta cuatro decimales\./);
+  assert.match(summary, /Ingresa una cantidad mayor que cero con hasta seis decimales\./);
   assert.match(summary, /aria-invalid=\{!valid\}/);
   assert.match(summary, /aria-describedby=\{!valid \? errorId : undefined\}/);
   assert.match(summary, /id=\{errorId\}[^>]*role="alert"/);
-  assert.match(summary, /step=\{line\.tipo_item === 'producto' \? '1' : '0\.0001'\}/);
+  assert.match(summary, /step=\{line\.tipo_item === 'producto' \? '1' : '0\.000001'\}/);
   assert.match(summary, /inputMode=\{line\.tipo_item === 'producto' \? 'numeric' : 'decimal'\}/);
 });
 
@@ -411,7 +411,7 @@ test('revision conserva hook proveedores AppSelect y contratos de edicion', asyn
   assert.doesNotMatch(line, /<select/);
   assert.match(line, /value=\{line\.cantidad_aprobada\}/);
   assert.match(line, /onChange=\{\(event\) => line\.onChange\(\{ cantidad_aprobada: event\.target\.value \}\)\}/);
-  assert.match(line, /step=\{isProduct \? '1' : '0\.0001'\}/);
+  assert.match(line, /step=\{isProduct \? '1' : '0\.000001'\}/);
   assert.match(line, /inputMode=\{isProduct \? 'numeric' : 'decimal'\}/);
   assert.match(line, /aria-invalid=\{Boolean\(errors\.cantidad\)\}/);
   assert.match(line, /aria-describedby=\{errors\.cantidad \? quantityErrorId : undefined\}/);

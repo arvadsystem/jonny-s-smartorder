@@ -1,46 +1,58 @@
-const SCALE_DIGITS = 4;
-const SCALE = 10_000n;
+const TARGET_SCALE = 6;
+const SCALE = 1_000_000n;
+const powerOfTen = (exponent) => 10n ** BigInt(exponent);
 
-const toScaled = (value, { allowZero = false, allowNegative = false } = {}) => {
+const parseDecimal = (value, { allowZero = false, allowNegative = false } = {}) => {
   const text = String(value ?? '').trim();
   const pattern = allowNegative
-    ? /^-?(?:0|[1-9]\d*)(?:\.\d{1,4})?$/
-    : /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/;
+    ? /^-?(?:0|[1-9]\d*)(?:\.\d{1,6})?$/
+    : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
   if (!pattern.test(text)) return null;
   const negative = text.startsWith('-');
   const unsigned = negative ? text.slice(1) : text;
   const [whole, fraction = ''] = unsigned.split('.');
-  const scaled = BigInt(whole) * SCALE + BigInt(fraction.padEnd(SCALE_DIGITS, '0') || '0');
-  if (!allowZero && scaled === 0n) return null;
-  return negative ? -scaled : scaled;
+  const digits = BigInt(`${whole}${fraction}`);
+  if (!allowZero && digits === 0n) return null;
+  return { digits: negative ? -digits : digits, scale: fraction.length };
 };
 
-const fromScaled = (scaled) => {
+const decimalToScaled6 = (decimal) => decimal.digits * powerOfTen(TARGET_SCALE - decimal.scale);
+
+const fromScaled6 = (scaled) => {
   const negative = scaled < 0n;
   const absolute = negative ? -scaled : scaled;
   const integer = absolute / SCALE;
-  const fraction = String(absolute % SCALE).padStart(SCALE_DIGITS, '0').replace(/0+$/, '');
+  const fraction = String(absolute % SCALE).padStart(TARGET_SCALE, '0').replace(/0+$/, '');
   return `${negative ? '-' : ''}${integer}${fraction ? `.${fraction}` : ''}`;
 };
 
 export const normalizeConversionDecimal = (value, options = {}) => {
-  const scaled = toScaled(value, options);
-  return scaled === null ? null : fromScaled(scaled);
+  const decimal = parseDecimal(value, options);
+  return decimal === null ? null : fromScaled6(decimalToScaled6(decimal));
 };
 
 export const multiplyConversionDecimal = (quantity, factor) => {
-  const quantityScaled = toScaled(quantity);
-  const factorScaled = toScaled(factor);
-  if (quantityScaled === null || factorScaled === null) return null;
-  const raw = quantityScaled * factorScaled;
-  return fromScaled((raw + SCALE / 2n) / SCALE);
+  const left = parseDecimal(quantity);
+  const right = parseDecimal(factor);
+  if (!left || !right) return null;
+  const product = left.digits * right.digits;
+  const sourceScale = left.scale + right.scale;
+  let scaled;
+  if (sourceScale <= TARGET_SCALE) {
+    scaled = product * powerOfTen(TARGET_SCALE - sourceScale);
+  } else {
+    const divisor = powerOfTen(sourceScale - TARGET_SCALE);
+    scaled = product / divisor;
+    if ((product % divisor) * 2n >= divisor) scaled += 1n;
+  }
+  return fromScaled6(scaled);
 };
 
 export const subtractConversionDecimal = (left, right) => {
-  const leftScaled = toScaled(left, { allowZero: true });
-  const rightScaled = toScaled(right, { allowZero: true });
-  if (leftScaled === null || rightScaled === null) return null;
-  return fromScaled(leftScaled - rightScaled);
+  const leftDecimal = parseDecimal(left, { allowZero: true });
+  const rightDecimal = parseDecimal(right, { allowZero: true });
+  if (!leftDecimal || !rightDecimal) return null;
+  return fromScaled6(decimalToScaled6(leftDecimal) - decimalToScaled6(rightDecimal));
 };
 
 export const formatConversionQuantity = (value) => {

@@ -38,7 +38,7 @@ function CatalogItem({ item, onAdd }) {
     if (!isSolicitable) return;
     const parsed = parseRequestedQuantity(quantity, item.tipo_item);
     if (!parsed) {
-      setError(isSupply ? 'Ingresa una cantidad positiva con hasta 4 decimales.' : 'Ingresa una cantidad entera positiva.');
+      setError(isSupply ? 'Ingresa una cantidad positiva con hasta 6 decimales.' : 'Ingresa una cantidad entera positiva.');
       return;
     }
     setError('');
@@ -90,7 +90,7 @@ function CatalogItem({ item, onAdd }) {
       ) : <div className="sol-comp-base-presentation"><i className={`bi ${isSolicitable ? 'bi-box' : 'bi-exclamation-circle'}`} aria-hidden="true" /><span><strong>{isSupply ? (isSolicitable ? 'Solo unidad base' : 'Unidad base sin configurar') : 'Solicitud por unidad'}</strong>{isSolicitable ? <small>{isSupply ? `Este insumo no tiene una presentación de compra configurada. Se solicitará directamente en ${item.unidad_base}.` : 'Se solicitará directamente en Unidades.'}</small> : null}</span></div>}
       <div className="sol-comp-add-row">
         <label>Cantidad solicitada
-          <input aria-invalid={Boolean(error)} aria-disabled={!isSolicitable} aria-describedby={error ? quantityErrorId : (!isSolicitable ? unavailableMessageId : undefined)} disabled={!isSolicitable} type="number" min="0" step={isSupply ? '0.0001' : '1'} inputMode={isSupply ? 'decimal' : 'numeric'} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+          <input aria-invalid={Boolean(error)} aria-disabled={!isSolicitable} aria-describedby={error ? quantityErrorId : (!isSolicitable ? unavailableMessageId : undefined)} disabled={!isSolicitable} type="number" min="0" step={isSupply ? '0.000001' : '1'} inputMode={isSupply ? 'decimal' : 'numeric'} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
           {error ? <small id={quantityErrorId} className="sol-comp-field-error" role="alert">{error}</small> : null}
         </label>
         <button type="button" className="btn sol-comp-add-action" disabled={!isSolicitable} aria-disabled={!isSolicitable} aria-describedby={!isSolicitable ? unavailableMessageId : undefined} onClick={add}><i className={`bi ${isSolicitable ? 'bi-plus-circle' : 'bi-exclamation-circle'}`} aria-hidden="true" /> {isSolicitable ? 'Agregar' : 'No disponible'}</button>

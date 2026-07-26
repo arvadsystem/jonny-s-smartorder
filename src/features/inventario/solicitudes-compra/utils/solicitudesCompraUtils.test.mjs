@@ -8,15 +8,15 @@ import {
 
 test('producto acepta entero positivo', () => assert.equal(parseRequestedQuantity('3', 'producto'), 3));
 for (const value of ['1.5', '0', '-1', 'abc', '']) test(`producto rechaza ${value || 'vacio'}`, () => assert.equal(parseRequestedQuantity(value, 'producto'), null));
-test('insumo acepta hasta cuatro decimales', () => assert.equal(parseRequestedQuantity('1.2345', 'insumo'), 1.2345));
-for (const value of ['1.23456', '0', '-2', '.5']) test(`insumo rechaza ${value}`, () => assert.equal(parseRequestedQuantity(value, 'insumo'), null));
+test('insumo acepta hasta seis decimales como texto canonico', () => assert.equal(parseRequestedQuantity('1.123456', 'insumo'), '1.123456'));
+for (const value of ['1.1234567', '0', '-2', '.5', '1e-6']) test(`insumo rechaza ${value}`, () => assert.equal(parseRequestedQuantity(value, 'insumo'), null));
 test('llave visual distingue unidad base de presentacion', () => {
   assert.equal(getDraftLineKey({ tipo_item: 'insumo', id_item: 2 }), 'insumo:2:base');
   assert.equal(getDraftLineKey({ tipo_item: 'insumo', id_item: 2, id_presentacion_insumo: 4 }), 'insumo:2:4');
 });
 test('suma decimal exacta 0.1 + 0.2', () => assert.equal(addDecimalQuantities('0.1', '0.2'), '0.3'));
-test('suma decimal exacta conserva cuatro decimales', () => assert.equal(addDecimalQuantities('1.2345', '0.0001'), '1.2346'));
-test('suma decimal minima conserva precision', () => assert.equal(addDecimalQuantities('0.0001', '0.0001'), '0.0002'));
+test('suma decimal exacta conserva seis decimales', () => assert.equal(addDecimalQuantities('1.123456', '2.000001'), '3.123457'));
+test('suma decimal minima conserva precision', () => assert.equal(addDecimalQuantities('0.000001', '0.000002'), '0.000003'));
 test('duplicado de misma presentacion se combina', () => {
   const line = { tipo_item: 'insumo', id_item: 2, id_presentacion_insumo: 4, cantidad: 2 };
   const result = upsertDraftLine([line], { ...line, cantidad: 3 });
@@ -29,9 +29,9 @@ test('dos productos enteros se combinan y el resultado sigue valido', () => {
   assert.equal(parseRequestedQuantity(result.lines[0].cantidad, 'producto'), 5);
 });
 test('resultado decimal combinado sigue valido para insumo', () => {
-  const line = { tipo_item: 'insumo', id_item: 2, cantidad: '1.2345' };
-  const result = upsertDraftLine([line], { ...line, cantidad: '0.0001' });
-  assert.equal(parseRequestedQuantity(result.lines[0].cantidad, 'insumo'), 1.2346);
+  const line = { tipo_item: 'insumo', id_item: 2, cantidad: '1.123456' };
+  const result = upsertDraftLine([line], { ...line, cantidad: '0.000001' });
+  assert.equal(parseRequestedQuantity(result.lines[0].cantidad, 'insumo'), '1.123457');
 });
 test('dos presentaciones diferentes generan dos lineas', () => {
   const first = { tipo_item: 'insumo', id_item: 2, id_presentacion_insumo: 4, cantidad: 2 };
