@@ -13,7 +13,7 @@ export const buildSolicitudesCompraQuery = (path, options = {}, allowed = []) =>
 };
 
 const CATALOG_FILTERS = ['id_almacen', 'tipo', 'buscar', 'solo_stock_bajo', 'page', 'limit'];
-const LIST_FILTERS = ['estado', 'id_sucursal', 'id_almacen', 'fecha_desde', 'fecha_hasta', 'page', 'limit'];
+export const LIST_FILTERS = ['estado', 'buscar', 'id_sucursal', 'id_almacen', 'fecha_desde', 'fecha_hasta', 'page', 'limit'];
 const PROVIDER_FILTERS = ['buscar', 'page', 'limit'];
 
 export const solicitudesCompraService = {

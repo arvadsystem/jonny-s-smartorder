@@ -97,6 +97,22 @@
   padding: 0.85rem 0;
 }
 
+.sol-comp-list-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--sol-comp-border);
+  border-radius: 11px;
+  background: #fff;
+}
+
+.sol-comp-list-search > i { color: var(--c-terracotta); }
+.sol-comp-list-search input { min-width: 0; border: 0; outline: 0; }
+.sol-comp-result-count { margin: 0.4rem 0 0; color: var(--sol-comp-muted); font-size: 0.82rem; }
+
 .sol-comp-filters button,
 .sol-comp-scope button {
   border: 1px solid var(--c-border-strong);

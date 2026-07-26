@@ -6,7 +6,7 @@ const FILTERS = [
   ['RECIBIDA', 'Recibidas'], ['RECHAZADA', 'Rechazadas'], ['CANCELADA', 'Canceladas']
 ];
 
-export default function SolicitudesCompraListado({ state, filter, onFilter, onPage, onDetail, onCreate, canCreate, canReview, canReceive }) {
+export default function SolicitudesCompraListado({ state, filter, onFilter, search, onSearch, onClearSearch, onPage, onDetail, onCreate, canCreate, canReview, canReceive }) {
   const page = Number(state.pagination?.page || 1);
   const pages = Math.max(1, Number(state.pagination?.total_pages || 1));
   return (
@@ -18,6 +18,23 @@ export default function SolicitudesCompraListado({ state, filter, onFilter, onPa
         </div>
         {canCreate ? <button type="button" className="btn btn-primary sol-comp-primary-action" onClick={onCreate}><i className="bi bi-plus-circle" aria-hidden="true" /> Nueva solicitud</button> : null}
       </header>
+      <div className="sol-comp-list-search">
+        <i className="bi bi-search" aria-hidden="true" />
+        <input
+          type="search"
+          value={search}
+          placeholder="Buscar por número, solicitante, artículo, sucursal o almacén"
+          aria-label="Buscar solicitudes"
+          onChange={(event) => onSearch(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') onSearch(event.currentTarget.value, { immediate: true });
+            if (event.key === 'Escape' && event.currentTarget.value) onClearSearch();
+          }}
+        />
+        {state.loading ? <span className="spinner-border spinner-border-sm" aria-label="Buscando" /> : null}
+        {search ? <button type="button" className="btn btn-link btn-sm" onClick={onClearSearch} aria-label="Limpiar búsqueda">Limpiar</button> : null}
+      </div>
+      {!state.loading && !state.error ? <p className="sol-comp-result-count">{Number(state.pagination?.total || 0)} resultados</p> : null}
       <div className="sol-comp-filters" aria-label="Filtrar solicitudes por estado">
         {FILTERS.map(([filterValue, label]) => (
           <button type="button" key={label} aria-pressed={filter === filterValue} className={filter === filterValue ? 'is-active' : ''} onClick={() => onFilter(filterValue)}>{label}</button>
@@ -26,7 +43,7 @@ export default function SolicitudesCompraListado({ state, filter, onFilter, onPa
       <div aria-live="polite">
         {state.loading ? <div className="sol-comp-feedback"><span className="spinner-border spinner-border-sm" /> Cargando solicitudes…</div> : null}
         {state.error ? <div className="sol-comp-feedback sol-comp-feedback--error"><span>{state.error}</span><button type="button" className="btn btn-outline-danger btn-sm" onClick={() => onPage(page)}>Reintentar</button></div> : null}
-        {!state.loading && !state.error && state.solicitudes.length === 0 ? <div className="sol-comp-empty"><i className="bi bi-inbox" aria-hidden="true" /><h3>No hay solicitudes</h3><p>Las solicitudes que envíes aparecerán aquí.</p></div> : null}
+        {!state.loading && !state.error && state.solicitudes.length === 0 ? <div className="sol-comp-empty"><i className="bi bi-inbox" aria-hidden="true" /><h3>{search ? 'No encontramos solicitudes' : 'No hay solicitudes'}</h3><p>{search ? `No hay resultados para “${search}” dentro del estado seleccionado.` : 'Las solicitudes que envíes aparecerán aquí.'}</p></div> : null}
       </div>
       <div className="sol-comp-list">
         {state.solicitudes.map((item) => (
