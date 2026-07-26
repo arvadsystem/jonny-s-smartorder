@@ -124,12 +124,15 @@ export const normalizeCanje = (canje) => ({
     : []
 });
 
-// Con el switch apagado, la tasa no es obligatoria para poder guardar; al
-// encenderlo, si exige una tasa (lempiras_por_punto) mayor que cero.
-export const computeConfiguracionSubmitState = ({ acumulacionHabilitada, lempiras, saving = false }) => {
+// La tasa (lempiras_por_punto) es SIEMPRE obligatoria (> 0) para poder
+// guardar, sin importar el estado del switch: tambien se usa para calcular
+// canjes, y el backend exige una tasa valida para toda configuracion
+// guardada (bloqueante: no se debe poder apagar el switch y guardar sin
+// equivalencia, dejando la sucursal sin una tasa valida para canjes).
+export const computeConfiguracionSubmitState = ({ lempiras, saving = false }) => {
   const lempirasValue = Number(lempiras);
   const lempirasValida = Number.isFinite(lempirasValue) && lempirasValue > 0;
-  const canSubmit = !saving && (!acumulacionHabilitada || lempirasValida);
+  const canSubmit = !saving && lempirasValida;
   return { lempirasValue, lempirasValida, canSubmit };
 };
 
@@ -139,7 +142,7 @@ export const buildSaveConfiguracionPayload = ({
   acumulacionHabilitada,
   productosCanjeables = []
 }) => {
-  const { lempirasValue, lempirasValida } = computeConfiguracionSubmitState({ acumulacionHabilitada, lempiras });
+  const { lempirasValue, lempirasValida } = computeConfiguracionSubmitState({ lempiras });
   return {
     id_sucursal: idSucursal || undefined,
     lempiras_por_punto: lempirasValida ? lempirasValue : undefined,

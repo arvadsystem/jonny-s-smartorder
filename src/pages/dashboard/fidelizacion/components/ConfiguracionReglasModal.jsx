@@ -138,7 +138,7 @@ export default function ConfiguracionReglasModal({
     }));
   };
 
-  const { canSubmit } = computeConfiguracionSubmitState({ acumulacionHabilitada, lempiras, saving });
+  const { canSubmit } = computeConfiguracionSubmitState({ lempiras, saving });
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -218,7 +218,7 @@ export default function ConfiguracionReglasModal({
                           disabled={saving}
                         />
                         <label className="form-check-label" htmlFor="fidelizacion-acumulacion-habilitada">
-                          Habilitar acumulacion de puntos
+                          Habilitar acumulacion automatica de puntos
                         </label>
                         <span
                           className={`badge ms-2 ${acumulacionHabilitada ? 'bg-success' : 'bg-secondary'}`}
@@ -228,23 +228,20 @@ export default function ConfiguracionReglasModal({
                       </div>
                     </div>
                     <div className="col-12 col-md-6">
-                      <label className="form-label">Lempiras por punto</label>
+                      <label className="form-label">Equivalencia de puntos</label>
                       <input
                         type="number"
                         min="0.01"
                         step="0.01"
-                        required={acumulacionHabilitada}
+                        required
                         value={lempiras}
                         onChange={(event) => setLempiras(event.target.value)}
                         className="form-control"
-                        disabled={saving || !acumulacionHabilitada}
-                        aria-disabled={!acumulacionHabilitada}
+                        disabled={saving}
                       />
-                      {!acumulacionHabilitada && (
-                        <div className="form-text">
-                          No aplica mientras la acumulacion de puntos este desactivada.
-                        </div>
-                      )}
+                      <div className="form-text">
+                        Esta tasa se utiliza para calcular la acumulacion y los canjes.
+                      </div>
                     </div>
                     <div className="col-12 col-md-6">
                       <div className="fidelizacion-config-modal__summary">

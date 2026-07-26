@@ -66,28 +66,30 @@ describe('switch de acumulacion de puntos: guardar', () => {
     assert.equal(payload.acumulacion_habilitada, false);
   });
 
-  it('apagado no exige tasa activa: se puede guardar sin lempiras_por_punto valido', () => {
-    const { canSubmit } = computeConfiguracionSubmitState({
-      acumulacionHabilitada: false,
-      lempiras: '',
-      saving: false
-    });
-    assert.equal(canSubmit, true);
+  it('la tasa es siempre obligatoria (>0), incluso con el switch apagado: tambien la usa el canje', () => {
+    const vacioApagado = computeConfiguracionSubmitState({ lempiras: '', saving: false });
+    assert.equal(vacioApagado.canSubmit, false);
+
+    const ceroApagado = computeConfiguracionSubmitState({ lempiras: '0', saving: false });
+    assert.equal(ceroApagado.canSubmit, false);
+
+    const validoApagado = computeConfiguracionSubmitState({ lempiras: '5', saving: false });
+    assert.equal(validoApagado.canSubmit, true);
   });
 
-  it('encendido exige tasa mayor que cero: no se puede guardar con lempiras invalido', () => {
-    const invalido = computeConfiguracionSubmitState({ acumulacionHabilitada: true, lempiras: '0', saving: false });
+  it('la tasa es obligatoria de la misma forma con el switch encendido', () => {
+    const invalido = computeConfiguracionSubmitState({ lempiras: '0', saving: false });
     assert.equal(invalido.canSubmit, false);
 
-    const vacio = computeConfiguracionSubmitState({ acumulacionHabilitada: true, lempiras: '', saving: false });
+    const vacio = computeConfiguracionSubmitState({ lempiras: '', saving: false });
     assert.equal(vacio.canSubmit, false);
 
-    const valido = computeConfiguracionSubmitState({ acumulacionHabilitada: true, lempiras: '5', saving: false });
+    const valido = computeConfiguracionSubmitState({ lempiras: '5', saving: false });
     assert.equal(valido.canSubmit, true);
   });
 
-  it('mientras esta guardando (saving=true) nunca permite un nuevo submit', () => {
-    const { canSubmit } = computeConfiguracionSubmitState({ acumulacionHabilitada: false, lempiras: '10', saving: true });
+  it('mientras esta guardando (saving=true) nunca permite un nuevo submit, aunque la tasa sea valida', () => {
+    const { canSubmit } = computeConfiguracionSubmitState({ lempiras: '10', saving: true });
     assert.equal(canSubmit, false);
   });
 });
