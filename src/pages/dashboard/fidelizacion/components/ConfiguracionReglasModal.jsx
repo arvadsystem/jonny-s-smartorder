@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../../services/inventarioService';
-import { extractApiMessage, formatCurrency, formatPoints } from '../utils/fidelizacionHelpers';
+import {
+  buildSaveConfiguracionPayload,
+  computeConfiguracionSubmitState,
+  extractApiMessage,
+  formatCurrency,
+  formatPoints
+} from '../utils/fidelizacionHelpers';
 
 const normalizeProductoCatalogo = (row) => ({
   id_producto: Number(row?.id_producto ?? 0) || null,
@@ -25,6 +31,9 @@ export default function ConfiguracionReglasModal({
   const [loadingProductos, setLoadingProductos] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [lempiras, setLempiras] = useState('');
+  // El valor inicial siempre viene de lo que respondio el backend (nunca se
+  // asume true por defecto); ver el efecto de abajo que lo sincroniza al abrir el modal.
+  const [acumulacionHabilitada, setAcumulacionHabilitada] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [catalogoProductos, setCatalogoProductos] = useState([]);
   const [selectedProductos, setSelectedProductos] = useState({});
@@ -39,6 +48,7 @@ export default function ConfiguracionReglasModal({
 
     const lempirasValue = configuracion?.configuracion?.lempiras_por_punto;
     setLempiras(lempirasValue ? String(lempirasValue) : '');
+    setAcumulacionHabilitada(Boolean(configuracion?.configuracion?.acumulacion_habilitada));
     setSearchTerm('');
 
     const selectedMap = {};
@@ -128,10 +138,11 @@ export default function ConfiguracionReglasModal({
     }));
   };
 
+  const { canSubmit } = computeConfiguracionSubmitState({ acumulacionHabilitada, lempiras, saving });
+
   const handleSubmit = (event) => {
     event.preventDefault();
-    const lempirasValue = Number(lempiras);
-    if (!Number.isFinite(lempirasValue) || lempirasValue <= 0 || saving) return;
+    if (!canSubmit) return;
 
     const productos_canjeables = Object.entries(selectedProductos)
       .filter(([, value]) => value?.checked)
@@ -148,11 +159,12 @@ export default function ConfiguracionReglasModal({
         return payload;
       });
 
-    onSubmit({
-      id_sucursal: configuracion?.id_sucursal || undefined,
-      lempiras_por_punto: lempirasValue,
-      productos_canjeables
-    });
+    onSubmit(buildSaveConfiguracionPayload({
+      idSucursal: configuracion?.id_sucursal,
+      lempiras,
+      acumulacionHabilitada,
+      productosCanjeables: productos_canjeables
+    }));
   };
 
   if (!mounted || !show) return null;
@@ -194,18 +206,45 @@ export default function ConfiguracionReglasModal({
                   </div>
 
                   <div className="row g-3">
+                    <div className="col-12">
+                      <div className="form-check form-switch fidelizacion-config-modal__switch">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="form-check-input"
+                          id="fidelizacion-acumulacion-habilitada"
+                          checked={acumulacionHabilitada}
+                          onChange={(event) => setAcumulacionHabilitada(event.target.checked)}
+                          disabled={saving}
+                        />
+                        <label className="form-check-label" htmlFor="fidelizacion-acumulacion-habilitada">
+                          Habilitar acumulacion de puntos
+                        </label>
+                        <span
+                          className={`badge ms-2 ${acumulacionHabilitada ? 'bg-success' : 'bg-secondary'}`}
+                        >
+                          {acumulacionHabilitada ? 'Activado' : 'Desactivado'}
+                        </span>
+                      </div>
+                    </div>
                     <div className="col-12 col-md-6">
                       <label className="form-label">Lempiras por punto</label>
                       <input
                         type="number"
                         min="0.01"
                         step="0.01"
-                        required
+                        required={acumulacionHabilitada}
                         value={lempiras}
                         onChange={(event) => setLempiras(event.target.value)}
                         className="form-control"
-                        disabled={saving}
+                        disabled={saving || !acumulacionHabilitada}
+                        aria-disabled={!acumulacionHabilitada}
                       />
+                      {!acumulacionHabilitada && (
+                        <div className="form-text">
+                          No aplica mientras la acumulacion de puntos este desactivada.
+                        </div>
+                      )}
                     </div>
                     <div className="col-12 col-md-6">
                       <div className="fidelizacion-config-modal__summary">
@@ -307,7 +346,7 @@ export default function ConfiguracionReglasModal({
               <button
                 type="submit"
                 className="btn inv-prod-btn-primary"
-                disabled={saving || !lempiras || Number(lempiras) <= 0}
+                disabled={!canSubmit}
               >
                 {saving ? 'Guardando...' : 'Guardar reglas'}
               </button>

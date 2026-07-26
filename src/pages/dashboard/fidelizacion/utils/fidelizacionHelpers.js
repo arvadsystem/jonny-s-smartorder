@@ -124,6 +124,30 @@ export const normalizeCanje = (canje) => ({
     : []
 });
 
+// Con el switch apagado, la tasa no es obligatoria para poder guardar; al
+// encenderlo, si exige una tasa (lempiras_por_punto) mayor que cero.
+export const computeConfiguracionSubmitState = ({ acumulacionHabilitada, lempiras, saving = false }) => {
+  const lempirasValue = Number(lempiras);
+  const lempirasValida = Number.isFinite(lempirasValue) && lempirasValue > 0;
+  const canSubmit = !saving && (!acumulacionHabilitada || lempirasValida);
+  return { lempirasValue, lempirasValida, canSubmit };
+};
+
+export const buildSaveConfiguracionPayload = ({
+  idSucursal,
+  lempiras,
+  acumulacionHabilitada,
+  productosCanjeables = []
+}) => {
+  const { lempirasValue, lempirasValida } = computeConfiguracionSubmitState({ acumulacionHabilitada, lempiras });
+  return {
+    id_sucursal: idSucursal || undefined,
+    lempiras_por_punto: lempirasValida ? lempirasValue : undefined,
+    acumulacion_habilitada: Boolean(acumulacionHabilitada),
+    productos_canjeables: productosCanjeables
+  };
+};
+
 export const normalizeConfiguracion = (payload) => {
   const data = payload?.data ?? payload ?? {};
   const configuracion = data?.configuracion ?? null;
@@ -135,6 +159,7 @@ export const normalizeConfiguracion = (payload) => {
       ? {
           id_configuracion: toNumber(configuracion?.id_configuracion, 0) || null,
           lempiras_por_punto: toNumber(configuracion?.lempiras_por_punto, 0),
+          acumulacion_habilitada: Boolean(configuracion?.acumulacion_habilitada),
           vigente_desde: configuracion?.vigente_desde ?? null,
           vigente_hasta: configuracion?.vigente_hasta ?? null,
           id_usuario_creador: toNumber(configuracion?.id_usuario_creador, 0) || null
