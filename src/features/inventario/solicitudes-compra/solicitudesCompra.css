@@ -596,6 +596,48 @@
 .sol-comp-catalog-card--sin_stock { border-top-color: var(--c-accent); }
 .sol-comp-catalog-card--stock_bajo { border-top-color: var(--c-terracotta); }
 .sol-comp-catalog-card--disponible { border-top-color: var(--c-info); }
+.sol-comp-catalog-card--configuration-pending {
+  border-color: #d69e2e;
+  background: #fffaf0;
+}
+
+.sol-comp-catalog-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.sol-comp-configuration-badge {
+  border-radius: 999px;
+  padding: 0.27rem 0.55rem;
+  color: #744210;
+  background: #fef3c7;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.sol-comp-configuration-message {
+  padding: 0.65rem 0.7rem;
+  border-left: 3px solid #d69e2e;
+  border-radius: 7px;
+  color: #744210 !important;
+  background: #fffbeb;
+  line-height: 1.45;
+}
+
+.sol-comp-catalog-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-bottom: 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #e8b949;
+  border-radius: 10px;
+  color: #744210;
+  background: #fffbeb;
+  font-size: 0.86rem;
+}
 
 .sol-comp-catalog-card p {
   margin: 0.42rem 0;

@@ -111,7 +111,7 @@ test('frontend conserva exactamente el orden recibido y no filtra disponibles', 
   assert.match(catalog, /visibleItems\.map/);
   assert.doesNotMatch(catalog, /\.sort\(|estado_stock\s*!==\s*['"]DISPONIBLE|\.filter\([^)]*estado_stock/);
   assert.match(catalog, /sol-comp-stock--\$\{String\(item\.estado_stock\)/);
-  assert.match(catalog, /<button type="button" className="btn sol-comp-add-action" onClick=\{add\}>/);
+  assert.match(catalog, /<button type="button" className="btn sol-comp-add-action"[^>]*onClick=\{add\}>/);
 });
 
 test('catalogo conserva badges presentaciones equivalencia y validaciones', async () => {
@@ -240,7 +240,7 @@ test('cantidad del catalogo mantiene precision accesibilidad y limpieza selectiv
   const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
   assert.match(catalog, /step=\{isSupply \? '0\.0001' : '1'\}/);
   assert.match(catalog, /inputMode=\{isSupply \? 'decimal' : 'numeric'\}/);
-  assert.match(catalog, /aria-describedby=\{error \? quantityErrorId : undefined\}/);
+  assert.match(catalog, /aria-describedby=\{error \? quantityErrorId : \(!isSolicitable \? unavailableMessageId : undefined\)\}/);
   assert.match(catalog, /id=\{quantityErrorId\}[^>]*role="alert"/);
   assert.match(catalog, /setQuantity\(''\)/);
   assert.doesNotMatch(catalog, /setPresentation\((?:''|'base'|null)\)/);

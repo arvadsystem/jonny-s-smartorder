@@ -7,6 +7,7 @@ const TYPE_OPTIONS = [{ value: '', label: 'Todos' }, { value: 'producto', label:
 
 function CatalogItem({ item, onAdd }) {
   const isSupply = String(item.tipo_item).toLowerCase() === 'insumo';
+  const isSolicitable = item.solicitable !== false;
   const presentations = useMemo(() => Array.isArray(item.presentaciones) ? item.presentaciones : [], [item.presentaciones]);
   const preferred = presentations.find((option) => option.es_predeterminada_compra) || presentations[0];
   const [presentation, setPresentation] = useState(preferred ? String(preferred.id_presentacion) : 'base');
@@ -14,16 +15,18 @@ function CatalogItem({ item, onAdd }) {
   const [error, setError] = useState('');
   const selected = presentations.find((option) => String(option.id_presentacion) === presentation);
   const quantityErrorId = `sol-comp-catalog-quantity-${item.tipo_item}-${item.id_item}`;
+  const unavailableMessageId = `sol-comp-catalog-unavailable-${item.tipo_item}-${item.id_item}`;
   const options = useMemo(() => [
-    { value: 'base', label: `Unidad base (${item.unidad_base || 'Unidad'})` },
+    { value: 'base', label: `Unidad base (${isSolicitable ? (item.unidad_base || 'Unidad') : 'Sin configurar'})` },
     ...presentations.map((option) => ({
       value: String(option.id_presentacion),
       label: option.nombre_presentacion,
       helperText: `${option.cantidad_presentacion || 1} ${option.unidad_presentacion || option.nombre_presentacion} equivale a ${option.cantidad_base} ${option.unidad_base || item.unidad_base}`
     }))
-  ], [item.unidad_base, presentations]);
+  ], [isSolicitable, item.unidad_base, presentations]);
 
   const add = () => {
+    if (!isSolicitable) return;
     const parsed = parseRequestedQuantity(quantity, item.tipo_item);
     if (!parsed) {
       setError(isSupply ? 'Ingresa una cantidad positiva con hasta 4 decimales.' : 'Ingresa una cantidad entera positiva.');
@@ -48,32 +51,36 @@ function CatalogItem({ item, onAdd }) {
   };
 
   return (
-    <article className={`sol-comp-catalog-card sol-comp-catalog-card--${String(item.estado_stock || 'desconocido').toLowerCase()}`}>
+    <article className={`sol-comp-catalog-card sol-comp-catalog-card--${String(item.estado_stock || 'desconocido').toLowerCase()}${isSolicitable ? '' : ' sol-comp-catalog-card--configuration-pending'}`}>
       <div className="sol-comp-card-top">
         <div className="sol-comp-catalog-card__title"><span aria-hidden="true"><i className={`bi ${isSupply ? 'bi-basket' : 'bi-box-seam'}`} /></span><strong>{item.nombre}</strong></div>
-        <span className={`sol-comp-stock sol-comp-stock--${String(item.estado_stock).toLowerCase()}`}>{STOCK_LABELS[item.estado_stock] || item.estado_stock}</span>
+        <div className="sol-comp-catalog-card__badges">
+          {!isSolicitable ? <span className="sol-comp-configuration-badge">Configuración pendiente</span> : null}
+          <span className={`sol-comp-stock sol-comp-stock--${String(item.estado_stock).toLowerCase()}`}>{STOCK_LABELS[item.estado_stock] || item.estado_stock}</span>
+        </div>
       </div>
       <p className="sol-comp-type">{isSupply ? 'Insumo' : 'Producto'} · {item.categoria || 'Sin categoría'}</p>
       {item.descripcion ? <p className="sol-comp-catalog-card__description">{item.descripcion}</p> : null}
+      {!isSolicitable ? <p id={unavailableMessageId} className="sol-comp-configuration-message">Este insumo no tiene una unidad base configurada. No puede agregarse a la solicitud hasta que el área de Inventario corrija su configuración.</p> : null}
       <div className="sol-comp-catalog-card__inventory">
         <div className="sol-comp-stock-values">
           <span><small>Existencia</small><b>{item.cantidad ?? 0}</b></span>
           <span><small>Stock mínimo</small><b>{item.stock_minimo ?? 0}</b></span>
-          <span><small>Unidad base</small><b>{item.unidad_base || 'Unidad'}</b></span>
+          <span><small>Unidad base</small><b>{isSolicitable ? (item.unidad_base || 'Unidad') : 'Sin configurar'}</b></span>
         </div>
       </div>
       {isSupply && presentations.length ? (
         <div className="sol-comp-presentation">
-          <AppSelect label="Presentación de compra" value={presentation} options={options} onChange={setPresentation} />
+          <AppSelect label="Presentación de compra" value={presentation} options={options} onChange={setPresentation} disabled={!isSolicitable} helperText={!isSolicitable ? 'Configuración pendiente' : ''} />
           {selected ? <small><i className="bi bi-arrow-left-right" aria-hidden="true" /> {selected.cantidad_presentacion || 1} {selected.unidad_presentacion || selected.nombre_presentacion} equivale a {selected.cantidad_base} {selected.unidad_base || item.unidad_base}</small> : null}
         </div>
-      ) : <div className="sol-comp-base-presentation"><i className="bi bi-box" aria-hidden="true" /> Solicitud en unidad base</div>}
+      ) : <div className="sol-comp-base-presentation"><i className={`bi ${isSolicitable ? 'bi-box' : 'bi-exclamation-circle'}`} aria-hidden="true" /> {isSolicitable ? 'Solicitud en unidad base' : 'Unidad base sin configurar'}</div>}
       <div className="sol-comp-add-row">
         <label>Cantidad solicitada
-          <input aria-invalid={Boolean(error)} aria-describedby={error ? quantityErrorId : undefined} type="number" min="0" step={isSupply ? '0.0001' : '1'} inputMode={isSupply ? 'decimal' : 'numeric'} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+          <input aria-invalid={Boolean(error)} aria-disabled={!isSolicitable} aria-describedby={error ? quantityErrorId : (!isSolicitable ? unavailableMessageId : undefined)} disabled={!isSolicitable} type="number" min="0" step={isSupply ? '0.0001' : '1'} inputMode={isSupply ? 'decimal' : 'numeric'} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
           {error ? <small id={quantityErrorId} className="sol-comp-field-error" role="alert">{error}</small> : null}
         </label>
-        <button type="button" className="btn sol-comp-add-action" onClick={add}><i className="bi bi-plus-circle" aria-hidden="true" /> Agregar</button>
+        <button type="button" className="btn sol-comp-add-action" disabled={!isSolicitable} aria-disabled={!isSolicitable} aria-describedby={!isSolicitable ? unavailableMessageId : undefined} onClick={add}><i className={`bi ${isSolicitable ? 'bi-plus-circle' : 'bi-exclamation-circle'}`} aria-hidden="true" /> {isSolicitable ? 'Agregar' : 'No disponible'}</button>
       </div>
     </article>
   );
@@ -87,6 +94,7 @@ export default function SolicitudCompraCatalogo({ warehouseId, state, loadCatalo
   const page = Number(state.pagination?.page || 1);
   const matchesWarehouse = state.requestedWarehouseId === String(warehouseId);
   const visibleItems = matchesWarehouse && !state.loading ? state.items : [];
+  const hasUnavailableItems = visibleItems.some((item) => item.solicitable === false);
   const catalogOptions = (nextPage = 1, overrides = {}) => {
     const nextSearch = overrides.search ?? search;
     const nextType = overrides.type ?? type;
@@ -159,6 +167,7 @@ export default function SolicitudCompraCatalogo({ warehouseId, state, loadCatalo
         {state.loading ? <div className="sol-comp-feedback"><span className="spinner-border spinner-border-sm" /> Buscando catálogo…</div> : null}
         {state.error ? <div className="sol-comp-feedback sol-comp-feedback--error">{state.error} <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => load(page)}>Reintentar</button></div> : null}
       </div>
+      {hasUnavailableItems ? <div className="sol-comp-catalog-warning" role="status"><i className="bi bi-exclamation-triangle" aria-hidden="true" /> Algunos insumos no pueden solicitarse porque su unidad base está pendiente de configuración. Repórtalos al responsable de Inventario.</div> : null}
       <div className="sol-comp-catalog-grid">{visibleItems.map((item) => <CatalogItem key={`${item.tipo_item}-${item.id_item}`} item={item} onAdd={onAdd} />)}</div>
       {!state.loading && !state.error && matchesWarehouse && !visibleItems.length ? <div className="sol-comp-empty"><i className="bi bi-search" aria-hidden="true" /><h4>No encontramos artículos{search ? ` para “${search}”` : ''}</h4><p>Los filtros actuales no produjeron coincidencias.</p></div> : null}
       <nav className="sol-comp-pagination" aria-label="Paginación del catálogo">
