@@ -124,6 +124,33 @@ export const normalizeCanje = (canje) => ({
     : []
 });
 
+// La tasa (lempiras_por_punto) es SIEMPRE obligatoria (> 0) para poder
+// guardar, sin importar el estado del switch: tambien se usa para calcular
+// canjes, y el backend exige una tasa valida para toda configuracion
+// guardada (bloqueante: no se debe poder apagar el switch y guardar sin
+// equivalencia, dejando la sucursal sin una tasa valida para canjes).
+export const computeConfiguracionSubmitState = ({ lempiras, saving = false }) => {
+  const lempirasValue = Number(lempiras);
+  const lempirasValida = Number.isFinite(lempirasValue) && lempirasValue > 0;
+  const canSubmit = !saving && lempirasValida;
+  return { lempirasValue, lempirasValida, canSubmit };
+};
+
+export const buildSaveConfiguracionPayload = ({
+  idSucursal,
+  lempiras,
+  acumulacionHabilitada,
+  productosCanjeables = []
+}) => {
+  const { lempirasValue, lempirasValida } = computeConfiguracionSubmitState({ lempiras });
+  return {
+    id_sucursal: idSucursal || undefined,
+    lempiras_por_punto: lempirasValida ? lempirasValue : undefined,
+    acumulacion_habilitada: Boolean(acumulacionHabilitada),
+    productos_canjeables: productosCanjeables
+  };
+};
+
 export const normalizeConfiguracion = (payload) => {
   const data = payload?.data ?? payload ?? {};
   const configuracion = data?.configuracion ?? null;
@@ -135,6 +162,7 @@ export const normalizeConfiguracion = (payload) => {
       ? {
           id_configuracion: toNumber(configuracion?.id_configuracion, 0) || null,
           lempiras_por_punto: toNumber(configuracion?.lempiras_por_punto, 0),
+          acumulacion_habilitada: Boolean(configuracion?.acumulacion_habilitada),
           vigente_desde: configuracion?.vigente_desde ?? null,
           vigente_hasta: configuracion?.vigente_hasta ?? null,
           id_usuario_creador: toNumber(configuracion?.id_usuario_creador, 0) || null
