@@ -51,11 +51,20 @@ test('actualizacion usa exclusivamente el id real del detalle', () => {
   assert.equal(updated[1].cantidad_recibida, '4');
 });
 
-test('producto acepta entero positivo y rechaza decimal, cero y negativos', () => {
-  assert.equal(parseReceivedQuantity('3', 'PRODUCTO'), 3);
-  assert.equal(parseReceivedQuantity('3.5', 'PRODUCTO'), null);
-  assert.equal(parseReceivedQuantity('0', 'PRODUCTO'), null);
-  assert.equal(parseReceivedQuantity('-1', 'PRODUCTO'), null);
+test('producto acepta entero equivalente y rechaza fracciones reales', () => {
+  assert.equal(parseReceivedQuantity('2.000000', 'PRODUCTO'), 2);
+  for (const value of ['2.000001', '2.5', '0.000000', '-1.000000', '1e0', '+1', '01.000000', '2.0000000']) {
+    assert.equal(parseReceivedQuantity(value, 'PRODUCTO'), null);
+  }
+});
+
+test('borrador normaliza producto escalado sin generar error de integridad', () => {
+  const draft = createReceptionDraft([detail({
+    cantidad_aprobada: '2.000000',
+    cantidad_base_aprobada: '2.000000'
+  })]);
+  assert.equal(draft[0].cantidad_recibida, '2');
+  assert.equal(validateReceptionDraft(draft).valid, true);
 });
 
 test('insumo acepta seis decimales como texto y rechaza siete, cero y negativos', () => {

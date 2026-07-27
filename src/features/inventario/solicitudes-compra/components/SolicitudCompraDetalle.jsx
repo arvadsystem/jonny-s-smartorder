@@ -3,7 +3,7 @@ import SolicitudCompraRevisionPanel from './SolicitudCompraRevisionPanel';
 import SolicitudCompraRecepcionPanel from './SolicitudCompraRecepcionPanel';
 import SolicitudCompraEvidencias from './SolicitudCompraEvidencias';
 import { formatDateTime } from '../utils/solicitudesCompraUtils';
-import { isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
+import { formatConversionQuantity, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
 const value = (raw) => raw === null || raw === undefined ? '—' : raw;
 const STOCK_LABELS = { SIN_STOCK: 'Sin stock', STOCK_BAJO: 'Stock bajo', DISPONIBLE: 'Disponible' };
@@ -18,10 +18,10 @@ const QuantityStage = ({ label, quantity, baseQuantity, line, received = false }
   const tone = received ? 'received' : label === 'Aprobado' ? 'approved' : 'requested';
   return <div className={`sol-comp-quantity sol-comp-quantity--${tone}`}>
     <small>{label}</small>
-    <span>{quantity} {baseOnly ? baseUnit : presentation}</span>
+    <span>{formatConversionQuantity(quantity)} {baseOnly ? baseUnit : presentation}</span>
     <em>{baseOnly
       ? 'Solicitud directa en unidad base'
-      : `${received ? 'Entrada aplicada' : 'Equivale a'}: ${baseQuantity} ${baseUnit}`}</em>
+      : `${received ? 'Entrada aplicada' : 'Equivale a'}: ${formatConversionQuantity(baseQuantity)} ${baseUnit}`}</em>
   </div>;
 };
 

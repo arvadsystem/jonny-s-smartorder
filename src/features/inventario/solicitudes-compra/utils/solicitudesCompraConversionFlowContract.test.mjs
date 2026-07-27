@@ -34,6 +34,9 @@ test('detalle usa snapshots y estados pendientes', async () => {
   const source = await read('../components/SolicitudCompraDetalle.jsx');
   assert.match(source, /isBaseOnlyLine\(line\)/);
   assert.match(source, /<span>Pendiente<\/span>/);
+  assert.match(source, /formatConversionQuantity\(quantity\)/);
+  assert.match(source, /formatConversionQuantity\(baseQuantity\)/);
+  assert.doesNotMatch(source, /Number\(quantity\)|Number\(baseQuantity\)/);
   assert.match(source, /Entrada aplicada/);
   assert.match(source, /Solicitud directa en unidad base/);
   assert.doesNotMatch(source, /insumo_presentaciones|presentacionesService|catalogo/i);
@@ -47,6 +50,7 @@ test('revision conserva factor calcula base y no amplía payload', async () => {
   ]);
   assert.match(draft, /factor_conversion_snapshot/);
   assert.match(line, /Cantidad base calculada para inventario/);
+  assert.match(line, /formatConversionQuantity/);
   assert.match(line, /Equivalencia de aprobación/);
   assert.match(panel, /sol-comp-conversion-confirmation/);
   const payload = draft.match(/export const buildApprovalPayload[\s\S]*?^};/m)?.[0] || '';
@@ -63,6 +67,7 @@ test('recepcion calcula entrada y diferencias sin ampliar payload', async () => 
   assert.match(draft, /factor_conversion_snapshot/);
   assert.match(line, /Entrada al inventario/);
   assert.match(line, /subtractConversionDecimal/);
+  assert.match(line, /formatConversionQuantity/);
   assert.match(panel, /Al confirmar, el sistema agregará automáticamente/);
   assert.match(panel, /No realice un ajuste manual adicional/);
   const payload = draft.match(/export const buildReceptionPayload[\s\S]*?^};/m)?.[0] || '';

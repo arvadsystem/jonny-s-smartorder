@@ -13,17 +13,24 @@ const positiveInteger = (value) => {
 export const parseApprovedQuantity = (value, type) => {
   const text = String(value ?? '').trim();
   const product = String(type || '').toUpperCase() === 'PRODUCTO';
-  const pattern = product ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
+  const pattern = product ? /^(?:[1-9]\d*)(?:\.0{1,6})?$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
   if (!pattern.test(text) || BigInt(text.replace('.', '')) === 0n) return null;
-  if (product) return Number(text);
+  if (product) {
+    const integer = Number(text.split('.')[0]);
+    return Number.isSafeInteger(integer) ? integer : null;
+  }
   const [whole, fraction = ''] = text.split('.');
   const normalizedFraction = fraction.replace(/0+$/, '');
   return normalizedFraction ? `${whole}.${normalizedFraction}` : whole;
 };
 
-export const createApprovalDraft = (details) => (Array.isArray(details) ? details : []).map((detail) => ({
+export const createApprovalDraft = (details) => (Array.isArray(details) ? details : []).map((detail) => {
+  const type = String(detail?.tipo_item || '').toUpperCase();
+  const initialQuantity = detail?.cantidad_aprobada ?? detail?.cantidad_solicitada ?? '';
+  const parsedInitial = parseApprovedQuantity(initialQuantity, type);
+  return {
   id_solicitud_detalle: positiveInteger(detail?.id_solicitud_detalle),
-  tipo_item: String(detail?.tipo_item || '').toUpperCase(),
+  tipo_item: type,
   nombre: detail?.nombre || '',
   categoria: detail?.categoria || '',
   presentacion_snapshot: detail?.presentacion_snapshot || '',
@@ -34,9 +41,10 @@ export const createApprovalDraft = (details) => (Array.isArray(details) ? detail
   stock_actual: detail?.stock_actual,
   stock_minimo: detail?.stock_minimo,
   estado_stock: detail?.estado_stock || '',
-  cantidad_aprobada: String(detail?.cantidad_aprobada ?? detail?.cantidad_solicitada ?? ''),
+  cantidad_aprobada: parsedInitial === null ? String(initialQuantity) : String(parsedInitial),
   id_proveedor: detail?.proveedor?.id_proveedor ? String(detail.proveedor.id_proveedor) : ''
-}));
+  };
+});
 
 export const updateApprovalDraftLine = (lines, idDetalle, patch) => {
   const id = positiveInteger(idDetalle);

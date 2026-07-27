@@ -1,7 +1,7 @@
 import { compareDecimalQuantities } from '../utils/solicitudesCompraRecepcionUtils';
-import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel, subtractConversionDecimal } from '../utils/solicitudesCompraConversionUtils';
+import { buildConversionPreview, formatConversionQuantity, isBaseOnlyLine, resolvePresentationLabel, subtractConversionDecimal } from '../utils/solicitudesCompraConversionUtils';
 
-const value = (raw) => raw === null || raw === undefined || raw === '' ? '—' : raw;
+const value = (raw) => raw === null || raw === undefined || raw === '' ? '—' : formatConversionQuantity(raw);
 
 export default function SolicitudCompraRecepcionLinea({ line, errors, disabled, onChange }) {
   const isProduct = line.tipo_item === 'PRODUCTO';

@@ -19,9 +19,12 @@ const decimalToScaled6 = (value) => {
 export const parseReceivedQuantity = (value, type) => {
   const text = String(value ?? '').trim();
   const isProduct = String(type || '').toUpperCase() === 'PRODUCTO';
-  const pattern = isProduct ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
+  const pattern = isProduct ? /^(?:[1-9]\d*)(?:\.0{1,6})?$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
   if (!pattern.test(text) || BigInt(text.replace('.', '')) === 0n) return null;
-  if (isProduct) return Number(text);
+  if (isProduct) {
+    const integer = Number(text.split('.')[0]);
+    return Number.isSafeInteger(integer) ? integer : null;
+  }
   const [whole, fraction = ''] = text.split('.');
   const normalizedFraction = fraction.replace(/0+$/, '');
   return normalizedFraction ? `${whole}.${normalizedFraction}` : whole;
@@ -40,9 +43,13 @@ export const compareDecimalQuantities = (left, right) => {
   return leftScaled < rightScaled ? -1 : 1;
 };
 
-export const createReceptionDraft = (details) => (Array.isArray(details) ? details : []).map((detail) => ({
+export const createReceptionDraft = (details) => (Array.isArray(details) ? details : []).map((detail) => {
+  const type = String(detail?.tipo_item || '').toUpperCase();
+  const initialQuantity = detail?.cantidad_recibida ?? detail?.cantidad_aprobada ?? '';
+  const parsedInitial = parseReceivedQuantity(initialQuantity, type);
+  return {
   id_solicitud_detalle: positiveInteger(detail?.id_solicitud_detalle),
-  tipo_item: String(detail?.tipo_item || '').toUpperCase(),
+  tipo_item: type,
   nombre: detail?.nombre || '',
   categoria: detail?.categoria || '',
   presentacion_snapshot: detail?.presentacion_snapshot || '',
@@ -53,8 +60,9 @@ export const createReceptionDraft = (details) => (Array.isArray(details) ? detai
   unidad_base: detail?.unidad_base || (String(detail?.tipo_item).toUpperCase() === 'PRODUCTO' ? 'Unidades' : ''),
   stock_actual: detail?.stock_actual,
   stock_minimo: detail?.stock_minimo,
-  cantidad_recibida: String(detail?.cantidad_recibida ?? detail?.cantidad_aprobada ?? '')
-}));
+  cantidad_recibida: parsedInitial === null ? String(initialQuantity) : String(parsedInitial)
+  };
+});
 
 export const updateReceptionDraftLine = (lines, idDetalle, cantidad) => {
   const id = positiveInteger(idDetalle);

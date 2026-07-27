@@ -1,7 +1,7 @@
 import AppSelect from '../../../../components/common/AppSelect';
-import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
+import { buildConversionPreview, formatConversionQuantity, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
-const display = (value) => value === null || value === undefined || value === '' ? '—' : value;
+const display = (value) => value === null || value === undefined || value === '' ? '—' : formatConversionQuantity(value);
 
 export default function SolicitudCompraRevisionLinea({ line, errors = {}, providerOptions, providersLoading, disabled, editable }) {
   const inputId = `approved-quantity-${line.id_solicitud_detalle}`;
