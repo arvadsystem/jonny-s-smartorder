@@ -33,21 +33,29 @@ const initialCanjesPagination = {
   limit: 20
 };
 
+const initialCanjeablesData = { items: [], message: '', saldoCliente: null };
+
 export const useFidelizacion = () => {
   // Solo la solicitud mas reciente de clientes puede aplicar su resultado:
   // evita que una respuesta lenta de una pagina vieja sobrescriba una
   // pagina mas nueva que ya respondio (ver createLatestRequestTracker).
   const clientesRequestTrackerRef = useRef(createLatestRequestTracker());
+  // Mismo patron para el catalogo de canjeables: cambiar de sucursal
+  // rapidamente dentro del modal de canje (GenerarCanjeModal) dispara una
+  // solicitud nueva antes de que la anterior responda.
+  const canjeablesRequestTrackerRef = useRef(createLatestRequestTracker());
 
   const [panelData, setPanelData] = useState(null);
   const [clientes, setClientes] = useState([]);
   const [clientesMeta, setClientesMeta] = useState(initialClientesPagination);
   const [canjes, setCanjes] = useState([]);
   const [canjesMeta, setCanjesMeta] = useState(initialCanjesPagination);
+  const [canjeablesData, setCanjeablesData] = useState(initialCanjeablesData);
 
   const [loadingPanel, setLoadingPanel] = useState(false);
   const [loadingClientes, setLoadingClientes] = useState(false);
   const [loadingCanjes, setLoadingCanjes] = useState(false);
+  const [loadingCanjeables, setLoadingCanjeables] = useState(false);
   const [saving, setSaving] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
 
@@ -176,16 +184,49 @@ export const useFidelizacion = () => {
     }
   }, [openToast]);
 
-  const getClienteCanjeables = useCallback(async (idCliente, params = {}) => {
+  const loadCanjeables = useCallback(async (idCliente, params = {}) => {
+    const tracker = canjeablesRequestTrackerRef.current;
+    const requestId = tracker.start();
+
+    setLoadingCanjeables(true);
     try {
       const res = await fidelizacionService.getClienteCanjeables(idCliente, params);
-      return normalizeCanjeableResponse(res);
+      const normalized = normalizeCanjeableResponse(res);
+
+      // Respuesta tardia de una sucursal que ya no es la seleccionada: no
+      // debe sobrescribir el catalogo que ya se esta mostrando.
+      if (!tracker.isLatest(requestId)) {
+        return normalized;
+      }
+
+      setCanjeablesData(normalized);
+      return normalized;
     } catch (err) {
+      // Un error tardio (de una sucursal ya abandonada) se ignora de forma
+      // controlada: sin toast, sin pisar el catalogo vigente, sin relanzar.
+      if (!tracker.isLatest(requestId)) {
+        return null;
+      }
+
       const msg = extractApiMessage(err, 'Error al cargar los productos canjeables.');
+      setCanjeablesData({ items: [], message: msg, saldoCliente: null });
       openToast('ERROR', msg, 'danger');
       throw err;
+    } finally {
+      if (tracker.isLatest(requestId)) {
+        setLoadingCanjeables(false);
+      }
     }
   }, [openToast]);
+
+  // Invalida cualquier solicitud de canjeables en curso (para que su
+  // respuesta tardia no reaparezca) y limpia el catalogo: se usa al cerrar
+  // el modal de canje o al cambiar de sucursal dentro de el.
+  const resetCanjeables = useCallback(() => {
+    canjeablesRequestTrackerRef.current.start();
+    setCanjeablesData(initialCanjeablesData);
+    setLoadingCanjeables(false);
+  }, []);
 
   const getConfiguracion = useCallback(async (params = {}) => {
     try {
@@ -254,9 +295,11 @@ export const useFidelizacion = () => {
     clientesMeta,
     canjes,
     canjesMeta,
+    canjeablesData,
     loadingPanel,
     loadingClientes,
     loadingCanjes,
+    loadingCanjeables,
     detailLoading,
     saving,
     error,
@@ -268,7 +311,8 @@ export const useFidelizacion = () => {
     loadCanjes,
     getClienteById,
     getClienteMovimientos,
-    getClienteCanjeables,
+    loadCanjeables,
+    resetCanjeables,
     getConfiguracion,
     saveConfiguracion,
     createCanje,

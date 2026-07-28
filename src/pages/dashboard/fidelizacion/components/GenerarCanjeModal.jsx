@@ -1,31 +1,92 @@
 import { useEffect, useMemo, useState } from 'react';
-import { formatCurrency, formatPoints } from '../utils/fidelizacionHelpers';
+import ToolbarSucursalSelect from '../../../../components/common/ToolbarSucursalSelect';
+import {
+  computeCanjeCartAfterAdd,
+  computeCanjeConfirmDisabled,
+  formatCurrency,
+  formatPoints
+} from '../utils/fidelizacionHelpers';
 
-const buildEmptyStateMessage = (backendMessage, saldoDisponible) => {
+const buildEmptyStateMessage = (backendMessage, saldoDisponible, sucursalMissing) => {
+  if (sucursalMissing) return 'Selecciona la sucursal donde se realizara el canje.';
   if (backendMessage) return backendMessage;
   if (Number(saldoDisponible || 0) <= 0) return 'Debe acumular mas puntos para realizar un canje.';
-  return 'No hay productos canjeables disponibles en la sucursal operativa.';
+  return 'No hay productos canjeables disponibles en la sucursal seleccionada.';
 };
+
+// Mismo patron de imagen/placeholder que VentaComposerCatalog.jsx (.vcp-card):
+// sin manejo de estado en React, la propia imagen oculta su <img> y revela
+// el placeholder hermano si la URL falla (onError). No se construye la URL
+// aqui: imagen_principal_url ya viene resuelta del backend
+// (attachImagenPrincipalUrls).
+const ProductoCanjeableMedia = ({ imagenUrl, nombre, puntos }) => (
+  <div className="vcp-card__media">
+    <span className="fidelizacion-canje-modal__points-badge">{formatPoints(puntos)} pts</span>
+    {imagenUrl ? (
+      <img
+        src={imagenUrl}
+        alt={nombre}
+        className="vcp-card__image"
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={(event) => {
+          event.currentTarget.style.display = 'none';
+          const next = event.currentTarget.nextElementSibling;
+          if (next) next.classList.remove('d-none');
+        }}
+      />
+    ) : null}
+    <div className={`vcp-card__placeholder ${imagenUrl ? 'd-none' : ''}`}>
+      <i className="bi bi-image vcp-card__placeholder-icon" aria-hidden="true" />
+    </div>
+  </div>
+);
 
 export default function GenerarCanjeModal({
   open,
   onClose,
   cliente,
   canjeablesData,
+  loadingCanjeables,
+  onLoadCanjeables,
+  onResetCanjeables,
+  isSuperAdmin,
+  sucursales,
+  loadingSucursales,
+  userSucursalId,
+  userSucursalNombre,
   saving,
   onSubmit
 }) {
   const [carrito, setCarrito] = useState([]);
   const [observacion, setObservacion] = useState('');
+  const [selectedSucursalId, setSelectedSucursalId] = useState('');
 
   const canjeables = Array.isArray(canjeablesData?.items) ? canjeablesData.items : [];
   const saldoDisponible = Number(canjeablesData?.saldoCliente?.puntos_disponibles ?? cliente?.puntos_disponibles ?? 0);
+  const sucursalNumerica = Number.parseInt(String(selectedSucursalId || ''), 10);
+  const hasSucursalSeleccionada = Number.isInteger(sucursalNumerica) && sucursalNumerica > 0;
+  const sucursalMissing = isSuperAdmin && !hasSucursalSeleccionada;
 
+  // Al abrir el modal (o cambiar de cliente): carrito vacio y sucursal
+  // vacia para SUPER_ADMIN (nunca precargada con userSucursalId en
+  // silencio); para un usuario local, la sucursal operativa se fija de
+  // inmediato y no es editable desde aqui.
   useEffect(() => {
     if (!open) return;
     setCarrito([]);
     setObservacion('');
-  }, [open, cliente?.id_cliente]);
+    setSelectedSucursalId(isSuperAdmin ? '' : (userSucursalId ? String(userSucursalId) : ''));
+    if (onResetCanjeables) onResetCanjeables();
+  }, [open, cliente?.id_cliente, isSuperAdmin, userSucursalId, onResetCanjeables]);
+
+  // Carga (o recarga) el catalogo de canjeables cada vez que hay una
+  // sucursal resuelta: nunca antes de que exista una (SUPER_ADMIN sin
+  // seleccionar todavia no dispara ninguna peticion).
+  useEffect(() => {
+    if (!open || !cliente?.id_cliente || !hasSucursalSeleccionada) return;
+    void onLoadCanjeables(cliente.id_cliente, { id_sucursal: sucursalNumerica });
+  }, [open, cliente?.id_cliente, hasSucursalSeleccionada, sucursalNumerica, onLoadCanjeables]);
 
   useEffect(() => {
     if (!open || saving) return undefined;
@@ -35,6 +96,16 @@ export default function GenerarCanjeModal({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [onClose, open, saving]);
+
+  const handleSucursalChange = (value) => {
+    // Cambiar de sucursal vacia el carrito y los totales: los items
+    // seleccionados en la sucursal anterior no tienen sentido en la nueva
+    // (stock/almacen distintos). El catalogo se recarga solo (efecto de
+    // arriba, reacciona a selectedSucursalId).
+    setSelectedSucursalId(value);
+    setCarrito([]);
+    setObservacion('');
+  };
 
   const carritoMap = useMemo(
     () => new Map(carrito.map((item) => [item.id_producto, item])),
@@ -50,20 +121,7 @@ export default function GenerarCanjeModal({
   const saldoInsuficiente = puntosRestantes < 0;
 
   const handleAgregar = (producto) => {
-    const maxStock = Number(producto.stock_disponible || 0) || Infinity;
-    setCarrito((prev) => {
-      const current = prev.find((item) => item.id_producto === producto.id_producto);
-      if (current) {
-        const nextCantidad = Math.min(current.cantidad + 1, maxStock);
-        if (nextCantidad === current.cantidad) return prev;
-        return prev.map((item) =>
-          item.id_producto === producto.id_producto ? { ...item, cantidad: nextCantidad } : item
-        );
-      }
-
-      if (maxStock <= 0) return prev;
-      return [...prev, { ...producto, cantidad: 1 }];
-    });
+    setCarrito((prev) => computeCanjeCartAfterAdd(prev, producto));
   };
 
   const handleQuitar = (idProducto) => {
@@ -79,16 +137,25 @@ export default function GenerarCanjeModal({
     });
   };
 
+  const { algunProductoExcedeStock, disabled: confirmDisabled } = computeCanjeConfirmDisabled({
+    saving,
+    loadingCanjeables,
+    sucursalMissing,
+    carrito,
+    saldoInsuficiente
+  });
+
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (saving || carrito.length === 0 || saldoInsuficiente) return;
+    if (confirmDisabled) return;
 
     await onSubmit(
       carrito.map((item) => ({
         id_producto: item.id_producto,
         cantidad: item.cantidad
       })),
-      observacion.trim()
+      observacion.trim(),
+      sucursalNumerica
     );
   };
 
@@ -123,51 +190,88 @@ export default function GenerarCanjeModal({
 
         <form className="ventas-modal__body ventas-create-modal__body fidelizacion-canje-modal__body" onSubmit={handleSubmit}>
           <div className="ventas-create-modal__catalog">
-            <div className="ventas-create-modal__catalog-hint">
-              El backend decide sucursal operativa, stock real y puntos finales del canje.
+            <div className="fidelizacion-canje-modal__sucursal-bar">
+              {isSuperAdmin ? (
+                <ToolbarSucursalSelect
+                  value={selectedSucursalId}
+                  onChange={handleSucursalChange}
+                  options={sucursales}
+                  loading={loadingSucursales}
+                  label="Sucursal del canje"
+                  emptyLabel="Selecciona una sucursal"
+                  className="fidelizacion-canje-modal__sucursal-select"
+                />
+              ) : (
+                <div className="fidelizacion-canje-modal__sucursal-readonly" aria-label="Sucursal operativa">
+                  <i className="bi bi-shop" aria-hidden="true" />
+                  <span>{userSucursalNombre || 'Sucursal operativa'}</span>
+                </div>
+              )}
             </div>
 
-            {canjeables.length === 0 ? (
+            {sucursalMissing ? (
+              <div className="ventas-create-modal__empty fidelizacion-canje-modal__empty">
+                <div className="ventas-create-modal__cart-empty-icon">
+                  <i className="bi bi-signpost-split" />
+                </div>
+                <span>{buildEmptyStateMessage(canjeablesData?.message, saldoDisponible, true)}</span>
+              </div>
+            ) : loadingCanjeables ? (
+              <div className="ventas-detail-modal__loading fidelizacion-canje-modal__loading">
+                <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                <span>Cargando productos...</span>
+              </div>
+            ) : canjeables.length === 0 ? (
               <div className="ventas-create-modal__empty fidelizacion-canje-modal__empty">
                 <div className="ventas-create-modal__cart-empty-icon">
                   <i className="bi bi-stars" />
                 </div>
-                <span>{buildEmptyStateMessage(canjeablesData?.message, saldoDisponible)}</span>
+                <span>{buildEmptyStateMessage(canjeablesData?.message, saldoDisponible, false)}</span>
               </div>
             ) : (
               <div className="fidelizacion-canje-modal__products">
                 {canjeables.map((producto) => {
                   const selected = carritoMap.get(producto.id_producto);
+                  const sinStock = Number(producto.stock_disponible || 0) <= 0;
                   return (
                     <article
                       key={producto.id_producto}
-                      className={`vcp-card canjeable-card ${selected ? 'selected' : ''}`}
+                      className={`vcp-card canjeable-card ${selected ? 'selected' : ''} ${sinStock ? 'is-out-of-stock' : ''}`}
                       onClick={() => handleAgregar(producto)}
                     >
-                      <div className="vcp-card__media">
-                        <span className="fidelizacion-canje-modal__points-badge">
-                          {formatPoints(producto.puntos_requeridos)} pts
-                        </span>
-                      </div>
+                      <ProductoCanjeableMedia
+                        imagenUrl={producto.imagen_principal_url}
+                        nombre={producto.nombre_producto}
+                        puntos={producto.puntos_requeridos}
+                      />
                       <div className="vcp-card__body">
                         <div className="vcp-card__name">{producto.nombre_producto}</div>
-                        <div className="vcp-card__meta">
-                          <span>L. {formatCurrency(producto.precio)}</span>
-                          <span>Stock visible: {formatPoints(producto.stock_disponible)}</span>
+
+                        <div className="fidelizacion-canje-modal__meta-rows">
+                          <div className="fidelizacion-canje-modal__meta-row">
+                            <span>Precio</span>
+                            <strong>L. {formatCurrency(producto.precio)}</strong>
+                          </div>
+                          <div className="fidelizacion-canje-modal__meta-row">
+                            <span>Disponible</span>
+                            <strong>{sinStock ? 'Agotado' : `${formatPoints(producto.stock_disponible)} unidades`}</strong>
+                          </div>
                         </div>
-                        <div className="d-flex justify-content-between align-items-center mt-auto pt-2">
+
+                        <div className="vcp-card__footer">
                           <small className="text-muted">
-                            {selected ? `Seleccionado: ${selected.cantidad}` : 'Disponible para canje'}
+                            {selected ? `Seleccionado: ${selected.cantidad}` : sinStock ? 'Sin stock' : 'Disponible para canje'}
                           </small>
                           <button
                             type="button"
-                            className="btn btn-sm btn-outline-danger px-3 rounded-pill"
+                            className="vcp-card__add-btn"
+                            disabled={sinStock}
                             onClick={(event) => {
                               event.stopPropagation();
                               handleAgregar(producto);
                             }}
                           >
-                            <i className="bi bi-plus-lg" />
+                            <i className="bi bi-plus-lg" /> Agregar
                           </button>
                         </div>
                       </div>
@@ -188,6 +292,14 @@ export default function GenerarCanjeModal({
               </div>
 
               <div className="d-flex justify-content-between text-muted small fw-medium mb-1">
+                <span>Sucursal del canje</span>
+                <span className="text-end">
+                  {isSuperAdmin
+                    ? (sucursales.find((row) => String(row.id_sucursal) === selectedSucursalId)?.nombre_sucursal || 'Sin seleccionar')
+                    : (userSucursalNombre || 'Sucursal operativa')}
+                </span>
+              </div>
+              <div className="d-flex justify-content-between text-muted small fw-medium mb-1">
                 <span>Puntos disponibles</span>
                 <span>{formatPoints(saldoDisponible)} pts</span>
               </div>
@@ -206,6 +318,12 @@ export default function GenerarCanjeModal({
                 <div className="alert alert-danger mt-3 mb-0 py-2 small border-0 fw-medium">
                   <i className="bi bi-exclamation-triangle-fill me-2" />
                   El backend rechazara el canje si el saldo no alcanza.
+                </div>
+              ) : null}
+              {algunProductoExcedeStock ? (
+                <div className="alert alert-danger mt-3 mb-0 py-2 small border-0 fw-medium">
+                  <i className="bi bi-exclamation-triangle-fill me-2" />
+                  Alguna cantidad seleccionada supera el stock disponible.
                 </div>
               ) : null}
             </div>
@@ -230,7 +348,7 @@ export default function GenerarCanjeModal({
                           <td>
                             <div className="fidelizacion-canje-modal__cart-product">
                               <strong>{item.nombre_producto}</strong>
-                              <small>Stock visible: {formatPoints(item.stock_disponible)}</small>
+                              <small>Disponible: {formatPoints(item.stock_disponible)}</small>
                             </div>
                           </td>
                           <td className="text-center">
@@ -279,7 +397,7 @@ export default function GenerarCanjeModal({
               </button>
               <button
                 type="submit"
-                disabled={saving || carrito.length === 0 || saldoInsuficiente}
+                disabled={confirmDisabled}
                 className="btn btn-danger rounded-3 px-5 fw-bold shadow-sm"
               >
                 {saving ? (

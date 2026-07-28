@@ -173,6 +173,9 @@ export const normalizeConfiguracion = (payload) => {
       id_sucursal: toNumber(producto?.id_sucursal, 0) || null,
       id_producto: toNumber(producto?.id_producto, 0) || null,
       nombre_producto: String(producto?.nombre_producto ?? '').trim(),
+      descripcion_producto: String(producto?.descripcion_producto ?? '').trim(),
+      id_archivo_imagen_principal: toNumber(producto?.id_archivo_imagen_principal, 0) || null,
+      imagen_principal_url: producto?.imagen_principal_url ? String(producto.imagen_principal_url).trim() || null : null,
       precio: toNumber(producto?.precio, 0),
       cantidad: toNumber(producto?.cantidad, 0),
       stock_minimo: toNumber(producto?.stock_minimo, 0),
@@ -183,7 +186,9 @@ export const normalizeConfiguracion = (payload) => {
           ? null
           : toNumber(producto?.puntos_requeridos_override, 0),
       puntos_requeridos_efectivos: toNumber(producto?.puntos_requeridos_efectivos, 0),
-      id_almacen: toNumber(producto?.id_almacen, 0) || null
+      id_almacen: toNumber(producto?.id_almacen, 0) || null,
+      nombre_almacen: String(producto?.nombre_almacen ?? '').trim(),
+      asignacion_local_estado: String(producto?.asignacion_local_estado ?? '').trim() || 'SIN_ASIGNACION'
     }))
   };
 };
@@ -193,8 +198,12 @@ export const normalizeCanjeableResponse = (payload) => ({
     id_producto: toNumber(item?.id_producto, 0),
     nombre_producto: String(item?.nombre_producto ?? '').trim(),
     descripcion_producto: String(item?.descripcion_producto ?? '').trim(),
+    id_archivo_imagen_principal: toNumber(item?.id_archivo_imagen_principal, 0) || null,
+    imagen_principal_url: item?.imagen_principal_url ? String(item.imagen_principal_url).trim() || null : null,
     precio: toNumber(item?.precio, 0),
+    id_sucursal: toNumber(item?.id_sucursal, 0) || null,
     id_almacen: toNumber(item?.id_almacen, 0) || null,
+    nombre_almacen: String(item?.nombre_almacen ?? '').trim(),
     cantidad: toNumber(item?.cantidad, 0),
     stock_minimo: toNumber(item?.stock_minimo, 0),
     puntos_requeridos_override:
@@ -246,6 +255,54 @@ export const formatCurrency = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
+
+// Logica pura del carrito de canje (GenerarCanjeModal la usa directamente,
+// no hay una segunda implementacion): un producto con stock_disponible=0
+// nunca debe poder agregarse. Number(0 || 0) sigue siendo 0 (no se usa
+// "|| Infinity" como fallback, eso permitiria cantidades sin limite).
+export const computeCanjeCartAfterAdd = (carrito, producto) => {
+  const items = Array.isArray(carrito) ? carrito : [];
+  const maxStock = Number(producto?.stock_disponible || 0);
+  if (maxStock <= 0) return items;
+
+  const idProducto = producto?.id_producto;
+  const current = items.find((item) => item.id_producto === idProducto);
+  if (current) {
+    const nextCantidad = Math.min(current.cantidad + 1, maxStock);
+    if (nextCantidad === current.cantidad) return items;
+    return items.map((item) => (item.id_producto === idProducto ? { ...item, cantidad: nextCantidad } : item));
+  }
+
+  return [...items, { ...producto, cantidad: 1 }];
+};
+
+// Regla unica de "Confirmar canje deshabilitado": la misma funcion decide
+// tanto el estado del boton como la advertencia de stock excedido, para no
+// duplicar el criterio de "algun producto excede su stock" en dos lugares.
+export const computeCanjeConfirmDisabled = ({
+  saving = false,
+  loadingCanjeables = false,
+  sucursalMissing = false,
+  carrito = [],
+  saldoInsuficiente = false
+}) => {
+  const items = Array.isArray(carrito) ? carrito : [];
+  const algunProductoExcedeStock = items.some(
+    (item) => Number(item.stock_disponible || 0) < Number(item.cantidad || 0)
+  );
+
+  return {
+    algunProductoExcedeStock,
+    disabled: Boolean(
+      saving ||
+        loadingCanjeables ||
+        sucursalMissing ||
+        items.length === 0 ||
+        saldoInsuficiente ||
+        algunProductoExcedeStock
+    )
+  };
+};
 
 // Controlador minimo de "solo la solicitud mas reciente puede aplicar su
 // resultado", usado por loadClientes (useFidelizacion.js) para evitar que

@@ -3,8 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 import {
   buildSaveConfiguracionPayload,
+  computeCanjeCartAfterAdd,
+  computeCanjeConfirmDisabled,
   computeConfiguracionSubmitState,
   createLatestRequestTracker,
+  normalizeCanjeableResponse,
   normalizeConfiguracion,
   normalizeEnvelopeMeta
 } from './fidelizacionHelpers.js';
@@ -592,5 +595,402 @@ describe('SecurityPaginationBar.jsx: prop "disabled" retrocompatible', () => {
     const end = ventasListSource.indexOf('/>', start);
     const block = ventasListSource.slice(start, end);
     assert.doesNotMatch(block, /disabled=/, 'VentasList no deberia haberse tocado para esta correccion');
+  });
+});
+
+// Defecto confirmado: Fidelizacion resolvia la sucursal/stock de un
+// producto canjeable con el modelo heredado (productos.id_almacen), asi
+// que un producto maestro asignado a varias sucursales se rechazaba en
+// falso. El frontend ademas dejaba que SUPER_ADMIN cayera en la sucursal
+// del filtro general del panel, no mostraba imagen/nombre reales y
+// concatenaba precio/stock en un solo texto. Estas pruebas cubren el
+// carrito, el bloqueo de Confirmar, la normalizacion de datos maestros y
+// -via el mismo patron ya usado en el bloqueante 2 de paginacion- la
+// proteccion contra respuestas fuera de orden al cambiar de sucursal
+// dentro del modal.
+
+describe('computeCanjeCartAfterAdd: un producto sin stock nunca se puede agregar (helper real usado por GenerarCanjeModal)', () => {
+  it('stock_disponible=0 no agrega el producto (Number(0) es falsy: no se usa "|| Infinity" como maxStock)', () => {
+    const carrito = computeCanjeCartAfterAdd([], { id_producto: 1, stock_disponible: 0 });
+    assert.deepEqual(carrito, []);
+  });
+
+  it('producto nuevo con stock > 0 se agrega con cantidad 1', () => {
+    const carrito = computeCanjeCartAfterAdd([], { id_producto: 1, stock_disponible: 5, nombre_producto: 'X' });
+    assert.equal(carrito.length, 1);
+    assert.equal(carrito[0].cantidad, 1);
+  });
+
+  it('agregar un producto ya en el carrito respeta el stock maximo (no incrementa mas alla)', () => {
+    const carrito = [{ id_producto: 1, stock_disponible: 2, cantidad: 2 }];
+    const next = computeCanjeCartAfterAdd(carrito, { id_producto: 1, stock_disponible: 2, cantidad: 2 });
+    assert.equal(next[0].cantidad, 2, 'no debe superar el stock disponible (2)');
+    assert.equal(next, carrito, 'sin cambio real, debe devolver la misma referencia (no re-renderiza)');
+  });
+
+  it('agregar un producto ya en el carrito con stock restante incrementa en 1', () => {
+    const carrito = [{ id_producto: 1, stock_disponible: 5, cantidad: 2 }];
+    const next = computeCanjeCartAfterAdd(carrito, { id_producto: 1, stock_disponible: 5 });
+    assert.equal(next[0].cantidad, 3);
+  });
+});
+
+describe('computeCanjeConfirmDisabled: unica regla de bloqueo del boton Confirmar canje', () => {
+  const baseArgs = () => ({
+    saving: false,
+    loadingCanjeables: false,
+    sucursalMissing: false,
+    carrito: [{ id_producto: 1, cantidad: 1, stock_disponible: 5 }],
+    saldoInsuficiente: false
+  });
+
+  it('habilitado cuando no hay ningun bloqueo', () => {
+    const { disabled } = computeCanjeConfirmDisabled(baseArgs());
+    assert.equal(disabled, false);
+  });
+
+  it('bloqueado sin sucursal seleccionada (SUPER_ADMIN)', () => {
+    const { disabled } = computeCanjeConfirmDisabled({ ...baseArgs(), sucursalMissing: true });
+    assert.equal(disabled, true);
+  });
+
+  it('bloqueado sin productos en el carrito', () => {
+    const { disabled } = computeCanjeConfirmDisabled({ ...baseArgs(), carrito: [] });
+    assert.equal(disabled, true);
+  });
+
+  it('bloqueado con puntos insuficientes', () => {
+    const { disabled } = computeCanjeConfirmDisabled({ ...baseArgs(), saldoInsuficiente: true });
+    assert.equal(disabled, true);
+  });
+
+  it('bloqueado mientras el catalogo esta cargando', () => {
+    const { disabled } = computeCanjeConfirmDisabled({ ...baseArgs(), loadingCanjeables: true });
+    assert.equal(disabled, true);
+  });
+
+  it('bloqueado mientras se esta guardando (saving)', () => {
+    const { disabled } = computeCanjeConfirmDisabled({ ...baseArgs(), saving: true });
+    assert.equal(disabled, true);
+  });
+
+  it('bloqueado cuando algun item del carrito supera su stock disponible', () => {
+    const { disabled, algunProductoExcedeStock } = computeCanjeConfirmDisabled({
+      ...baseArgs(),
+      carrito: [{ id_producto: 1, cantidad: 9, stock_disponible: 5 }]
+    });
+    assert.equal(algunProductoExcedeStock, true);
+    assert.equal(disabled, true);
+  });
+});
+
+describe('normalizeCanjeableResponse: conserva imagen y datos de asignacion local (no elimina campos que el modal necesita)', () => {
+  it('conserva id_archivo_imagen_principal, imagen_principal_url, id_sucursal, id_almacen y nombre_almacen', () => {
+    const normalized = normalizeCanjeableResponse({
+      data: [
+        {
+          id_producto: 156,
+          nombre_producto: 'SEVEN UP 1.1 LT',
+          descripcion_producto: '',
+          id_archivo_imagen_principal: 227,
+          imagen_principal_url: 'https://cdn.example/imagen.jpg',
+          precio: 48,
+          id_sucursal: 1,
+          id_almacen: 1,
+          nombre_almacen: "Almacen Jonny's el Carmen",
+          cantidad: 10000,
+          stock_minimo: 3,
+          stock_disponible: 9997,
+          puntos_requeridos_override: null,
+          puntos_requeridos: 5
+        }
+      ]
+    });
+
+    const item = normalized.items[0];
+    assert.equal(item.id_archivo_imagen_principal, 227);
+    assert.equal(item.imagen_principal_url, 'https://cdn.example/imagen.jpg');
+    assert.equal(item.id_sucursal, 1);
+    assert.equal(item.id_almacen, 1);
+    assert.equal(item.nombre_almacen, "Almacen Jonny's el Carmen");
+    assert.equal(item.stock_disponible, 9997);
+  });
+
+  it('imagen_principal_url null (producto sin imagen) se conserva como null, no como cadena vacia enganosa', () => {
+    const normalized = normalizeCanjeableResponse({ data: [{ id_producto: 1, imagen_principal_url: null }] });
+    assert.equal(normalized.items[0].imagen_principal_url, null);
+  });
+});
+
+// Concurrencia al cambiar de sucursal dentro del modal de canje: mismo
+// patron ejecutable ya usado para el bloqueante 2 de paginacion (helper
+// real createLatestRequestTracker + promesas diferidas). No existe un
+// arnes para montar hooks en este repo, asi que useFidelizacion.js real se
+// verifica por separado (mas abajo) contra el codigo fuente para confirmar
+// que usa este MISMO helper dentro de loadCanjeables.
+
+// createDeferred ya esta definido arriba (reutilizado del bloqueante 2 de
+// paginacion): mismo helper de pruebas, no una segunda copia.
+
+// Mismo patron que loadCanjeables real (useFidelizacion.js).
+const simulateLoadCanjeables = (tracker, state, deferred, label) => {
+  const requestId = tracker.start();
+  state.loadingCanjeables = true;
+
+  return deferred.promise
+    .then((response) => {
+      if (!tracker.isLatest(requestId)) return response;
+      state.canjeablesData = response;
+      return response;
+    })
+    .catch((error) => {
+      if (!tracker.isLatest(requestId)) return undefined;
+      state.toastCount += 1;
+      throw error;
+    })
+    .finally(() => {
+      if (tracker.isLatest(requestId)) {
+        state.loadingCanjeables = false;
+      }
+    });
+};
+
+describe('createLatestRequestTracker aplicado a canjeables: cambiar de sucursal rapido no deja catalogo fuera de orden', () => {
+  it('sucursal B (seleccionada despues) gana aunque su respuesta llegue... y la respuesta tardia de A (abandonada) no la sobrescribe', async () => {
+    const tracker = createLatestRequestTracker();
+    const state = { canjeablesData: null, loadingCanjeables: false, toastCount: 0 };
+    const deferredA = createDeferred();
+    const deferredB = createDeferred();
+
+    const taskA = simulateLoadCanjeables(tracker, state, deferredA, 'sucursal-A');
+    const taskB = simulateLoadCanjeables(tracker, state, deferredB, 'sucursal-B');
+
+    deferredB.resolve({ items: [{ id_producto: 2 }], message: '', saldoCliente: null });
+    await taskB;
+    assert.deepEqual(state.canjeablesData.items, [{ id_producto: 2 }]);
+
+    deferredA.resolve({ items: [{ id_producto: 1 }], message: '', saldoCliente: null });
+    await taskA;
+    assert.deepEqual(state.canjeablesData.items, [{ id_producto: 2 }], 'A (sucursal abandonada) no debe sobrescribir el catalogo de B');
+  });
+
+  it('un error tardio de la sucursal abandonada no genera toast ni apaga el loading de la solicitud vigente', async () => {
+    const tracker = createLatestRequestTracker();
+    const state = { canjeablesData: null, loadingCanjeables: false, toastCount: 0 };
+    const deferredA = createDeferred();
+    const deferredB = createDeferred();
+
+    const taskA = simulateLoadCanjeables(tracker, state, deferredA, 'A');
+    simulateLoadCanjeables(tracker, state, deferredB, 'B');
+    assert.equal(state.loadingCanjeables, true);
+
+    deferredA.reject(new Error('sucursal A goes down'));
+    await assert.doesNotReject(taskA);
+    assert.equal(state.toastCount, 0);
+    assert.equal(state.loadingCanjeables, true, 'A obsoleta no debe apagar el loading de B, que sigue pendiente');
+  });
+});
+
+describe('useFidelizacion.js: loadCanjeables usa createLatestRequestTracker (el mismo helper probado arriba)', () => {
+  const getSource = () => readFile(new URL('../hooks/useFidelizacion.js', import.meta.url), 'utf8');
+
+  it('crea un tracker de canjeables dedicado (no reutiliza el de clientes) con useRef', async () => {
+    const source = await getSource();
+    assert.match(source, /const canjeablesRequestTrackerRef = useRef\(createLatestRequestTracker\(\)\);/);
+  });
+
+  it('loadCanjeables aplica el guard de frescura antes de setCanjeablesData, del toast y del loading', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const loadCanjeables = useCallback');
+    const end = source.indexOf('\n  const resetCanjeables', start);
+    const block = source.slice(start, end);
+
+    assert.match(block, /if \(!tracker\.isLatest\(requestId\)\) \{\s*\n\s*return normalized;\s*\n\s*\}/);
+    assert.match(block, /if \(!tracker\.isLatest\(requestId\)\) \{\s*\n\s*return null;\s*\n\s*\}/);
+    assert.match(block, /if \(tracker\.isLatest\(requestId\)\) \{\s*\n\s*setLoadingCanjeables\(false\);/);
+  });
+
+  it('resetCanjeables invalida la solicitud en curso (start()) antes de limpiar el estado', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const resetCanjeables = useCallback');
+    const end = source.indexOf('}, []);', start);
+    const block = source.slice(start, end);
+    assert.match(block, /canjeablesRequestTrackerRef\.current\.start\(\);/);
+    assert.match(block, /setCanjeablesData\(initialCanjeablesData\);/);
+  });
+});
+
+describe('GenerarCanjeModal.jsx: selector de sucursal obligatorio para SUPER_ADMIN', () => {
+  const getSource = () => readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
+
+  it('SUPER_ADMIN ve un selector (ToolbarSucursalSelect); un usuario local ve una etiqueta de solo lectura', async () => {
+    const source = await getSource();
+    assert.match(source, /\{isSuperAdmin \? \(\s*\n\s*<ToolbarSucursalSelect/);
+    assert.match(source, /fidelizacion-canje-modal__sucursal-readonly/);
+  });
+
+  it('el selector inicia vacio cada vez que se abre el modal (nunca precargado con userSucursalId para SUPER_ADMIN)', async () => {
+    const source = await getSource();
+    assert.match(source, /setSelectedSucursalId\(isSuperAdmin \? '' : \(userSucursalId \? String\(userSucursalId\) : ''\)\)/);
+  });
+
+  it('no se cargan productos antes de seleccionar sucursal: el efecto de carga exige hasSucursalSeleccionada', async () => {
+    const source = await getSource();
+    const start = source.indexOf('// Carga (o recarga) el catalogo');
+    const end = source.indexOf('}, [open, cliente?.id_cliente, hasSucursalSeleccionada', start) + 200;
+    const block = source.slice(start, end);
+    assert.match(block, /if \(!open \|\| !cliente\?\.id_cliente \|\| !hasSucursalSeleccionada\) return;/);
+  });
+
+  it('cambiar de sucursal vacia el carrito y la observacion (handleSucursalChange)', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const handleSucursalChange = (value) => {');
+    const end = source.indexOf('};', start);
+    const block = source.slice(start, end);
+    assert.match(block, /setCarrito\(\[\]\);/);
+    assert.match(block, /setObservacion\(''\);/);
+  });
+
+  it('se envia id_sucursal al consultar productos canjeables (onLoadCanjeables)', async () => {
+    const source = await getSource();
+    assert.match(source, /onLoadCanjeables\(cliente\.id_cliente, \{ id_sucursal: sucursalNumerica \}\)/);
+  });
+
+  it('se envia el mismo id_sucursal (sucursalNumerica) al confirmar el canje (onSubmit)', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const handleSubmit = async (event) => {');
+    const end = source.indexOf('if (!open) return null;', start);
+    const block = source.slice(start, end);
+    assert.match(block, /await onSubmit\(/);
+    assert.match(block, /sucursalNumerica\s*\n\s*\);/);
+  });
+
+  it('Confirmar canje usa computeCanjeConfirmDisabled (no una segunda copia de la regla de bloqueo)', async () => {
+    const source = await getSource();
+    assert.match(source, /const \{ algunProductoExcedeStock, disabled: confirmDisabled \} = computeCanjeConfirmDisabled\(\{/);
+  });
+
+  it('el carrito usa computeCanjeCartAfterAdd (no una segunda copia de la logica de stock)', async () => {
+    const source = await getSource();
+    assert.match(source, /setCarrito\(\(prev\) => computeCanjeCartAfterAdd\(prev, producto\)\);/);
+  });
+});
+
+describe('GenerarCanjeModal.jsx: imagenes reales, placeholder y precio/stock separados', () => {
+  const getSource = () => readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
+
+  it('renderiza <img> con la URL real cuando existe imagen', async () => {
+    const source = await getSource();
+    assert.match(source, /\{imagenUrl \? \(\s*\n\s*<img\s*\n\s*src=\{imagenUrl\}/);
+  });
+
+  it('siempre renderiza un placeholder (oculto con d-none solo cuando hay imagen): nunca queda un bloque multimedia vacio', async () => {
+    const source = await getSource();
+    assert.match(source, /<div className=\{`vcp-card__placeholder \$\{imagenUrl \? 'd-none' : ''\}`\}>/);
+  });
+
+  it('una URL fallida revela el placeholder (onError oculta el <img> y quita d-none del hermano, mismo patron que VentaComposerCatalog.jsx)', async () => {
+    const source = await getSource();
+    assert.match(source, /onError=\{\(event\) => \{/);
+    assert.match(source, /event\.currentTarget\.style\.display = 'none';/);
+    assert.match(source, /next\.classList\.remove\('d-none'\);/);
+  });
+
+  it('precio y stock disponible se renderizan en filas separadas (fidelizacion-canje-modal__meta-row), nunca concatenados en un solo texto', async () => {
+    const source = await getSource();
+    const rows = [...source.matchAll(/className="fidelizacion-canje-modal__meta-row"/g)];
+    assert.equal(rows.length, 2, 'debe haber una fila para Precio y otra para Disponible');
+    assert.doesNotMatch(source, /L\. \{formatCurrency\(producto\.precio\)\}<\/strong>\s*<strong>/, 'precio y stock nunca deben quedar en el mismo elemento de texto');
+  });
+
+  it('un producto sin stock no puede agregarse desde la tarjeta ni desde el boton (ambos usan handleAgregar, que ya rechaza stock<=0)', async () => {
+    const source = await getSource();
+    assert.match(source, /onClick=\{\(\) => handleAgregar\(producto\)\}/);
+    assert.match(source, /disabled=\{sinStock\}/);
+  });
+});
+
+describe('Fidelizacion.jsx: no precarga canjeables y propaga id_sucursal al confirmar', () => {
+  const getSource = () => readFile(new URL('../../Fidelizacion.jsx', import.meta.url), 'utf8');
+
+  it('openCanjeModal ya no llama a ningun cargador de canjeables (el modal decide cuando pedirlos)', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const openCanjeModal = ');
+    const end = source.indexOf('};', start);
+    const block = source.slice(start, end);
+    assert.doesNotMatch(block, /loadCanjeables\(/);
+    assert.doesNotMatch(block, /getClienteCanjeables/);
+  });
+
+  it('handleCreateCanje recibe idSucursal y lo incluye en el payload de createCanje', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const handleCreateCanje = async (items, observacion, idSucursal) => {');
+    assert.notEqual(start, -1);
+    const end = source.indexOf('};', start);
+    const block = source.slice(start, end);
+    assert.match(block, /id_sucursal: idSucursal,/);
+  });
+
+  it('la carga de sucursales tambien se activa para canUseCanjeFlow (no solo canScopeMulti): necesaria para el selector y la etiqueta de sucursal operativa', async () => {
+    const source = await getSource();
+    assert.match(source, /if \(!canScopeMulti && !canUseCanjeFlow\) return undefined;/);
+  });
+
+  it('GenerarCanjeModal recibe isSuperAdmin, sucursales, userSucursalId, userSucursalNombre y los manejadores del catalogo de canjeables', async () => {
+    const source = await getSource();
+    const start = source.indexOf('<GenerarCanjeModal');
+    const end = source.indexOf('/>', start);
+    const block = source.slice(start, end);
+    assert.match(block, /isSuperAdmin=\{isSuperAdmin\}/);
+    assert.match(block, /sucursales=\{sucursales\}/);
+    assert.match(block, /userSucursalId=\{/);
+    assert.match(block, /userSucursalNombre=\{userSucursalNombre\}/);
+    assert.match(block, /onLoadCanjeables=\{loadCanjeables\}/);
+    assert.match(block, /onResetCanjeables=\{resetCanjeables\}/);
+  });
+});
+
+describe('ConfiguracionReglasModal.jsx: miniatura compacta con imagen/placeholder en el catalogo administrativo', () => {
+  const getSource = () => readFile(new URL('../components/ConfiguracionReglasModal.jsx', import.meta.url), 'utf8');
+
+  it('normaliza imagen_principal_url del catalogo de productos', async () => {
+    const source = await getSource();
+    assert.match(source, /imagen_principal_url: row\?\.imagen_principal_url/);
+  });
+
+  it('renderiza una miniatura compacta (no tarjetas grandes) junto al nombre del producto', async () => {
+    const source = await getSource();
+    assert.match(source, /<ProductoThumb url=\{producto\.imagen_principal_url\} nombre=\{producto\.nombre_producto\} \/>/);
+    assert.match(source, /fidelizacion-config-modal__product-cell/);
+  });
+
+  it('la miniatura sigue el mismo patron de placeholder (nunca queda vacia si falla la imagen)', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const ProductoThumb');
+    const end = source.indexOf('export default function ConfiguracionReglasModal', start);
+    const block = source.slice(start, end);
+    assert.match(block, /onError=\{\(event\) => \{/);
+    assert.match(block, /fidelizacion-config-modal__thumb-placeholder/);
+  });
+
+  it('la tabla administrativa se mantiene compacta: no se convirtio en tarjetas grandes (sigue usando <table>)', async () => {
+    const source = await getSource();
+    assert.match(source, /<table className="table ventas-detail-modal__table fidelizacion-config-modal__table">/);
+  });
+});
+
+describe('Responsive: el modal de canje sigue siendo utilizable en movil (catalogo antes del resumen, sin depender del scroll de toda la pagina)', () => {
+  it('fidelizacion-canje-modal__body colapsa a una columna por debajo de 991.98px (catalogo y resumen en el mismo orden del DOM: catalogo primero)', async () => {
+    const cssSource = await readFile(new URL('../styles/fidelizacion.css', import.meta.url), 'utf8');
+    assert.match(
+      cssSource,
+      /@media \(max-width: 991\.98px\) \{\s*\n\s*\.fidelizacion-canje-modal__body \{\s*\n\s*grid-template-columns: 1fr;/
+    );
+  });
+
+  it('el modal reutiliza ventas-modal (scroll interno propio de Ventas), no depende de una implementacion de scroll nueva', async () => {
+    const source = await readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
+    assert.match(source, /className="ventas-modal-backdrop"/);
+    assert.match(source, /className="ventas-modal fidelizacion-canje-modal"/);
   });
 });

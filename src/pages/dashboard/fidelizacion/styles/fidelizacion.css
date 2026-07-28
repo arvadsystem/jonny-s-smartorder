@@ -229,6 +229,64 @@
   min-height: 280px;
 }
 
+.fidelizacion-canje-modal__loading {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(82, 44, 34, 0.72);
+}
+
+.fidelizacion-canje-modal__sucursal-bar {
+  margin-bottom: 12px;
+}
+
+.fidelizacion-canje-modal__sucursal-select {
+  width: 100%;
+}
+
+.fidelizacion-canje-modal__sucursal-readonly {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(154, 83, 25, 0.08);
+  border: 1px solid rgba(154, 83, 25, 0.18);
+  color: #9a5319;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+/* Precio/Disponible en filas etiqueta+valor separadas (el footer de
+   .vcp-card de Ventas solo trae precio+boton en linea, no dos filas
+   etiquetadas): evita textos concatenados como "L. 60.00Stock visible: 2,997". */
+.fidelizacion-canje-modal__meta-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.fidelizacion-canje-modal__meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: rgba(82, 44, 34, 0.72);
+}
+
+.fidelizacion-canje-modal__meta-row strong {
+  color: #2f1a10;
+  font-weight: 700;
+}
+
+.canjeable-card.is-out-of-stock {
+  cursor: default;
+}
+
 .fidelizacion-detail-modal {
   width: min(1180px, 100%);
 }
@@ -286,6 +344,41 @@
 
 .fidelizacion-config-modal__table-wrap {
   max-height: 420px;
+}
+
+.fidelizacion-config-modal__product-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Miniatura compacta (28x28): tabla administrativa, no tarjetas grandes. */
+.fidelizacion-config-modal__thumb {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f7f2ea, #efe7da);
+}
+
+.fidelizacion-config-modal__thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fidelizacion-config-modal__thumb-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c9bcae;
+  font-size: 0.75rem;
 }
 
 .fidelizacion-config-modal__product-name {

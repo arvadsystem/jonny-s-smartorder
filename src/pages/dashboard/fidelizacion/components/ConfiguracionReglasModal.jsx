@@ -12,12 +12,37 @@ import {
 const normalizeProductoCatalogo = (row) => ({
   id_producto: Number(row?.id_producto ?? 0) || null,
   nombre_producto: String(row?.nombre_producto ?? '').trim(),
+  imagen_principal_url: row?.imagen_principal_url ? String(row.imagen_principal_url).trim() || null : null,
   precio: Number(row?.precio ?? 0) || 0,
   cantidad: Number(row?.cantidad ?? 0) || 0,
   stock_minimo: Number(row?.stock_minimo ?? 0) || 0,
   id_almacen: Number(row?.id_almacen ?? 0) || null,
   estado: row?.estado !== undefined ? Boolean(row.estado) : true
 });
+
+// Miniatura compacta (no tarjeta grande): mismo patron sin estado de
+// VentaComposerCatalog.jsx, el <img> oculta su propio <img> y revela el
+// placeholder hermano si la URL falla.
+const ProductoThumb = ({ url, nombre }) => (
+  <div className="fidelizacion-config-modal__thumb">
+    {url ? (
+      <img
+        src={url}
+        alt={nombre}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={(event) => {
+          event.currentTarget.style.display = 'none';
+          const next = event.currentTarget.nextElementSibling;
+          if (next) next.classList.remove('d-none');
+        }}
+      />
+    ) : null}
+    <span className={`fidelizacion-config-modal__thumb-placeholder ${url ? 'd-none' : ''}`}>
+      <i className="bi bi-image" aria-hidden="true" />
+    </span>
+  </div>
+);
 
 export default function ConfiguracionReglasModal({
   show,
@@ -306,9 +331,12 @@ export default function ConfiguracionReglasModal({
                                   />
                                 </td>
                                 <td>
-                                  <div className="fidelizacion-config-modal__product-name">
-                                    <strong>{producto.nombre_producto}</strong>
-                                    <small>ID {producto.id_producto}</small>
+                                  <div className="fidelizacion-config-modal__product-cell">
+                                    <ProductoThumb url={producto.imagen_principal_url} nombre={producto.nombre_producto} />
+                                    <div className="fidelizacion-config-modal__product-name">
+                                      <strong>{producto.nombre_producto}</strong>
+                                      <small>ID {producto.id_producto}</small>
+                                    </div>
                                   </div>
                                 </td>
                                 <td>L. {formatCurrency(producto.precio)}</td>
