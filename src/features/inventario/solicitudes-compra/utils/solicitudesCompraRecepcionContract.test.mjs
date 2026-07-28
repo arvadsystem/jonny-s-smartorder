@@ -40,15 +40,32 @@ test('listado distingue revisar, recibir y ver detalle', async () => {
   assert.match(source, /: 'Ver detalle'/);
 });
 
-test('panel usa input nativo limitado a imagen y confirmacion inline', async () => {
+test('panel usa input nativo limitado a imagen y confirmacion modal', async () => {
   const source = await read('../components/SolicitudCompraRecepcionPanel.jsx');
   assert.match(source, /type="file"/);
   assert.match(source, /accept="image\/jpeg,image\/png,image\/webp"/);
   assert.match(source, /capture="environment"/);
   assert.match(source, /Tomar foto o seleccionar imagen/);
   assert.match(source, /Confirmar recepción final/);
-  assert.match(source, /sol-comp-inline-confirm/);
-  assert.doesNotMatch(source, /window\.confirm|alert\(|modal|application\/pdf|getUserMedia/i);
+  assert.match(source, /<SolicitudCompraConfirmModal/);
+  assert.match(source, /sol-comp-confirm-summary/);
+  assert.match(source, /Entrada al inventario:/);
+  assert.match(source, /Diferencia:/);
+  assert.match(source, /Factura:/);
+  assert.doesNotMatch(source, /sol-comp-inline-confirm--receive|window\.confirm|alert\(|application\/pdf|getUserMedia/i);
+});
+
+test('preview de factura es compacta, reemplazable y removible', async () => {
+  const [source, css] = await Promise.all([
+    read('../components/SolicitudCompraRecepcionPanel.jsx'),
+    read('../solicitudesCompra.css')
+  ]);
+  assert.match(source, /className="sol-comp-invoice-preview"/);
+  assert.match(source, /Cambiar imagen/);
+  assert.match(source, /onClick=\{reception\.removeInvoice\}/);
+  assert.match(css, /\.sol-comp-invoice-preview img\s*\{[\s\S]*height:\s*clamp\(180px,\s*28vw,\s*280px\)[\s\S]*max-height:\s*280px/);
+  assert.match(css, /\.sol-comp-invoice-preview img,[\s\S]*object-fit:\s*contain/);
+  assert.doesNotMatch(source, /style=\{\{/);
 });
 
 test('hook bloquea doble envio y conserva borrador en error ordinario', async () => {

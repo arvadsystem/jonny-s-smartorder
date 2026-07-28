@@ -57,11 +57,23 @@ test('fallo de proveedores bloquea aprobacion pero no rechazo', async () => {
   assert.doesNotMatch(hook.match(/rejectDisabled = [^;]*/)?.[0] || '', /provider/);
 });
 
-test('confirmacion es inline, no usa modal y conserva el borrador al volver', async () => {
+test('aprobacion usa modal estandar, conserva rechazo y borrador al cancelar', async () => {
   const panel = await read('../components/SolicitudCompraRevisionPanel.jsx');
-  assert.match(panel, /sol-comp-inline-confirm/);
+  const modal = await read('../components/SolicitudCompraConfirmModal.jsx');
+  assert.match(panel, /<SolicitudCompraConfirmModal/);
+  assert.match(panel, /open=\{review\.confirmation === 'approve'\}/);
+  assert.match(panel, /onConfirm=\{\(\) => review\.execute\('approve'\)\}/);
+  assert.match(panel, /sol-comp-confirm-summary/);
+  assert.match(panel, /Proveedor:/);
+  assert.match(panel, /sol-comp-inline-confirm--reject/);
   assert.match(panel, /setConfirmation\(null\)/);
-  assert.doesNotMatch(panel, /window\.confirm|modal/i);
+  assert.doesNotMatch(panel, /sol-comp-inline-confirm--approve|window\.confirm|alert\(/);
+  assert.match(modal, /inv-pro-confirm-backdrop/);
+  assert.match(modal, /role="dialog"/);
+  assert.match(modal, /aria-modal="true"/);
+  assert.match(modal, /event\.key === 'Escape'/);
+  assert.match(modal, /confirmRef\.current\?\.focus/);
+  assert.match(modal, /openerRef\.current\?\.focus/);
 });
 
 test('feature no implementa recepcion factura archivos ni clientes Supabase', async () => {

@@ -52,7 +52,7 @@ test('revision conserva factor calcula base y no amplía payload', async () => {
   assert.match(line, /Cantidad base calculada para inventario/);
   assert.match(line, /formatConversionQuantity/);
   assert.match(line, /Equivalencia de aprobación/);
-  assert.match(panel, /sol-comp-conversion-confirmation/);
+  assert.match(panel, /sol-comp-confirm-summary/);
   const payload = draft.match(/export const buildApprovalPayload[\s\S]*?^};/m)?.[0] || '';
   assert.doesNotMatch(payload, /cantidad_base_aprobada|factor_conversion_snapshot/);
   assert.match(payload, /id_proveedor/);

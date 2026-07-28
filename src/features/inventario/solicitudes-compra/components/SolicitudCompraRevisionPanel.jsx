@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import useSolicitudCompraRevision from '../hooks/useSolicitudCompraRevision';
+import SolicitudCompraConfirmModal from './SolicitudCompraConfirmModal';
 import SolicitudCompraRevisionLinea from './SolicitudCompraRevisionLinea';
 import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
@@ -69,29 +70,17 @@ export default function SolicitudCompraRevisionPanel({ solicitud, detalles, canA
 
       {review.accessDenied ? <div className="sol-comp-contract-error" role="alert">No tienes permiso para revisar esta solicitud.</div> : null}
 
-      {review.confirmation ? (
-        <div className={`sol-comp-inline-confirm sol-comp-inline-confirm--${review.confirmation}`} role="group" aria-labelledby="sol-comp-confirm-title" aria-live="polite">
+      {review.confirmation === 'reject' ? (
+        <div className="sol-comp-inline-confirm sol-comp-inline-confirm--reject" role="group" aria-labelledby="sol-comp-confirm-title" aria-live="polite">
           <div>
-            <span className="sol-comp-inline-confirm__icon" aria-hidden="true"><i className={`bi ${review.confirmation === 'approve' ? 'bi-check-circle' : 'bi-exclamation-octagon'}`} /></span>
-            <strong id="sol-comp-confirm-title">{review.confirmation === 'approve' ? 'Confirmar aprobación' : 'Confirmar rechazo'}</strong>
-            <p>{review.confirmation === 'approve'
-              ? 'Se aprobarán todas las líneas con las cantidades y proveedores seleccionados.'
-              : 'La solicitud quedará rechazada con el comentario registrado.'}</p>
-            {review.confirmation === 'approve' ? <ul className="sol-comp-conversion-confirmation">{review.lines.map((line) => {
-              const preview = buildConversionPreview({
-                quantity: line.cantidad_aprobada,
-                presentationLabel: resolvePresentationLabel(line),
-                baseUnit: line.unidad_base,
-                factor: line.factor_conversion_snapshot || '1',
-                baseOnly: isBaseOnlyLine(line)
-              });
-              return <li key={line.id_solicitud_detalle}><strong>{line.nombre}</strong><span>{preview.valid ? `${preview.quantity} ${preview.baseOnly ? preview.baseUnit : preview.presentationLabel} = ${preview.baseQuantity} ${preview.baseUnit}` : 'Cantidad pendiente'}</span><small>Proveedor: {providerOptions.find((option) => option.value === String(line.id_proveedor))?.label || 'Sin seleccionar'}</small></li>;
-            })}</ul> : null}
+            <span className="sol-comp-inline-confirm__icon" aria-hidden="true"><i className="bi bi-exclamation-octagon" /></span>
+            <strong id="sol-comp-confirm-title">Confirmar rechazo</strong>
+            <p>La solicitud quedará rechazada con el comentario registrado.</p>
           </div>
           <div>
             <button type="button" className="btn btn-outline-secondary" disabled={Boolean(review.busyAction)} onClick={() => review.setConfirmation(null)}>Volver</button>
-            <button type="button" className={review.confirmation === 'approve' ? 'btn btn-primary' : 'btn btn-danger'} disabled={Boolean(review.busyAction)} onClick={() => review.execute(review.confirmation)}>
-              {review.busyAction === 'approve' ? 'Aprobando…' : review.busyAction === 'reject' ? 'Rechazando…' : review.confirmation === 'approve' ? 'Confirmar aprobación' : 'Confirmar rechazo'}
+            <button type="button" className="btn btn-danger" disabled={Boolean(review.busyAction)} onClick={() => review.execute('reject')}>
+              {review.busyAction === 'reject' ? 'Rechazando…' : 'Confirmar rechazo'}
             </button>
           </div>
         </div>
@@ -101,6 +90,37 @@ export default function SolicitudCompraRevisionPanel({ solicitud, detalles, canA
           {canApprove ? <button type="button" className="btn btn-primary" disabled={review.approveDisabled} onClick={() => review.setConfirmation('approve')}>Aprobar solicitud</button> : null}
         </div>
       )}
+      <SolicitudCompraConfirmModal
+        open={review.confirmation === 'approve'}
+        title="Confirmar aprobación"
+        description="Se aprobarán todas las líneas con las cantidades y proveedores seleccionados."
+        icon="bi-check-circle"
+        confirmLabel="Confirmar aprobación"
+        busyLabel="Aprobando…"
+        busy={review.busyAction === 'approve'}
+        onClose={() => review.setConfirmation(null)}
+        onConfirm={() => review.execute('approve')}
+      >
+        <div className="sol-comp-confirm-summary" aria-label="Líneas que se aprobarán">
+          {review.lines.map((line) => {
+            const preview = buildConversionPreview({
+              quantity: line.cantidad_aprobada,
+              presentationLabel: resolvePresentationLabel(line),
+              baseUnit: line.unidad_base,
+              factor: line.factor_conversion_snapshot || '1',
+              baseOnly: isBaseOnlyLine(line)
+            });
+            return (
+              <article className="sol-comp-confirm-row" key={line.id_solicitud_detalle}>
+                <strong>{line.nombre}</strong>
+                <span>{preview.valid ? `${preview.quantity} ${preview.baseOnly ? preview.baseUnit : preview.presentationLabel}` : 'Cantidad pendiente'}</span>
+                {preview.valid && !preview.baseOnly ? <small>Cantidad base: {preview.baseQuantity} {preview.baseUnit}</small> : null}
+                <small>Proveedor: {providerOptions.find((option) => option.value === String(line.id_proveedor))?.label || 'Sin seleccionar'}</small>
+              </article>
+            );
+          })}
+        </div>
+      </SolicitudCompraConfirmModal>
       {canReject && review.rejectionCommentError && !review.comment.trim() ? <p className="sol-comp-review-hint">Para rechazar, registra primero un comentario.</p> : null}
     </section>
   );

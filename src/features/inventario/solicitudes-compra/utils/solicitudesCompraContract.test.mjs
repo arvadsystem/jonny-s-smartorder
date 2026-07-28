@@ -417,17 +417,17 @@ test('revision conserva hook proveedores AppSelect y contratos de edicion', asyn
   assert.match(line, /aria-describedby=\{errors\.cantidad \? quantityErrorId : undefined\}/);
 });
 
-test('revision conserva comentario acciones y confirmacion inline', async () => {
+test('revision conserva comentario acciones y usa modal para aprobar', async () => {
   const panel = await read('../components/SolicitudCompraRevisionPanel.jsx');
   assert.match(panel, /maxLength="1000"/);
   assert.match(panel, /review\.comment\.length\} \/ 1000/);
   assert.match(panel, /disabled=\{review\.rejectDisabled\}/);
   assert.match(panel, /disabled=\{review\.approveDisabled\}/);
-  assert.match(panel, /review\.confirmation \?/);
-  assert.match(panel, /review\.execute\(review\.confirmation\)/);
+  assert.match(panel, /open=\{review\.confirmation === 'approve'\}/);
+  assert.match(panel, /review\.execute\('approve'\)/);
   assert.match(panel, /Aprobando…/);
   assert.match(panel, /Rechazando…/);
-  assert.doesNotMatch(panel, /window\.confirm|<Modal|createPortal/);
+  assert.doesNotMatch(panel, /window\.confirm|sol-comp-inline-confirm--approve/);
 });
 
 test('recepcion conserva hook lineas validacion decimal y estados comparativos', async () => {
@@ -462,12 +462,12 @@ test('recepcion conserva diferencias observacion y factura accesible', async () 
 
 test('confirmacion de recepcion conserva contrato irreversible sin recepcion parcial', async () => {
   const panel = await read('../components/SolicitudCompraRecepcionPanel.jsx');
-  assert.match(panel, /reception\.confirmation \?/);
+  assert.match(panel, /open=\{reception\.confirmation\}/);
   assert.match(panel, /Confirmar recepción final/);
-  assert.match(panel, /onClick=\{reception\.executeReception\}/);
-  assert.match(panel, /reception\.busy \|\| reception\.receiveDisabled/);
+  assert.match(panel, /onConfirm=\{reception\.executeReception\}/);
+  assert.match(panel, /busy=\{reception\.busy\}/);
   assert.match(panel, /Registrando…/);
-  assert.doesNotMatch(panel, /recepción parcial|recepcion parcial|window\.confirm|<Modal/);
+  assert.doesNotMatch(panel, /recepción parcial|recepcion parcial|window\.confirm|sol-comp-inline-confirm--receive/);
 });
 
 test('evidencias conserva carga bajo demanda acceso temporal y seguridad del enlace', async () => {
@@ -485,7 +485,7 @@ test('evidencias conserva carga bajo demanda acceso temporal y seguridad del enl
 test('paneles mantienen CSS institucional responsive sin recorte rigido', async () => {
   const css = await read('../solicitudesCompra.css');
   assert.match(css, /\.sol-comp-workflow-heading/);
-  assert.match(css, /\.sol-comp-inline-confirm--approve/);
+  assert.match(css, /\.sol-comp-confirm-modal/);
   assert.match(css, /\.sol-comp-inline-confirm--reject/);
   assert.match(css, /\.sol-comp-difference--invalid/);
   assert.match(css, /\.sol-comp-evidence-trigger/);
