@@ -428,6 +428,36 @@
   .fidelizacion-mobile-card__body {
     grid-template-columns: 1fr;
   }
+
+  /* SecurityPaginationBar (compartida con Ventas) oculta los numeros de
+     pagina y la etiqueta "9 por pagina" por debajo de 767.98px (ver
+     ventas.css). En Fidelizacion los numeros deben seguir siendo
+     accesibles en movil (maximo 5 visibles), asi que se reactivan solo
+     dentro de .fidelizacion-page, sin tocar el comportamiento de Ventas. */
+  .fidelizacion-page .ventas-page__pagination-bar .inv-warehouse-moves__pagination-controls {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .fidelizacion-page .ventas-page__pagination-bar .inv-warehouse-moves__pagination-controls > * {
+    order: initial;
+  }
+
+  .fidelizacion-page .ventas-page__pagination-bar .inv-warehouse-moves__pagination-pages {
+    display: flex !important;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .fidelizacion-page .ventas-page__page-size-label {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
 }
 
 @media (max-width: 575.98px) {

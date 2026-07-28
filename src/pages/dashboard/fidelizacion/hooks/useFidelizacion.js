@@ -20,7 +20,13 @@ const initialToast = {
   variant: 'success'
 };
 
-const initialPagination = {
+const initialClientesPagination = {
+  total: 0,
+  page: 1,
+  limit: 9
+};
+
+const initialCanjesPagination = {
   total: 0,
   page: 1,
   limit: 20
@@ -29,9 +35,9 @@ const initialPagination = {
 export const useFidelizacion = () => {
   const [panelData, setPanelData] = useState(null);
   const [clientes, setClientes] = useState([]);
-  const [clientesMeta, setClientesMeta] = useState(initialPagination);
+  const [clientesMeta, setClientesMeta] = useState(initialClientesPagination);
   const [canjes, setCanjes] = useState([]);
-  const [canjesMeta, setCanjesMeta] = useState(initialPagination);
+  const [canjesMeta, setCanjesMeta] = useState(initialCanjesPagination);
 
   const [loadingPanel, setLoadingPanel] = useState(false);
   const [loadingClientes, setLoadingClientes] = useState(false);
@@ -86,7 +92,7 @@ export const useFidelizacion = () => {
       const response = await fidelizacionService.listClientes(params);
       const rows = normalizeEnvelopeRows(response).map(normalizeCliente);
       setClientes(rows);
-      setClientesMeta(normalizeEnvelopeMeta(response, Number(params?.limit) || 20));
+      setClientesMeta(normalizeEnvelopeMeta(response, Number(params?.limit) || 9));
       return rows;
     } catch (err) {
       const msg = extractApiMessage(err, 'Error al cargar la lista de clientes.');

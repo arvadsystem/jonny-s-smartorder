@@ -70,7 +70,7 @@ export default function FidelizacionPage() {
   const [clientesQuery, setClientesQuery] = useState({
     search: '',
     page: 1,
-    limit: 20
+    limit: 9
   });
   const [canjesQuery, setCanjesQuery] = useState({
     page: 1,
@@ -222,6 +222,14 @@ export default function FidelizacionPage() {
     loadPanel,
     scopeQuery
   ]);
+
+  const handleClientesSucursalChange = (value) => {
+    setSelectedSucursalId(value);
+    setClientesQuery((previous) => ({
+      ...previous,
+      page: 1
+    }));
+  };
 
   const buildScopeQueryByValue = (value) => {
     const parsed = Number.parseInt(String(value || ''), 10);
@@ -383,7 +391,7 @@ export default function FidelizacionPage() {
             currentSearch={clientesQuery.search}
             onSearch={(search) => setClientesQuery((prev) => ({ ...prev, page: 1, search }))}
             onPageChange={(page) => setClientesQuery((prev) => ({ ...prev, page }))}
-            onSucursalChange={(value) => setSelectedSucursalId(value)}
+            onSucursalChange={handleClientesSucursalChange}
             onRefresh={refreshPanelData}
             onOpenConfiguracion={openConfiguracion}
             onOpenDetalle={openClienteDetalle}
