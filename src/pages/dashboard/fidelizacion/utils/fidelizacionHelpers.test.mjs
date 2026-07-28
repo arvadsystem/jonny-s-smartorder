@@ -6,6 +6,7 @@ import {
   computeCanjeCartAfterAdd,
   computeCanjeConfirmDisabled,
   computeConfiguracionSubmitState,
+  consumeHandledAsyncError,
   createLatestRequestTracker,
   normalizeCanjeableResponse,
   normalizeConfiguracion,
@@ -820,6 +821,86 @@ describe('useFidelizacion.js: loadCanjeables usa createLatestRequestTracker (el 
   });
 });
 
+// Bloqueante confirmado: el efecto de GenerarCanjeModal.jsx que dispara
+// onLoadCanjeables(...) no puede hacer await (no es async) y antes hacia
+// "void onLoadCanjeables(...)". Como useFidelizacion.loadCanjeables muestra
+// un toast, actualiza canjeablesData Y relanza el error de la solicitud
+// vigente, ese rechazo nunca se consumia: un error de red/timeout/HTTP 500
+// producia un Unhandled Promise Rejection real. consumeHandledAsyncError es
+// la funcion pura que el efecto usa para evitarlo, probada aqui con
+// promesas reales (resueltas y rechazadas), sin necesidad de montar React.
+describe('consumeHandledAsyncError: ejecuta promiseFactory y descarta cualquier rechazo (sync o async), sin ocultar que ya fue manejado por el llamador', () => {
+  it('promiseFactory que resuelve: consumeHandledAsyncError resuelve sin lanzar', async () => {
+    let called = false;
+    await assert.doesNotReject(consumeHandledAsyncError(async () => {
+      called = true;
+      return 'ok';
+    }));
+    assert.equal(called, true);
+  });
+
+  it('promiseFactory cuya promesa se rechaza: el rechazo se consume, consumeHandledAsyncError nunca lanza ni queda unhandled', async () => {
+    const rejection = new Error('Error de red simulado');
+    await assert.doesNotReject(consumeHandledAsyncError(() => Promise.reject(rejection)));
+  });
+
+  it('promiseFactory que lanza de forma sincrona (sin devolver promesa): tambien se consume, no solo los rechazos asincronos', async () => {
+    await assert.doesNotReject(consumeHandledAsyncError(() => {
+      throw new Error('Fallo sincrono simulado');
+    }));
+  });
+
+  it('con el patron real de loadCanjeables (toast + estado + relanzar), la promesa envuelta sigue rechazando pero consumeHandledAsyncError la absorbe', async () => {
+    let toastShown = false;
+    let stateUpdated = false;
+    const loadCanjeablesLike = async () => {
+      try {
+        await Promise.reject(new Error('HTTP 500'));
+      } catch (err) {
+        toastShown = true;
+        stateUpdated = true;
+        throw err;
+      }
+    };
+
+    // El propio loadCanjeablesLike() SI rechaza (para no romper otros
+    // consumidores que dependen del relanzamiento): se verifica aparte.
+    await assert.rejects(loadCanjeablesLike());
+    toastShown = false;
+    stateUpdated = false;
+
+    // consumeHandledAsyncError(...) envolviendo la misma llamada nunca
+    // rechaza, pero el toast/estado de loadCanjeablesLike ya se ejecutaron
+    // antes de relanzar (comportamiento del hook preservado).
+    await assert.doesNotReject(consumeHandledAsyncError(() => loadCanjeablesLike()));
+    assert.equal(toastShown, true);
+    assert.equal(stateUpdated, true);
+  });
+});
+
+describe('GenerarCanjeModal.jsx: el efecto que dispara onLoadCanjeables consume el rechazo con consumeHandledAsyncError (no queda como unhandled rejection)', () => {
+  const getSource = () => readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
+
+  it('importa consumeHandledAsyncError desde fidelizacionHelpers (no reimplementa un try/catch paralelo)', async () => {
+    const source = await getSource();
+    assert.match(source, /consumeHandledAsyncError/);
+    assert.match(source, /from '\.\.\/utils\/fidelizacionHelpers';/);
+  });
+
+  it('el efecto de carga de canjeables envuelve la llamada con consumeHandledAsyncError, en vez de "void onLoadCanjeables(...)" directo', async () => {
+    const source = await getSource();
+    const start = source.indexOf('// Carga (o recarga) el catalogo de canjeables');
+    const end = source.indexOf('}, [open, cliente?.id_cliente, hasSucursalSeleccionada', start) + 200;
+    const block = source.slice(start, end);
+
+    assert.match(
+      block,
+      /void consumeHandledAsyncError\(\(\) => onLoadCanjeables\(cliente\.id_cliente, \{ id_sucursal: sucursalNumerica \}\)\);/
+    );
+    assert.doesNotMatch(block, /void onLoadCanjeables\(cliente\.id_cliente, \{ id_sucursal: sucursalNumerica \}\);/);
+  });
+});
+
 describe('GenerarCanjeModal.jsx: selector de sucursal obligatorio para SUPER_ADMIN', () => {
   const getSource = () => readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
 
@@ -839,7 +920,12 @@ describe('GenerarCanjeModal.jsx: selector de sucursal obligatorio para SUPER_ADM
     const start = source.indexOf('// Carga (o recarga) el catalogo');
     const end = source.indexOf('}, [open, cliente?.id_cliente, hasSucursalSeleccionada', start) + 200;
     const block = source.slice(start, end);
-    assert.match(block, /if \(!open \|\| !cliente\?\.id_cliente \|\| !hasSucursalSeleccionada\) return;/);
+    // El guard ahora retorna "undefined" explicito (en vez de un "return;"
+    // vacio) porque el efecto ya no es un simple "void onLoadCanjeables(...)":
+    // consume su rechazo con consumeHandledAsyncError (bloqueante: evitar
+    // Unhandled Promise Rejection), y ambos caminos del efecto deben retornar
+    // el mismo tipo (sin cleanup) para no confundir a React.
+    assert.match(block, /if \(!open \|\| !cliente\?\.id_cliente \|\| !hasSucursalSeleccionada\) return undefined;/);
   });
 
   it('cambiar de sucursal vacia el carrito y la observacion (handleSucursalChange)', async () => {

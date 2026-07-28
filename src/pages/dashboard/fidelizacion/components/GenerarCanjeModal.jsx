@@ -3,6 +3,7 @@ import ToolbarSucursalSelect from '../../../../components/common/ToolbarSucursal
 import {
   computeCanjeCartAfterAdd,
   computeCanjeConfirmDisabled,
+  consumeHandledAsyncError,
   formatCurrency,
   formatPoints
 } from '../utils/fidelizacionHelpers';
@@ -84,8 +85,9 @@ export default function GenerarCanjeModal({
   // sucursal resuelta: nunca antes de que exista una (SUPER_ADMIN sin
   // seleccionar todavia no dispara ninguna peticion).
   useEffect(() => {
-    if (!open || !cliente?.id_cliente || !hasSucursalSeleccionada) return;
-    void onLoadCanjeables(cliente.id_cliente, { id_sucursal: sucursalNumerica });
+    if (!open || !cliente?.id_cliente || !hasSucursalSeleccionada) return undefined;
+    void consumeHandledAsyncError(() => onLoadCanjeables(cliente.id_cliente, { id_sucursal: sucursalNumerica }));
+    return undefined;
   }, [open, cliente?.id_cliente, hasSucursalSeleccionada, sucursalNumerica, onLoadCanjeables]);
 
   useEffect(() => {

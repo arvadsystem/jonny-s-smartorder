@@ -320,3 +320,20 @@ export const createLatestRequestTracker = () => {
     isLatest: (id) => id === latestId
   };
 };
+
+// Usado por el efecto de GenerarCanjeModal.jsx que dispara la carga del
+// catalogo de canjeables sin poder await-earla (no es async): ese efecto no
+// consumia el rechazo de onLoadCanjeables, y como useFidelizacion.loadCanjeables
+// SIEMPRE relanza el error de la solicitud vigente (ademas de mostrar el toast
+// y actualizar el estado), una respuesta con error de red/HTTP producia un
+// Unhandled Promise Rejection. Esta funcion ejecuta promiseFactory y descarta
+// cualquier error (sync o async): no oculta nada al usuario, porque
+// useFidelizacion ya se encargo del toast/estado antes de relanzar.
+export const consumeHandledAsyncError = async (promiseFactory) => {
+  try {
+    await promiseFactory();
+  } catch {
+    // Rechazo ya manejado (toast + estado) por quien lo relanzo; se descarta
+    // aqui solo para que la promesa nunca quede sin consumir.
+  }
+};
