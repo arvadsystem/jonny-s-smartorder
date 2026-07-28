@@ -136,19 +136,113 @@ export const computeConfiguracionSubmitState = ({ lempiras, saving = false }) =>
   return { lempirasValue, lempirasValida, canSubmit };
 };
 
+// ---------------------------------------------------------------------------
+// Equivalencia de la tasa: significado, previsualizacion y confirmacion
+// ---------------------------------------------------------------------------
+// lempiras_por_punto = CUANTOS LEMPIRAS hacen falta para ganar 1 punto.
+// El backend calcula puntos = floor(total_factura / lempiras_por_punto).
+//
+// Defecto confirmado en QA: el campo se llamaba "Equivalencia de puntos" y no
+// explicaba el sentido de la cifra. Un usuario lo interpreto al reves y guardo
+// 0.01; una compra de L 1,130.00 acumulo 113,000 puntos. La formula era
+// correcta: lo ambiguo era la interfaz. Por eso se agregan previsualizacion,
+// advertencia y confirmacion explicita, sin cambiar la formula.
+
+// Misma formula que el backend (modules/fidelizacion/domain/pointsCalculator.js).
+// Unica implementacion en el frontend: la usan la previsualizacion, la
+// advertencia y el texto de la casilla de confirmacion.
+export const calculatePointsPreview = ({ amount, lempirasPorPunto }) => {
+  const total = Number(amount);
+  const rate = Number(lempirasPorPunto);
+
+  if (!Number.isFinite(total) || total < 0) return 0;
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
+
+  return Math.floor(total / rate);
+};
+
+// Monto de ejemplo del caso real de QA (VTA-00004), usado en la advertencia y
+// en el texto de la confirmacion.
+export const RATE_CONFIRMATION_EXAMPLE_AMOUNT = 1130;
+
+// Montos de la tabla "Ejemplo de acumulacion" del modal.
+export const RATE_PREVIEW_AMOUNTS = [100, 1000, RATE_CONFIRMATION_EXAMPLE_AMOUNT];
+
+// Una tasa menor a 1 genera mas de 1 punto por lempira gastado: es tecnicamente
+// valida (puede ser una decision administrativa) pero se advierte de forma
+// destacada porque es justo el error que ocurrio en QA.
+export const isSensitiveLempirasRate = (lempiras) => {
+  const rate = Number(lempiras);
+  return Number.isFinite(rate) && rate > 0 && rate < 1;
+};
+
+// Comparacion NUMERICA (no textual), igual que isSameLempirasPorPuntoRate en el
+// backend: 100, "100" y "100.00" son la misma tasa y no deben volver a pedir
+// confirmacion cuando el administrador solo edita productos o el switch.
+export const isSameLempirasRate = (a, b) => {
+  const left = Number(a);
+  const right = Number(b);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  return left === right;
+};
+
+// Exige confirmacion cuando es la primera configuracion (no hay tasa previa) o
+// cuando la tasa escrita difiere de la vigente.
+export const requiresRateConfirmation = ({ previousLempirasPorPunto, lempiras }) => {
+  const next = Number(lempiras);
+  if (!Number.isFinite(next) || next <= 0) return false;
+
+  const previous = Number(previousLempirasPorPunto);
+  if (!Number.isFinite(previous) || previous <= 0) return true;
+
+  return !isSameLempirasRate(previous, next);
+};
+
+// Estado completo del boton "Guardar reglas": conserva la regla previa (tasa
+// valida > 0 y no estar guardando) y le suma la confirmacion obligatoria.
+// Se deja computeConfiguracionSubmitState intacta -otras pruebas y llamadas
+// dependen de su contrato- y se compone aqui.
+export const computeConfiguracionSaveState = ({
+  lempiras,
+  saving = false,
+  previousLempirasPorPunto = null,
+  rateConfirmed = false
+}) => {
+  const base = computeConfiguracionSubmitState({ lempiras, saving });
+  const confirmationRequired = requiresRateConfirmation({ previousLempirasPorPunto, lempiras });
+  const confirmationSatisfied = !confirmationRequired || rateConfirmed === true;
+
+  return {
+    ...base,
+    confirmationRequired,
+    confirmationSatisfied,
+    canSubmit: base.canSubmit && confirmationSatisfied
+  };
+};
+
 export const buildSaveConfiguracionPayload = ({
   idSucursal,
   lempiras,
   acumulacionHabilitada,
-  productosCanjeables = []
+  productosCanjeables = [],
+  // Solo se envia confirmar_equivalencia cuando el usuario marco de verdad la
+  // casilla. Nunca se manda `false` ni un valor "parecido a verdadero": el
+  // backend exige el booleano true estricto.
+  rateConfirmed = false
 }) => {
   const { lempirasValue, lempirasValida } = computeConfiguracionSubmitState({ lempiras });
-  return {
+  const payload = {
     id_sucursal: idSucursal || undefined,
     lempiras_por_punto: lempirasValida ? lempirasValue : undefined,
     acumulacion_habilitada: Boolean(acumulacionHabilitada),
     productos_canjeables: productosCanjeables
   };
+
+  if (rateConfirmed === true) {
+    payload.confirmar_equivalencia = true;
+  }
+
+  return payload;
 };
 
 export const normalizeConfiguracion = (payload) => {

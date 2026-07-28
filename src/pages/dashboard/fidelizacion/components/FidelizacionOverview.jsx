@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatFechaHora, formatPoints } from '../utils/fidelizacionHelpers';
+import { formatCurrency, formatFechaHora, formatPoints } from '../utils/fidelizacionHelpers';
 import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
 import ToolbarSucursalSelect from '../../../../components/common/ToolbarSucursalSelect';
 import SecurityPaginationBar from '../../seguridad/components/SecurityPaginationBar';
@@ -40,7 +40,12 @@ export default function FidelizacionOverview({
     : panelData?.configuracion_activa
     ? {
         text: 'Configuradas y vigentes',
-        helper: `1 punto = L. ${formatPoints(panelData.configuracion_activa.lempiras_por_punto)}`,
+        // formatPoints redondea a entero: con una tasa de 0.01 mostraba
+        // "1 punto = L. 0", que ademas de ser incorrecto reforzaba la lectura
+        // invertida del campo. Se usa el formateador monetario (2 decimales)
+        // y se enuncia el sentido real de la tasa: lempiras necesarios para
+        // obtener 1 punto.
+        helper: `1 punto por cada L ${formatCurrency(panelData.configuracion_activa.lempiras_por_punto)}`,
         className: 'bg-success border-success text-white'
       }
     : {

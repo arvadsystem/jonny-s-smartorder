@@ -3,10 +3,14 @@ import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../../services/inventarioService';
 import {
   buildSaveConfiguracionPayload,
-  computeConfiguracionSubmitState,
+  calculatePointsPreview,
+  computeConfiguracionSaveState,
   extractApiMessage,
   formatCurrency,
-  formatPoints
+  formatPoints,
+  isSensitiveLempirasRate,
+  RATE_CONFIRMATION_EXAMPLE_AMOUNT,
+  RATE_PREVIEW_AMOUNTS
 } from '../utils/fidelizacionHelpers';
 
 const normalizeProductoCatalogo = (row) => ({
@@ -62,6 +66,9 @@ export default function ConfiguracionReglasModal({
   const [searchTerm, setSearchTerm] = useState('');
   const [catalogoProductos, setCatalogoProductos] = useState([]);
   const [selectedProductos, setSelectedProductos] = useState({});
+  // Confirmacion explicita de la equivalencia de la tasa. Nunca se precarga en
+  // true: debe marcarse a proposito cada vez que la tasa se define o cambia.
+  const [rateConfirmed, setRateConfirmed] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -75,6 +82,11 @@ export default function ConfiguracionReglasModal({
     setLempiras(lempirasValue ? String(lempirasValue) : '');
     setAcumulacionHabilitada(Boolean(configuracion?.configuracion?.acumulacion_habilitada));
     setSearchTerm('');
+    // Reinicio de la confirmacion: al abrir el modal, al cambiar de sucursal y
+    // cuando llega una configuracion distinta del backend (este efecto depende
+    // de `configuracion` y `show`). Nunca debe quedar marcada de una sesion
+    // anterior.
+    setRateConfirmed(false);
 
     const selectedMap = {};
     (configuracion?.productos_canjeables || []).forEach((producto) => {
@@ -163,7 +175,29 @@ export default function ConfiguracionReglasModal({
     }));
   };
 
-  const { canSubmit } = computeConfiguracionSubmitState({ lempiras, saving });
+  const previousLempirasPorPunto = configuracion?.configuracion?.lempiras_por_punto ?? null;
+
+  const { canSubmit, confirmationRequired } = computeConfiguracionSaveState({
+    lempiras,
+    saving,
+    previousLempirasPorPunto,
+    rateConfirmed
+  });
+
+  // Cambiar la tasa invalida cualquier confirmacion previa: el usuario debe
+  // volver a leer el ejemplo con el nuevo valor antes de poder guardar.
+  const handleLempirasChange = (value) => {
+    setLempiras(value);
+    setRateConfirmed(false);
+  };
+
+  const tasaNumerica = Number(lempiras);
+  const tasaValida = Number.isFinite(tasaNumerica) && tasaNumerica > 0;
+  const tasaSensible = isSensitiveLempirasRate(lempiras);
+  const puntosEjemploConfirmacion = calculatePointsPreview({
+    amount: RATE_CONFIRMATION_EXAMPLE_AMOUNT,
+    lempirasPorPunto: lempiras
+  });
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -188,7 +222,8 @@ export default function ConfiguracionReglasModal({
       idSucursal: configuracion?.id_sucursal,
       lempiras,
       acumulacionHabilitada,
-      productosCanjeables: productos_canjeables
+      productosCanjeables: productos_canjeables,
+      rateConfirmed
     }));
   };
 
@@ -253,20 +288,28 @@ export default function ConfiguracionReglasModal({
                       </div>
                     </div>
                     <div className="col-12 col-md-6">
-                      <label className="form-label">Equivalencia de puntos</label>
+                      <label className="form-label" htmlFor="fidelizacion-lempiras-por-punto">
+                        Lempiras necesarios para obtener 1 punto
+                      </label>
                       <input
+                        id="fidelizacion-lempiras-por-punto"
                         type="number"
                         min="0.01"
                         step="0.01"
                         required
                         value={lempiras}
-                        onChange={(event) => setLempiras(event.target.value)}
+                        onChange={(event) => handleLempirasChange(event.target.value)}
                         className="form-control"
                         disabled={saving}
                       />
                       <div className="form-text">
-                        Esta tasa se utiliza para calcular la acumulacion y los canjes.
+                        El sistema divide el total de la factura entre esta cantidad y redondea hacia abajo.
                       </div>
+                      {tasaValida ? (
+                        <div className="form-text fidelizacion-config-modal__rate-meaning">
+                          Con la tasa actual, el cliente obtiene 1 punto por cada L {formatCurrency(lempiras)} gastados.
+                        </div>
+                      ) : null}
                     </div>
                     <div className="col-12 col-md-6">
                       <div className="fidelizacion-config-modal__summary">
@@ -274,6 +317,62 @@ export default function ConfiguracionReglasModal({
                         <span>productos canjeables seleccionados</span>
                       </div>
                     </div>
+
+                    {tasaValida ? (
+                      <div className="col-12">
+                        <div className="fidelizacion-config-modal__preview">
+                          <div className="fidelizacion-config-modal__preview-title">Ejemplo de acumulacion</div>
+                          <ul className="fidelizacion-config-modal__preview-list">
+                            {RATE_PREVIEW_AMOUNTS.map((monto) => (
+                              <li key={monto}>
+                                <span>Compra de L {formatCurrency(monto)}</span>
+                                <strong>
+                                  {formatPoints(calculatePointsPreview({ amount: monto, lempirasPorPunto: lempiras }))} puntos
+                                </strong>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {tasaSensible ? (
+                      <div className="col-12">
+                        <div className="alert alert-danger fidelizacion-config-modal__rate-warning" role="alert">
+                          <i className="bi bi-exclamation-triangle-fill me-2" aria-hidden="true" />
+                          <div>
+                            <strong>Advertencia: esta tasa genera mas de 1 punto por cada lempira gastado.</strong>
+                            <div>
+                              Una compra de L {formatCurrency(RATE_CONFIRMATION_EXAMPLE_AMOUNT)} generaria{' '}
+                              {formatPoints(puntosEjemploConfirmacion)} puntos.
+                            </div>
+                            <div>Verifica cuidadosamente la equivalencia antes de guardar.</div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {confirmationRequired ? (
+                      <div className="col-12">
+                        <div className="fidelizacion-config-modal__confirm form-check">
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            id="fidelizacion-confirmar-equivalencia"
+                            checked={rateConfirmed}
+                            onChange={(event) => setRateConfirmed(event.target.checked)}
+                            disabled={saving}
+                          />
+                          <label className="form-check-label" htmlFor="fidelizacion-confirmar-equivalencia">
+                            Confirmo que 1 punto se obtendra por cada L {formatCurrency(lempiras)} gastados.
+                            <span className="d-block">
+                              Una compra de L {formatCurrency(RATE_CONFIRMATION_EXAMPLE_AMOUNT)} generara{' '}
+                              {formatPoints(puntosEjemploConfirmacion)} puntos.
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </section>
 

@@ -3,14 +3,21 @@ import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 import {
   buildSaveConfiguracionPayload,
+  calculatePointsPreview,
   computeCanjeCartAfterAdd,
   computeCanjeConfirmDisabled,
+  computeConfiguracionSaveState,
   computeConfiguracionSubmitState,
   consumeHandledAsyncError,
   createLatestRequestTracker,
+  formatCurrency,
+  isSameLempirasRate,
+  isSensitiveLempirasRate,
   normalizeCanjeableResponse,
   normalizeConfiguracion,
-  normalizeEnvelopeMeta
+  normalizeEnvelopeMeta,
+  RATE_CONFIRMATION_EXAMPLE_AMOUNT,
+  requiresRateConfirmation
 } from './fidelizacionHelpers.js';
 
 // ConfiguracionReglasModal.jsx usa createPortal(..., document.body) y solo
@@ -1078,5 +1085,346 @@ describe('Responsive: el modal de canje sigue siendo utilizable en movil (catalo
     const source = await readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
     assert.match(source, /className="ventas-modal-backdrop"/);
     assert.match(source, /className="ventas-modal fidelizacion-canje-modal"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Equivalencia de la tasa: formato, previsualizacion y confirmacion
+// ---------------------------------------------------------------------------
+// Defecto confirmado en QA: lempiras_por_punto significa "lempiras necesarios
+// para ganar 1 punto" (puntos = floor(total / tasa)). El campo se llamaba
+// "Equivalencia de puntos" y no explicaba la cifra; un usuario lo interpreto al
+// reves, guardo 0.01 y una compra de L 1,130.00 acumulo 113,000 puntos. Ademas
+// el resumen usaba formatPoints (sin decimales) y mostraba "1 punto = L. 0".
+// La formula NO cambia: lo que se corrige es la interfaz.
+
+describe('formatCurrency: la tasa siempre se muestra con dos decimales (formatPoints la redondeaba a "0")', () => {
+  it('0.01 -> "0.01" (el caso que se mostraba como L. 0)', () => {
+    assert.equal(formatCurrency(0.01), '0.01');
+  });
+
+  it('1 -> "1.00" y 100 -> "100.00"', () => {
+    assert.equal(formatCurrency(1), '1.00');
+    assert.equal(formatCurrency(100), '100.00');
+  });
+
+  it('acepta la tasa como string (tal como llega del input y del backend)', () => {
+    assert.equal(formatCurrency('0.01'), '0.01');
+    assert.equal(formatCurrency('100'), '100.00');
+  });
+});
+
+describe('calculatePointsPreview: misma formula que el backend, floor(total / tasa)', () => {
+  it('reproduce el caso real de QA: L 1,130.00 con tasa 0.01 -> 113,000 puntos', () => {
+    assert.equal(calculatePointsPreview({ amount: 1130, lempirasPorPunto: 0.01 }), 113000);
+  });
+
+  it('con la tasa recomendada 100: 1130 -> 11, 1000 -> 10, 100 -> 1', () => {
+    assert.equal(calculatePointsPreview({ amount: 1130, lempirasPorPunto: 100 }), 11);
+    assert.equal(calculatePointsPreview({ amount: 1000, lempirasPorPunto: 100 }), 10);
+    assert.equal(calculatePointsPreview({ amount: 100, lempirasPorPunto: 100 }), 1);
+  });
+
+  it('redondea hacia abajo: 99 con tasa 100 -> 0 puntos', () => {
+    assert.equal(calculatePointsPreview({ amount: 99, lempirasPorPunto: 100 }), 0);
+  });
+
+  it('valores invalidos o no positivos devuelven 0, nunca Infinity ni NaN', () => {
+    assert.equal(calculatePointsPreview({ amount: 1130, lempirasPorPunto: 0 }), 0);
+    assert.equal(calculatePointsPreview({ amount: 1130, lempirasPorPunto: -1 }), 0);
+    assert.equal(calculatePointsPreview({ amount: 1130, lempirasPorPunto: '' }), 0);
+    assert.equal(calculatePointsPreview({ amount: -5, lempirasPorPunto: 100 }), 0);
+    assert.equal(calculatePointsPreview({ amount: 'abc', lempirasPorPunto: 100 }), 0);
+  });
+
+  it('acepta la tasa como string, tal como la entrega el input del modal', () => {
+    assert.equal(calculatePointsPreview({ amount: 1130, lempirasPorPunto: '0.01' }), 113000);
+    assert.equal(calculatePointsPreview({ amount: 1130, lempirasPorPunto: '100' }), 11);
+  });
+});
+
+describe('isSensitiveLempirasRate: advertencia cuando la tasa genera mas de 1 punto por lempira', () => {
+  it('0.01 y 0.50 son sensibles', () => {
+    assert.equal(isSensitiveLempirasRate(0.01), true);
+    assert.equal(isSensitiveLempirasRate(0.5), true);
+  });
+
+  it('1, 10 y 100 no lo son', () => {
+    assert.equal(isSensitiveLempirasRate(1), false);
+    assert.equal(isSensitiveLempirasRate(10), false);
+    assert.equal(isSensitiveLempirasRate(100), false);
+  });
+
+  it('valores vacios o no positivos no disparan la advertencia', () => {
+    assert.equal(isSensitiveLempirasRate(''), false);
+    assert.equal(isSensitiveLempirasRate(0), false);
+    assert.equal(isSensitiveLempirasRate(-1), false);
+  });
+});
+
+describe('requiresRateConfirmation: solo cuando la tasa se define por primera vez o cambia', () => {
+  it('sin tasa previa (primera configuracion) siempre exige confirmacion', () => {
+    assert.equal(requiresRateConfirmation({ previousLempirasPorPunto: null, lempiras: '100' }), true);
+  });
+
+  it('tasa anterior 100 y nueva 50 exige confirmacion', () => {
+    assert.equal(requiresRateConfirmation({ previousLempirasPorPunto: 100, lempiras: '50' }), true);
+  });
+
+  it('tasa anterior 100 y nueva "100.00" NO exige confirmacion (comparacion numerica, no textual)', () => {
+    assert.equal(requiresRateConfirmation({ previousLempirasPorPunto: 100, lempiras: '100.00' }), false);
+    assert.equal(requiresRateConfirmation({ previousLempirasPorPunto: '100.00', lempiras: '100' }), false);
+    assert.equal(isSameLempirasRate(100, '100.00'), true);
+  });
+
+  it('una tasa vacia o invalida no exige confirmacion: primero debe ser un numero valido', () => {
+    assert.equal(requiresRateConfirmation({ previousLempirasPorPunto: 100, lempiras: '' }), false);
+    assert.equal(requiresRateConfirmation({ previousLempirasPorPunto: 100, lempiras: '0' }), false);
+  });
+});
+
+describe('computeConfiguracionSaveState: el boton Guardar reglas exige la confirmacion de equivalencia', () => {
+  it('primera configuracion SIN confirmar: boton deshabilitado', () => {
+    const estado = computeConfiguracionSaveState({
+      lempiras: '100',
+      previousLempirasPorPunto: null,
+      rateConfirmed: false
+    });
+    assert.equal(estado.confirmationRequired, true);
+    assert.equal(estado.canSubmit, false);
+  });
+
+  it('primera configuracion CONFIRMADA: boton habilitado', () => {
+    const estado = computeConfiguracionSaveState({
+      lempiras: '100',
+      previousLempirasPorPunto: null,
+      rateConfirmed: true
+    });
+    assert.equal(estado.canSubmit, true);
+  });
+
+  it('tasa anterior 100, nueva 50, sin confirmar: boton deshabilitado', () => {
+    const estado = computeConfiguracionSaveState({
+      lempiras: '50',
+      previousLempirasPorPunto: 100,
+      rateConfirmed: false
+    });
+    assert.equal(estado.confirmationRequired, true);
+    assert.equal(estado.canSubmit, false);
+  });
+
+  it('tasa anterior 100, nueva "100.00": no exige confirmacion y se puede guardar', () => {
+    const estado = computeConfiguracionSaveState({
+      lempiras: '100.00',
+      previousLempirasPorPunto: 100,
+      rateConfirmed: false
+    });
+    assert.equal(estado.confirmationRequired, false);
+    assert.equal(estado.canSubmit, true);
+  });
+
+  it('una tasa invalida sigue bloqueando el guardado aunque se haya confirmado', () => {
+    const estado = computeConfiguracionSaveState({
+      lempiras: '0',
+      previousLempirasPorPunto: 100,
+      rateConfirmed: true
+    });
+    assert.equal(estado.canSubmit, false);
+  });
+
+  it('mientras guarda (saving) nunca permite un nuevo submit', () => {
+    const estado = computeConfiguracionSaveState({
+      lempiras: '100',
+      saving: true,
+      previousLempirasPorPunto: null,
+      rateConfirmed: true
+    });
+    assert.equal(estado.canSubmit, false);
+  });
+
+  it('tasa 0.01 confirmada: tecnicamente valida (no se bloquea de forma automatica)', () => {
+    const estado = computeConfiguracionSaveState({
+      lempiras: '0.01',
+      previousLempirasPorPunto: 100,
+      rateConfirmed: true
+    });
+    assert.equal(estado.confirmationRequired, true);
+    assert.equal(estado.canSubmit, true);
+    // Y la advertencia muestra el numero real del caso de QA.
+    assert.equal(
+      calculatePointsPreview({ amount: RATE_CONFIRMATION_EXAMPLE_AMOUNT, lempirasPorPunto: '0.01' }),
+      113000
+    );
+  });
+
+  it('cambiar la tasa despues de confirmar vuelve a exigir confirmacion (el modal limpia rateConfirmed)', () => {
+    const confirmada = computeConfiguracionSaveState({
+      lempiras: '100',
+      previousLempirasPorPunto: null,
+      rateConfirmed: true
+    });
+    assert.equal(confirmada.canSubmit, true);
+
+    // El modal pone rateConfirmed=false en cada onChange del input.
+    const trasCambiar = computeConfiguracionSaveState({
+      lempiras: '50',
+      previousLempirasPorPunto: null,
+      rateConfirmed: false
+    });
+    assert.equal(trasCambiar.canSubmit, false);
+  });
+});
+
+describe('buildSaveConfiguracionPayload: confirmar_equivalencia solo viaja cuando se marco la casilla', () => {
+  it('incluye confirmar_equivalencia: true cuando el usuario confirmo', () => {
+    const payload = buildSaveConfiguracionPayload({
+      idSucursal: 1,
+      lempiras: '100',
+      acumulacionHabilitada: true,
+      productosCanjeables: [],
+      rateConfirmed: true
+    });
+    assert.equal(payload.confirmar_equivalencia, true);
+  });
+
+  it('NO incluye el campo cuando no se confirmo (nunca envia false ni un valor parecido a verdadero)', () => {
+    const payload = buildSaveConfiguracionPayload({
+      idSucursal: 1,
+      lempiras: '100',
+      acumulacionHabilitada: true,
+      productosCanjeables: [],
+      rateConfirmed: false
+    });
+    assert.equal(Object.hasOwn(payload, 'confirmar_equivalencia'), false);
+  });
+
+  it('sin el parametro (llamadas previas) el payload conserva su forma anterior', () => {
+    const payload = buildSaveConfiguracionPayload({
+      idSucursal: 1,
+      lempiras: '100',
+      acumulacionHabilitada: false,
+      productosCanjeables: []
+    });
+    assert.equal(Object.hasOwn(payload, 'confirmar_equivalencia'), false);
+    assert.equal(payload.lempiras_por_punto, 100);
+  });
+
+  it('un valor "parecido a verdadero" no se convierte en true (el backend exige el booleano estricto)', () => {
+    for (const valor of ['true', 1, '1', {}, []]) {
+      const payload = buildSaveConfiguracionPayload({
+        idSucursal: 1,
+        lempiras: '100',
+        acumulacionHabilitada: true,
+        productosCanjeables: [],
+        rateConfirmed: valor
+      });
+      assert.equal(Object.hasOwn(payload, 'confirmar_equivalencia'), false, `no debe aceptar ${JSON.stringify(valor)}`);
+    }
+  });
+});
+
+describe('ConfiguracionReglasModal.jsx: etiqueta, explicacion, previsualizacion, advertencia y casilla', () => {
+  const getSource = () => readFile(new URL('../components/ConfiguracionReglasModal.jsx', import.meta.url), 'utf8');
+
+  it('la etiqueta ya no dice "Equivalencia de puntos" sino que explica el sentido de la cifra', async () => {
+    const source = await getSource();
+    assert.match(source, /Lempiras necesarios para obtener 1 punto/);
+    assert.doesNotMatch(source, />\s*Equivalencia de puntos\s*</);
+  });
+
+  it('explica como se calcula y enuncia la tasa actual en lempiras por punto', async () => {
+    const source = await getSource();
+    assert.match(source, /El sistema divide el total de la factura entre esta cantidad y redondea hacia abajo\./);
+    assert.match(source, /Con la tasa actual, el cliente obtiene 1 punto por cada L \{formatCurrency\(lempiras\)\} gastados\./);
+  });
+
+  it('previsualiza con el helper compartido (no reimplementa la formula)', async () => {
+    const source = await getSource();
+    assert.match(source, /Ejemplo de acumulacion/);
+    assert.match(source, /calculatePointsPreview\(\{ amount: monto, lempirasPorPunto: lempiras \}\)/);
+    assert.doesNotMatch(source, /Math\.floor\(/, 'la formula vive solo en fidelizacionHelpers.js');
+  });
+
+  it('muestra la advertencia critica cuando la tasa es menor a 1, con el ejemplo de L 1,130.00', async () => {
+    const source = await getSource();
+    assert.match(source, /isSensitiveLempirasRate/);
+    assert.match(source, /esta tasa genera mas de 1 punto por cada lempira gastado/);
+    assert.match(source, /Verifica cuidadosamente la equivalencia antes de guardar\./);
+    assert.match(source, /RATE_CONFIRMATION_EXAMPLE_AMOUNT/);
+  });
+
+  it('la casilla de confirmacion existe, es obligatoria y bloquea el guardado', async () => {
+    const source = await getSource();
+    assert.match(source, /Confirmo que 1 punto se obtendra por cada L \{formatCurrency\(lempiras\)\} gastados\./);
+    assert.match(source, /id="fidelizacion-confirmar-equivalencia"/);
+    assert.match(source, /checked=\{rateConfirmed\}/);
+    assert.match(source, /computeConfiguracionSaveState\(/);
+  });
+
+  it('la confirmacion se reinicia al cambiar la tasa y al abrir/cambiar de configuracion', async () => {
+    const source = await getSource();
+    // onChange del input -> limpia la confirmacion.
+    assert.match(source, /const handleLempirasChange = \(value\) => \{\s*\n\s*setLempiras\(value\);\s*\n\s*setRateConfirmed\(false\);/);
+    assert.match(source, /onChange=\{\(event\) => handleLempirasChange\(event\.target\.value\)\}/);
+    // Efecto de apertura/sincronizacion con el backend -> limpia la confirmacion.
+    const start = source.indexOf('const lempirasValue = configuracion?.configuracion?.lempiras_por_punto;');
+    const block = source.slice(start, source.indexOf('setSelectedProductos(selectedMap);', start));
+    assert.match(block, /setRateConfirmed\(false\);/);
+  });
+
+  it('el payload se arma con rateConfirmed (no con un booleano suelto)', async () => {
+    const source = await getSource();
+    assert.match(source, /buildSaveConfiguracionPayload\(\{[\s\S]*?rateConfirmed[\s\S]*?\}\)/);
+  });
+});
+
+describe('FidelizacionOverview.jsx: la tarjeta de reglas ya no muestra "1 punto = L. 0"', () => {
+  const getSource = () => readFile(new URL('../components/FidelizacionOverview.jsx', import.meta.url), 'utf8');
+
+  it('usa el formateador monetario (2 decimales), no formatPoints, para la tasa', async () => {
+    const source = await getSource();
+    assert.match(source, /helper: `1 punto por cada L \$\{formatCurrency\(panelData\.configuracion_activa\.lempiras_por_punto\)\}`/);
+    // La tasa ya no pasa por formatPoints (que redondeaba 0.01 a "0").
+    assert.doesNotMatch(source, /formatPoints\(panelData\.configuracion_activa\.lempiras_por_punto\)/);
+    // Y el helper renderizado ya no usa el texto viejo (se comprueba sobre la
+    // linea de `helper:`, no sobre los comentarios que documentan el defecto).
+    assert.doesNotMatch(source, /helper: `1 punto = L\./);
+  });
+
+  it('el texto resultante es correcto para las tasas problematicas y recomendadas', () => {
+    assert.equal(`1 punto por cada L ${formatCurrency(0.01)}`, '1 punto por cada L 0.01');
+    assert.equal(`1 punto por cada L ${formatCurrency(100)}`, '1 punto por cada L 100.00');
+  });
+});
+
+describe('Responsive: previsualizacion, advertencia y casilla siguen siendo usables en movil', () => {
+  const getCss = () => readFile(new URL('../styles/fidelizacion.css', import.meta.url), 'utf8');
+
+  it('la advertencia y la casilla nunca recortan el texto (overflow-wrap), aunque la cifra sea larga', async () => {
+    const css = await getCss();
+    const warning = css.slice(css.indexOf('.fidelizacion-config-modal__rate-warning'));
+    assert.match(warning.slice(0, 300), /overflow-wrap: anywhere/);
+
+    const label = css.slice(css.indexOf('.fidelizacion-config-modal__confirm .form-check-label'));
+    assert.match(label.slice(0, 200), /overflow-wrap: anywhere/);
+  });
+
+  it('en pantallas menores a 576px la lista de ejemplos pasa a una columna (sin desbordamiento horizontal)', async () => {
+    const css = await getCss();
+    const mobile = css.slice(css.indexOf('@media (max-width: 575.98px)'));
+    assert.match(mobile, /\.fidelizacion-config-modal__preview-list li \{[\s\S]*?flex-direction: column;/);
+  });
+
+  it('la casilla mantiene un objetivo tactil comodo (no depende del tamano por defecto)', async () => {
+    const css = await getCss();
+    const input = css.slice(css.indexOf('.fidelizacion-config-modal__confirm .form-check-input'));
+    assert.match(input.slice(0, 220), /width: 1\.25rem/);
+    assert.match(input.slice(0, 220), /height: 1\.25rem/);
+  });
+
+  it('el modal sigue usando el shell con scroll interno del sistema (inv-prod-pmodal), no uno nuevo', async () => {
+    const source = await readFile(new URL('../components/ConfiguracionReglasModal.jsx', import.meta.url), 'utf8');
+    assert.match(source, /className="inv-prod-pmodal inv-prod-pmodal--create show"/);
+    assert.match(source, /className="inv-prod-pmodal__viewport"/);
   });
 });

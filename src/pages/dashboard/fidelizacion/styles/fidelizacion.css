@@ -338,6 +338,95 @@
   font-weight: 600;
 }
 
+/* Equivalencia de la tasa: significado, previsualizacion, advertencia y
+   confirmacion. lempiras_por_punto = lempiras necesarios para 1 punto; el
+   campo resultaba ambiguo y se guardo 0.01 creyendo lo contrario. */
+.fidelizacion-config-modal__rate-meaning {
+  font-weight: 600;
+  color: #4b250d;
+}
+
+.fidelizacion-config-modal__preview {
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  border-radius: 16px;
+  background: rgba(248, 244, 238, 0.92);
+  padding: 14px 16px;
+}
+
+.fidelizacion-config-modal__preview-title {
+  font-weight: 700;
+  color: #4b250d;
+  margin-bottom: 8px;
+}
+
+.fidelizacion-config-modal__preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.fidelizacion-config-modal__preview-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: rgba(82, 44, 34, 0.82);
+}
+
+.fidelizacion-config-modal__preview-list strong {
+  color: #4b250d;
+  white-space: nowrap;
+}
+
+.fidelizacion-config-modal__rate-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 0;
+  /* La advertencia debe leerse completa tambien en movil: nunca se recorta. */
+  overflow-wrap: anywhere;
+}
+
+.fidelizacion-config-modal__confirm {
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 251, 244, 0.96);
+  padding: 14px 16px 14px 42px;
+}
+
+.fidelizacion-config-modal__confirm .form-check-input {
+  /* Objetivo tactil comodo en movil, sin depender del tamano por defecto. */
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-left: -28px;
+}
+
+.fidelizacion-config-modal__confirm .form-check-label {
+  font-weight: 600;
+  color: #4b250d;
+  overflow-wrap: anywhere;
+}
+
+.fidelizacion-config-modal__confirm .form-check-label span {
+  font-weight: 500;
+  color: rgba(82, 44, 34, 0.78);
+  margin-top: 2px;
+}
+
+@media (max-width: 575.98px) {
+  .fidelizacion-config-modal__preview-list li {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .fidelizacion-config-modal__confirm {
+    padding: 12px 12px 12px 38px;
+  }
+}
+
 .fidelizacion-config-modal__toolbar {
   margin-bottom: 14px;
 }
