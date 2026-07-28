@@ -176,6 +176,27 @@
   gap: 14px;
   overflow-y: auto;
   padding-right: 4px;
+  /* align-content:start evita que el catalogo, al ser un item de grid
+     (.fidelizacion-canje-modal__body) estirado en align-items:stretch por
+     defecto para igualar la altura del panel lateral, reparta ese alto
+     "prestado" entre las filas de productos: sin esto las filas se
+     comprimian por debajo de su alto natural y las tarjetas quedaban
+     recortadas (sin nombre visible). Con start, cada fila conserva su alto
+     de contenido real y el contenedor scrollea (overflow-y: auto) si hay
+     mas productos de los que caben. */
+  align-content: start;
+}
+
+/* .vcp-card (compartida con Ventas) trae height:100%, pensado para que la
+   tarjeta llene la altura de FILA que le da el grid. En este catalogo esa
+   altura de fila terminaba siendo menor a lo que la tarjeta necesita
+   (imagen + nombre + precio/disponible + boton), y overflow:hidden en
+   .vcp-card recortaba el contenido en vez de mostrarlo. align-self:start +
+   height:auto hacen que cada tarjeta tome su alto natural de contenido,
+   nunca el de la fila del grid. */
+.fidelizacion-canje-modal__products .vcp-card {
+  align-self: start;
+  height: auto;
 }
 
 .fidelizacion-canje-modal__points-badge {
@@ -239,11 +260,33 @@
 }
 
 .fidelizacion-canje-modal__sucursal-bar {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
-.fidelizacion-canje-modal__sucursal-select {
+/* ToolbarSucursalSelect (.toolbar-scope-inline) fue disenado para un
+   toolbar angosto: trae min-width:260px/max-width:340px (ventas.css), asi
+   que dentro del modal (bastante mas ancho) el select quedaba comprimido a
+   ~170px y el nombre de la sucursal se truncaba. Se levanta ese limite solo
+   en este contexto (no se toca el componente compartido ni su uso en otros
+   toolbars) y se agranda para que la sucursal se lea completa. */
+.fidelizacion-canje-modal__sucursal-select.toolbar-scope-inline {
   width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 52px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  box-shadow: 0 10px 22px rgba(18, 7, 3, 0.06);
+}
+
+.fidelizacion-canje-modal__sucursal-select .toolbar-scope-inline__label {
+  font-size: 0.74rem;
+}
+
+.fidelizacion-canje-modal__sucursal-select .toolbar-scope-inline__select {
+  height: 34px;
+  font-size: 1rem;
+  font-weight: 800;
 }
 
 .fidelizacion-canje-modal__sucursal-readonly {
