@@ -245,6 +245,94 @@ export const buildSaveConfiguracionPayload = ({
   return payload;
 };
 
+// ---------------------------------------------------------------------------
+// Costo en puntos de un producto canjeable: automatico vs personalizado
+// ---------------------------------------------------------------------------
+// Defecto confirmado en QA: el campo administrativo se llamaba "Override
+// puntos" (palabra tecnica, sin significado claro en la interfaz) y no
+// mostraba el costo automatico de referencia, dificultando saber si el valor
+// escrito era razonable. El backend ya resuelve correctamente
+// puntos_requeridos_override ?? computeRedemptionPoints(precio, tasa)
+// (services/fidelizacionService.js) y sigue siendo la fuente de verdad: este
+// modulo solo aclara la interfaz y valida ANTES de enviar, nunca reemplaza la
+// validacion/recalculo del backend.
+
+// Misma formula que el backend (computeRedemptionPoints): puntos = techo del
+// precio entre la tasa. A diferencia de calculatePointsPreview (acumulacion,
+// que usa floor), el costo de canje SIEMPRE redondea hacia arriba: nunca se
+// le puede pedir al cliente menos puntos de los que el precio realmente vale.
+// Devuelve null cuando el precio o la tasa no son numeros finitos > 0 (nunca
+// 0, que si es un "costo" real y se confundiria con "sin resultado").
+export const calculateRedemptionPointsPreview = ({ precio, lempirasPorPunto }) => {
+  const price = Number(precio);
+  const rate = Number(lempirasPorPunto);
+
+  if (!Number.isFinite(price) || price <= 0) return null;
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+
+  return Math.ceil(price / rate);
+};
+
+// Sentinela para "valor invalido", distinto de `null` (que significa
+// "automatico"). No se usa NaN como sentinela: NaN !== NaN complica las
+// comparaciones directas (assert.equal) en quien consuma este helper.
+export const REDEMPTION_POINTS_OVERRIDE_INVALID = 'INVALID';
+
+// Normaliza el costo en puntos personalizado que escribe el administrador.
+// Contrato (auditoria de QA, seccion 13):
+//   vacio (string vacio, null, undefined)  -> null (automatico)
+//   entero positivo (numero o cadena pura) -> ese numero
+//   cualquier otro valor                   -> REDEMPTION_POINTS_OVERRIDE_INVALID
+// Nunca acepta decimales, texto parcialmente numerico, arreglos, objetos,
+// cero, negativos, Infinity ni NaN. Se usa tanto para la validacion en vivo
+// del input como para construir el payload final (nunca solo atributos HTML
+// min/step, que un navegador puede no aplicar de forma estricta).
+export const normalizeRedemptionPointsOverride = (value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object') return REDEMPTION_POINTS_OVERRIDE_INVALID;
+
+  const trimmed = String(value).trim();
+  if (trimmed === '') return null;
+  if (!/^\d+$/.test(trimmed)) return REDEMPTION_POINTS_OVERRIDE_INVALID;
+
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return REDEMPTION_POINTS_OVERRIDE_INVALID;
+
+  return parsed;
+};
+
+// Un producto (checked=true) tiene un costo invalido cuando escribio algo que
+// no es ni "vacio" (automatico) ni un entero positivo valido. Usado para
+// bloquear "Guardar reglas" y para mostrar el mensaje de ayuda junto al campo.
+export const isRedemptionPointsOverrideInvalid = (value) =>
+  normalizeRedemptionPointsOverride(value) === REDEMPTION_POINTS_OVERRIDE_INVALID;
+
+// Construye la entrada de un producto canjeable para el payload de
+// saveConfiguracion. Devuelve null cuando id_producto o el costo
+// personalizado no son validos (el llamador debe tratar null como "no
+// generar payload valido para este producto" -en la practica nunca ocurre en
+// un submit real porque el boton ya esta deshabilitado, pero la validacion
+// vive aqui, no solo en el estado deshabilitado del boton).
+//
+// Automatico -> { id_producto } (nunca se envia puntos_requeridos_override,
+// ni siquiera como null: el contrato actual del backend es "campo ausente =
+// automatico", ver routers/fidelizacion.js).
+// Personalizado -> { id_producto, puntos_requeridos_override } con un NUMBER,
+// nunca un string ni un decimal.
+export const buildCanjeableProductoPayload = ({ idProducto, puntosRequeridosOverride }) => {
+  const id = Number(idProducto);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+
+  const normalized = normalizeRedemptionPointsOverride(puntosRequeridosOverride);
+  if (normalized === REDEMPTION_POINTS_OVERRIDE_INVALID) return null;
+
+  const payload = { id_producto: id };
+  if (normalized !== null) {
+    payload.puntos_requeridos_override = normalized;
+  }
+  return payload;
+};
+
 export const normalizeConfiguracion = (payload) => {
   const data = payload?.data ?? payload ?? {};
   const configuracion = data?.configuracion ?? null;

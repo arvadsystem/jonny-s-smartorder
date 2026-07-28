@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../../services/inventarioService';
+import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
 import {
+  buildCanjeableProductoPayload,
   buildSaveConfiguracionPayload,
   calculatePointsPreview,
+  calculateRedemptionPointsPreview,
   computeConfiguracionSaveState,
   extractApiMessage,
   formatCurrency,
   formatPoints,
+  isRedemptionPointsOverrideInvalid,
   isSensitiveLempirasRate,
   RATE_CONFIRMATION_EXAMPLE_AMOUNT,
   RATE_PREVIEW_AMOUNTS
@@ -26,7 +30,10 @@ const normalizeProductoCatalogo = (row) => ({
 
 // Miniatura compacta (no tarjeta grande): mismo patron sin estado de
 // VentaComposerCatalog.jsx, el <img> oculta su propio <img> y revela el
-// placeholder hermano si la URL falla.
+// placeholder hermano si la URL falla. `url` ya debe llegar resuelta por
+// resolveInventarioImageUrl (URL absoluta, jonnys-assets/... convertido a
+// Supabase, ruta relativa convertida via API_URL, o cadena vacia): este
+// componente nunca decide como resolverla, solo la renderiza.
 const ProductoThumb = ({ url, nombre }) => (
   <div className="fidelizacion-config-modal__thumb">
     {url ? (
@@ -177,12 +184,27 @@ export default function ConfiguracionReglasModal({
 
   const previousLempirasPorPunto = configuracion?.configuracion?.lempiras_por_punto ?? null;
 
-  const { canSubmit, confirmationRequired } = computeConfiguracionSaveState({
+  const { canSubmit: canSubmitRate, confirmationRequired } = computeConfiguracionSaveState({
     lempiras,
     saving,
     previousLempirasPorPunto,
     rateConfirmed
   });
+
+  // Bloqueante: un producto marcado como canjeable con un costo en puntos
+  // que no sea ni "vacio" (automatico) ni un entero positivo valido nunca
+  // debe poder guardarse -ni con campo vacio en otros productos, que si son
+  // validos-. isRedemptionPointsOverrideInvalid reutiliza el mismo
+  // normalizador que construye el payload: la regla de bloqueo y la de
+  // construccion del payload nunca pueden divergir.
+  const hasInvalidProductOverride = useMemo(
+    () => Object.values(selectedProductos).some(
+      (value) => Boolean(value?.checked) && isRedemptionPointsOverrideInvalid(value?.puntos_requeridos_override)
+    ),
+    [selectedProductos]
+  );
+
+  const canSubmit = canSubmitRate && !hasInvalidProductOverride;
 
   // Cambiar la tasa invalida cualquier confirmacion previa: el usuario debe
   // volver a leer el ejemplo con el nuevo valor antes de poder guardar.
@@ -203,20 +225,18 @@ export default function ConfiguracionReglasModal({
     event.preventDefault();
     if (!canSubmit) return;
 
+    // buildCanjeableProductoPayload valida el costo en puntos con el mismo
+    // normalizador que bloquea el boton (hasInvalidProductOverride): si
+    // canSubmit es true no deberia haber ningun null aqui, pero se filtra de
+    // todas formas (defensa en profundidad, nunca se envia un producto con un
+    // costo invalido).
     const productos_canjeables = Object.entries(selectedProductos)
       .filter(([, value]) => value?.checked)
-      .map(([idProducto, value]) => {
-        const payload = {
-          id_producto: Number(idProducto)
-        };
-
-        const override = String(value?.puntos_requeridos_override ?? '').trim();
-        if (override) {
-          payload.puntos_requeridos_override = Number(override);
-        }
-
-        return payload;
-      });
+      .map(([idProducto, value]) => buildCanjeableProductoPayload({
+        idProducto,
+        puntosRequeridosOverride: value?.puntos_requeridos_override
+      }))
+      .filter((entry) => entry !== null);
 
     onSubmit(buildSaveConfiguracionPayload({
       idSucursal: configuracion?.id_sucursal,
@@ -379,7 +399,7 @@ export default function ConfiguracionReglasModal({
                 <section className="inv-prod-pmodal__section">
                   <div className="inv-prod-pmodal__section-head">
                     <div className="inv-prod-pmodal__section-title">Catalogo de productos</div>
-                    <div className="inv-prod-pmodal__section-sub">Selecciona productos de la sucursal visible y define override opcional de puntos.</div>
+                    <div className="inv-prod-pmodal__section-sub">Selecciona los productos que podran canjearse y define su costo en puntos.</div>
                   </div>
 
                   <div className="fidelizacion-config-modal__toolbar">
@@ -411,13 +431,21 @@ export default function ConfiguracionReglasModal({
                             <th>Producto</th>
                             <th>Precio</th>
                             <th>Stock visible</th>
-                            <th>Override puntos</th>
+                            <th>Costo en puntos</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredProductos.map((producto) => {
                             const state = selectedProductos[producto.id_producto] || { checked: false, puntos_requeridos_override: '' };
                             const stockVisible = Math.max(Number(producto.cantidad || 0) - Number(producto.stock_minimo || 0), 0);
+                            const costoAutomatico = calculateRedemptionPointsPreview({
+                              precio: producto.precio,
+                              lempirasPorPunto: lempiras
+                            });
+                            const overrideInvalido = Boolean(state.checked) && isRedemptionPointsOverrideInvalid(state.puntos_requeridos_override);
+                            const tieneOverridePersonalizado = Boolean(state.checked)
+                              && String(state.puntos_requeridos_override ?? '').trim() !== ''
+                              && !overrideInvalido;
                             return (
                               <tr key={producto.id_producto}>
                                 <td>
@@ -431,7 +459,10 @@ export default function ConfiguracionReglasModal({
                                 </td>
                                 <td>
                                   <div className="fidelizacion-config-modal__product-cell">
-                                    <ProductoThumb url={producto.imagen_principal_url} nombre={producto.nombre_producto} />
+                                    <ProductoThumb
+                                      url={resolveInventarioImageUrl(producto.imagen_principal_url)}
+                                      nombre={producto.nombre_producto}
+                                    />
                                     <div className="fidelizacion-config-modal__product-name">
                                       <strong>{producto.nombre_producto}</strong>
                                       <small>ID {producto.id_producto}</small>
@@ -441,16 +472,40 @@ export default function ConfiguracionReglasModal({
                                 <td>L. {formatCurrency(producto.precio)}</td>
                                 <td>{formatPoints(stockVisible)}</td>
                                 <td>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    className="form-control form-control-sm"
-                                    placeholder="Automatico"
-                                    value={state.puntos_requeridos_override}
-                                    onChange={(event) => updateOverride(producto.id_producto, event.target.value)}
-                                    disabled={!state.checked || saving}
-                                  />
+                                  <div className="fidelizacion-config-modal__points-cell">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      step="1"
+                                      inputMode="numeric"
+                                      className={`form-control form-control-sm ${overrideInvalido ? 'is-invalid' : ''}`}
+                                      placeholder={costoAutomatico !== null ? `Automatico: ${formatPoints(costoAutomatico)}` : 'Automatico'}
+                                      value={state.puntos_requeridos_override}
+                                      onChange={(event) => updateOverride(producto.id_producto, event.target.value)}
+                                      disabled={!state.checked || saving}
+                                    />
+                                    {tieneOverridePersonalizado ? (
+                                      <div className="fidelizacion-config-modal__points-hint">
+                                        <span className="fidelizacion-config-modal__points-hint--custom">
+                                          Personalizado: {formatPoints(Number(state.puntos_requeridos_override))} pts
+                                        </span>
+                                        {costoAutomatico !== null ? (
+                                          <span>Automatico de referencia: {formatPoints(costoAutomatico)} pts</span>
+                                        ) : null}
+                                      </div>
+                                    ) : overrideInvalido ? (
+                                      <div className="fidelizacion-config-modal__points-hint fidelizacion-config-modal__points-hint--error">
+                                        Ingresa un numero entero mayor que cero o deja el campo vacio para usar el costo automatico.
+                                      </div>
+                                    ) : (
+                                      <div className="fidelizacion-config-modal__points-hint">
+                                        {costoAutomatico !== null ? (
+                                          <span>Automatico: {formatPoints(costoAutomatico)} pts</span>
+                                        ) : null}
+                                        <span>Deja el campo vacio para utilizar el costo automatico.</span>
+                                      </div>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             );

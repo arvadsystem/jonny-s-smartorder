@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 import {
+  buildCanjeableProductoPayload,
   buildSaveConfiguracionPayload,
   calculatePointsPreview,
+  calculateRedemptionPointsPreview,
   computeCanjeCartAfterAdd,
   computeCanjeConfirmDisabled,
   computeConfiguracionSaveState,
@@ -11,12 +13,15 @@ import {
   consumeHandledAsyncError,
   createLatestRequestTracker,
   formatCurrency,
+  isRedemptionPointsOverrideInvalid,
   isSameLempirasRate,
   isSensitiveLempirasRate,
   normalizeCanjeableResponse,
   normalizeConfiguracion,
   normalizeEnvelopeMeta,
+  normalizeRedemptionPointsOverride,
   RATE_CONFIRMATION_EXAMPLE_AMOUNT,
+  REDEMPTION_POINTS_OVERRIDE_INVALID,
   requiresRateConfirmation
 } from './fidelizacionHelpers.js';
 
@@ -969,10 +974,34 @@ describe('GenerarCanjeModal.jsx: selector de sucursal obligatorio para SUPER_ADM
   });
 });
 
-describe('GenerarCanjeModal.jsx: imagenes reales, placeholder y precio/stock separados', () => {
+// Defecto confirmado: la tarjeta de "Canje presencial" reutilizaba solo
+// parcialmente las clases de Caja (vcp-card canjeable-card), sin la
+// estructura compacta completa (ventas-catalog-card-compact) ni
+// resolveInventarioImageUrl. Resultado: tarjetas demasiado altas, badge de
+// puntos sin posicionar (no absoluto dentro de vcp-card__media, competia por
+// espacio con la imagen), precio/stock en filas propias en vez del footer
+// compacto real de Caja. Estas pruebas confirman, sobre el codigo fuente
+// real, que la tarjeta ahora sigue exactamente el mismo patron estructural
+// que VentaComposerCatalog.jsx.
+describe('GenerarCanjeModal.jsx: la tarjeta reutiliza el patron estructural completo de VentaComposerCatalog.jsx (Caja)', () => {
   const getSource = () => readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
 
-  it('renderiza <img> con la URL real cuando existe imagen', async () => {
+  it('importa y usa resolveInventarioImageUrl (nunca imagen_principal_url cruda como src)', async () => {
+    const source = await getSource();
+    assert.match(source, /import \{ resolveInventarioImageUrl \} from '\.\.\/\.\.\/\.\.\/\.\.\/utils\/inventarioImagenes';/);
+    assert.match(source, /const imagenResuelta = resolveInventarioImageUrl\(producto\.imagen_principal_url\);/);
+    assert.doesNotMatch(source, /src=\{producto\.imagen_principal_url\}/);
+  });
+
+  it('la tarjeta usa las clases compactas reales de Caja: vcp-card, ventas-catalog-card-compact, canjeable-card', async () => {
+    const source = await getSource();
+    assert.match(
+      source,
+      /className=\{`vcp-card ventas-catalog-card-compact canjeable-card \$\{selected \? 'selected' : ''\} \$\{sinStock \? 'is-out-of-stock' : ''\}`\}/
+    );
+  });
+
+  it('renderiza <img> con la URL ya resuelta cuando existe imagen', async () => {
     const source = await getSource();
     assert.match(source, /\{imagenUrl \? \(\s*\n\s*<img\s*\n\s*src=\{imagenUrl\}/);
   });
@@ -989,17 +1018,48 @@ describe('GenerarCanjeModal.jsx: imagenes reales, placeholder y precio/stock sep
     assert.match(source, /next\.classList\.remove\('d-none'\);/);
   });
 
-  it('precio y stock disponible se renderizan en filas separadas (fidelizacion-canje-modal__meta-row), nunca concatenados en un solo texto', async () => {
+  it('el badge de puntos vive dentro de vcp-card__media (para poder posicionarse en absoluto sobre la imagen, como el badge de descuento real de Caja)', async () => {
     const source = await getSource();
-    const rows = [...source.matchAll(/className="fidelizacion-canje-modal__meta-row"/g)];
-    assert.equal(rows.length, 2, 'debe haber una fila para Precio y otra para Disponible');
-    assert.doesNotMatch(source, /L\. \{formatCurrency\(producto\.precio\)\}<\/strong>\s*<strong>/, 'precio y stock nunca deben quedar en el mismo elemento de texto');
+    const start = source.indexOf('const ProductoCanjeableMedia');
+    const end = source.indexOf('export default function GenerarCanjeModal', start);
+    const block = source.slice(start, end);
+    assert.match(block, /<div className="vcp-card__media">\s*\n\s*<span className="fidelizacion-canje-modal__points-badge">/);
   });
 
-  it('un producto sin stock no puede agregarse desde la tarjeta ni desde el boton (ambos usan handleAgregar, que ya rechaza stock<=0)', async () => {
+  it('el cuerpo usa el mismo esqueleto que Caja: meta-row con PRODUCTO, vcp-card__name, vcp-card__stock y vcp-card__footer (precio + boton), nunca filas de Precio/Disponible separadas', async () => {
     const source = await getSource();
-    assert.match(source, /onClick=\{\(\) => handleAgregar\(producto\)\}/);
+    assert.match(source, /<span className="vcp-card__kind">PRODUCTO<\/span>/);
+    assert.match(source, /<h6 className="vcp-card__name" title=\{producto\.nombre_producto\}>\{producto\.nombre_producto\}<\/h6>/);
+    assert.match(source, /className=\{`vcp-card__stock \$\{sinStock \? 'is-empty' : ''\}`\}/);
+    assert.match(source, /<span className="vcp-card__price">L \{formatCurrency\(producto\.precio\)\}<\/span>/);
+    assert.doesNotMatch(source, /fidelizacion-canje-modal__meta-row/, 'la estructura vieja de dos filas etiqueta+valor ya no debe existir');
+  });
+
+  it('la cantidad seleccionada se muestra como chip visible, no se pierde al compactar la tarjeta', async () => {
+    const source = await getSource();
+    assert.match(source, /<span className="fidelizacion-canje-modal__selected-chip">Seleccionado: \{selected\.cantidad\}<\/span>/);
+  });
+
+  it('un producto sin stock no puede agregarse ni desde la tarjeta ni desde el boton (mismo guard "if (sinStock) return" que usa Caja)', async () => {
+    const source = await getSource();
+    const start = source.indexOf('<article');
+    const end = source.indexOf('data-testid="fidelizacion-canjeable-card"', start);
+    const block = source.slice(start, end);
+    assert.match(block, /onClick=\{\(\) => \{\s*\n\s*if \(sinStock\) return;\s*\n\s*handleAgregar\(producto\);\s*\n\s*\}\}/);
     assert.match(source, /disabled=\{sinStock\}/);
+  });
+
+  it('el boton Agregar detiene la propagacion (stopPropagation) antes de decidir si agrega, igual que Caja', async () => {
+    const source = await getSource();
+    const btnStart = source.indexOf('className="vcp-card__add-btn"');
+    const btnBlock = source.slice(btnStart, btnStart + 260);
+    assert.match(btnBlock, /event\.stopPropagation\(\);/);
+    assert.match(btnBlock, /if \(sinStock\) return;/);
+  });
+
+  it('el grid del catalogo reutiliza ventas-catalog-grid ademas de la clase propia de scroll de Fidelizacion', async () => {
+    const source = await getSource();
+    assert.match(source, /className="fidelizacion-canje-modal__products ventas-catalog-grid"/);
   });
 });
 
@@ -1051,9 +1111,14 @@ describe('ConfiguracionReglasModal.jsx: miniatura compacta con imagen/placeholde
     assert.match(source, /imagen_principal_url: row\?\.imagen_principal_url/);
   });
 
-  it('renderiza una miniatura compacta (no tarjetas grandes) junto al nombre del producto', async () => {
+  it('renderiza una miniatura compacta (no tarjetas grandes) junto al nombre del producto, con la imagen ya resuelta por resolveInventarioImageUrl', async () => {
     const source = await getSource();
-    assert.match(source, /<ProductoThumb url=\{producto\.imagen_principal_url\} nombre=\{producto\.nombre_producto\} \/>/);
+    assert.match(source, /import \{ resolveInventarioImageUrl \} from '\.\.\/\.\.\/\.\.\/\.\.\/utils\/inventarioImagenes';/);
+    assert.match(
+      source,
+      /<ProductoThumb\s*\n\s*url=\{resolveInventarioImageUrl\(producto\.imagen_principal_url\)\}\s*\n\s*nombre=\{producto\.nombre_producto\}\s*\n\s*\/>/
+    );
+    assert.doesNotMatch(source, /url=\{producto\.imagen_principal_url\}/, 'nunca debe pasarse la URL cruda sin resolver');
     assert.match(source, /fidelizacion-config-modal__product-cell/);
   });
 
@@ -1426,5 +1491,230 @@ describe('Responsive: previsualizacion, advertencia y casilla siguen siendo usab
     const source = await readFile(new URL('../components/ConfiguracionReglasModal.jsx', import.meta.url), 'utf8');
     assert.match(source, /className="inv-prod-pmodal inv-prod-pmodal--create show"/);
     assert.match(source, /className="inv-prod-pmodal__viewport"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Costo en puntos por producto: automatico vs personalizado
+// ---------------------------------------------------------------------------
+// Defecto confirmado: la columna administrativa se llamaba "Override puntos"
+// (palabra tecnica sin significado claro) y no mostraba el costo automatico
+// de referencia (Math.ceil(precio / tasa), igual que computeRedemptionPoints
+// del backend). El backend ya resuelve correctamente
+// puntos_requeridos_override ?? computeRedemptionPoints(...) y sigue siendo
+// la fuente de verdad: estas pruebas cubren solo la aclaracion de la interfaz
+// y la validacion PREVIA al envio (nunca solo atributos HTML min/step).
+
+describe('calculateRedemptionPointsPreview: misma formula que el backend (computeRedemptionPoints), Math.ceil(precio / tasa)', () => {
+  it('reproduce los 4 ejemplos exactos del caso de QA', () => {
+    assert.equal(calculateRedemptionPointsPreview({ precio: 30, lempirasPorPunto: 100 }), 1);
+    assert.equal(calculateRedemptionPointsPreview({ precio: 120, lempirasPorPunto: 100 }), 2);
+    assert.equal(calculateRedemptionPointsPreview({ precio: 200, lempirasPorPunto: 100 }), 2);
+    assert.equal(calculateRedemptionPointsPreview({ precio: 201, lempirasPorPunto: 100 }), 3);
+  });
+
+  it('nunca usa Math.floor: redondea siempre hacia arriba (nunca se le pide al cliente menos puntos de los que el precio vale)', () => {
+    // 100/100 = 1.0 exacto -> 1 (no hay resto que forzar hacia arriba, pero
+    // confirma que no se resta 1 de mas ni se usa round).
+    assert.equal(calculateRedemptionPointsPreview({ precio: 100, lempirasPorPunto: 100 }), 1);
+    // 100.01/100 -> techo debe dar 2, floor daria 1.
+    assert.equal(calculateRedemptionPointsPreview({ precio: 100.01, lempirasPorPunto: 100 }), 2);
+  });
+
+  it('precio o tasa invalidos (<=0, no finitos) devuelven null, nunca 0 ni NaN', () => {
+    assert.equal(calculateRedemptionPointsPreview({ precio: 0, lempirasPorPunto: 100 }), null);
+    assert.equal(calculateRedemptionPointsPreview({ precio: -5, lempirasPorPunto: 100 }), null);
+    assert.equal(calculateRedemptionPointsPreview({ precio: 100, lempirasPorPunto: 0 }), null);
+    assert.equal(calculateRedemptionPointsPreview({ precio: 100, lempirasPorPunto: -1 }), null);
+    assert.equal(calculateRedemptionPointsPreview({ precio: 'abc', lempirasPorPunto: 100 }), null);
+    assert.equal(calculateRedemptionPointsPreview({ precio: 100, lempirasPorPunto: '' }), null);
+  });
+
+  it('acepta precio/tasa como string, tal como llegan de producto.precio y del input de lempiras', () => {
+    assert.equal(calculateRedemptionPointsPreview({ precio: '120', lempirasPorPunto: '100' }), 2);
+  });
+});
+
+describe('normalizeRedemptionPointsOverride: costo personalizado estricto (entero positivo o automatico)', () => {
+  it('acepta enteros positivos (numero o cadena pura)', () => {
+    assert.equal(normalizeRedemptionPointsOverride(1), 1);
+    assert.equal(normalizeRedemptionPointsOverride('1'), 1);
+    assert.equal(normalizeRedemptionPointsOverride('10'), 10);
+    assert.equal(normalizeRedemptionPointsOverride(10), 10);
+  });
+
+  it('vacio (string vacia, null, undefined) significa automatico -> null', () => {
+    assert.equal(normalizeRedemptionPointsOverride(''), null);
+    assert.equal(normalizeRedemptionPointsOverride('   '), null);
+    assert.equal(normalizeRedemptionPointsOverride(null), null);
+    assert.equal(normalizeRedemptionPointsOverride(undefined), null);
+  });
+
+  it('rechaza decimales, cero, negativos, texto parcialmente numerico, arreglos, objetos, Infinity y NaN', () => {
+    const invalidos = [1.5, '1.5', 0, -1, '10x', '1 OR 1=1', [], {}, Infinity, NaN, '-1', '0'];
+    for (const valor of invalidos) {
+      assert.equal(
+        normalizeRedemptionPointsOverride(valor),
+        REDEMPTION_POINTS_OVERRIDE_INVALID,
+        `debia rechazar ${JSON.stringify(valor)}`
+      );
+    }
+  });
+
+  it('isRedemptionPointsOverrideInvalid reutiliza el mismo normalizador (no una segunda copia de la regla)', () => {
+    assert.equal(isRedemptionPointsOverrideInvalid(''), false);
+    assert.equal(isRedemptionPointsOverrideInvalid('10'), false);
+    assert.equal(isRedemptionPointsOverrideInvalid('1.5'), true);
+    assert.equal(isRedemptionPointsOverrideInvalid(0), true);
+  });
+});
+
+describe('buildCanjeableProductoPayload: automatico -> solo id_producto; personalizado -> numero validado', () => {
+  it('producto automatico (override vacio): el payload NUNCA incluye puntos_requeridos_override, ni siquiera como null', () => {
+    const payload = buildCanjeableProductoPayload({ idProducto: 294, puntosRequeridosOverride: '' });
+    assert.deepEqual(payload, { id_producto: 294 });
+    assert.equal(Object.hasOwn(payload, 'puntos_requeridos_override'), false);
+  });
+
+  it('producto personalizado (override "10"): envia un NUMBER, nunca un string', () => {
+    const payload = buildCanjeableProductoPayload({ idProducto: 294, puntosRequeridosOverride: '10' });
+    assert.deepEqual(payload, { id_producto: 294, puntos_requeridos_override: 10 });
+    assert.equal(typeof payload.puntos_requeridos_override, 'number');
+  });
+
+  it('override invalido (decimal, cero, texto): devuelve null, nunca un payload parcialmente valido', () => {
+    assert.equal(buildCanjeableProductoPayload({ idProducto: 294, puntosRequeridosOverride: '1.5' }), null);
+    assert.equal(buildCanjeableProductoPayload({ idProducto: 294, puntosRequeridosOverride: 0 }), null);
+    assert.equal(buildCanjeableProductoPayload({ idProducto: 294, puntosRequeridosOverride: '10x' }), null);
+  });
+
+  it('id_producto invalido tambien devuelve null (defensa adicional, aunque el llamador ya filtra por checked)', () => {
+    assert.equal(buildCanjeableProductoPayload({ idProducto: 0, puntosRequeridosOverride: '' }), null);
+    assert.equal(buildCanjeableProductoPayload({ idProducto: 'abc', puntosRequeridosOverride: '' }), null);
+  });
+});
+
+describe('ConfiguracionReglasModal.jsx: "Costo en puntos" (antes "Override puntos") y bloqueo de Guardar reglas', () => {
+  const getSource = () => readFile(new URL('../components/ConfiguracionReglasModal.jsx', import.meta.url), 'utf8');
+
+  it('la etiqueta de la columna ya no es tecnica ("Override puntos"), ahora es "Costo en puntos"', async () => {
+    const source = await getSource();
+    assert.match(source, /<th>Costo en puntos<\/th>/);
+    assert.doesNotMatch(source, /Override puntos/);
+    assert.doesNotMatch(source, /\boverride\b/i, 'la palabra tecnica "override" no debe aparecer visible en la interfaz');
+  });
+
+  it('el subtitulo de la seccion explica el proposito sin jerga tecnica', async () => {
+    const source = await getSource();
+    assert.match(source, /Selecciona los productos que podran canjearse y define su costo en puntos\./);
+  });
+
+  it('el campo usa calculateRedemptionPointsPreview para el costo automatico (no duplica Math.ceil en el componente)', async () => {
+    const source = await getSource();
+    assert.match(source, /const costoAutomatico = calculateRedemptionPointsPreview\(\{/);
+    assert.doesNotMatch(source, /Math\.ceil\(/, 'la formula vive solo en fidelizacionHelpers.js');
+  });
+
+  it('el placeholder muestra el costo automatico calculado ("Automatico: N")', async () => {
+    const source = await getSource();
+    assert.match(source, /placeholder=\{costoAutomatico !== null \? `Automatico: \$\{formatPoints\(costoAutomatico\)\}` : 'Automatico'\}/);
+  });
+
+  it('el input de costo en puntos exige entero positivo (min=1, step=1) y se deshabilita si el producto no esta marcado', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const costoAutomatico = calculateRedemptionPointsPreview');
+    const end = source.indexOf('</tr>', start);
+    const block = source.slice(start, end);
+    assert.match(block, /min="1"/);
+    assert.match(block, /step="1"/);
+    assert.match(block, /disabled=\{!state\.checked \|\| saving\}/);
+  });
+
+  it('con un valor personalizado muestra "Personalizado: N pts" y el automatico de referencia', async () => {
+    const source = await getSource();
+    assert.match(source, /Personalizado: \{formatPoints\(Number\(state\.puntos_requeridos_override\)\)\} pts/);
+    assert.match(source, /Automatico de referencia: \{formatPoints\(costoAutomatico\)\} pts/);
+  });
+
+  it('con el campo vacio muestra el mensaje de "deja el campo vacio para usar el costo automatico"', async () => {
+    const source = await getSource();
+    assert.match(source, /Deja el campo vacio para utilizar el costo automatico\./);
+  });
+
+  it('con un valor invalido muestra el mensaje de ayuda exacto pedido por la auditoria', async () => {
+    const source = await getSource();
+    assert.match(
+      source,
+      /Ingresa un numero entero mayor que cero o deja el campo vacio para usar el costo automatico\./
+    );
+  });
+
+  it('hasInvalidProductOverride bloquea Guardar reglas usando el mismo normalizador que valida cada input', async () => {
+    const source = await getSource();
+    assert.match(source, /const hasInvalidProductOverride = useMemo\(/);
+    assert.match(source, /isRedemptionPointsOverrideInvalid\(value\?\.puntos_requeridos_override\)/);
+    assert.match(source, /const canSubmit = canSubmitRate && !hasInvalidProductOverride;/);
+  });
+
+  it('el payload final se construye con buildCanjeableProductoPayload, filtrando nulls (defensa en profundidad)', async () => {
+    const source = await getSource();
+    assert.match(source, /buildCanjeableProductoPayload\(\{\s*\n\s*idProducto,\s*\n\s*puntosRequeridosOverride: value\?\.puntos_requeridos_override\s*\n\s*\}\)/);
+    assert.match(source, /\.filter\(\(entry\) => entry !== null\);/);
+  });
+});
+
+// resolveInventarioImageUrl (src/utils/inventarioImagenes.js) no se puede
+// importar directamente bajo `node --test`: el modulo real usa
+// import.meta.env.VITE_SUPABASE_URL y un import sin extension
+// (./constants, que solo Vite resuelve). Se extrae el CUERPO REAL de la
+// funcion desde el archivo fuente y se ejecuta con constantes controladas
+// via `new Function` -es la logica real corriendo con entradas conocidas,
+// nunca una reimplementacion duplicada del helper-.
+const buildResolveInventarioImageUrl = async ({ supabaseUrl = '', apiUrl = '' } = {}) => {
+  const source = await readFile(new URL('../../../../utils/inventarioImagenes.js', import.meta.url), 'utf8');
+  const start = source.indexOf('export const resolveInventarioImageUrl');
+  assert.notEqual(start, -1, 'no se encontro resolveInventarioImageUrl en el archivo real');
+  const end = source.indexOf('\n};', start) + 3;
+  const functionSource = source.slice(start, end).replace('export const', 'const');
+  // eslint-disable-next-line no-new-func
+  const factory = new Function(
+    'SUPABASE_PUBLIC_BUCKET',
+    'SUPABASE_URL',
+    'API_URL',
+    `${functionSource}\nreturn resolveInventarioImageUrl;`
+  );
+  return factory('jonnys-assets', supabaseUrl, apiUrl);
+};
+
+describe('resolveInventarioImageUrl (utils/inventarioImagenes.js): logica real ejecutada con constantes controladas', () => {
+  it('una URL HTTPS completa permanece exactamente igual', async () => {
+    const resolve = await buildResolveInventarioImageUrl({ supabaseUrl: 'https://proyecto.supabase.co', apiUrl: 'https://api.jonnys.hn' });
+    assert.equal(resolve('https://cdn.example.com/imagen.jpg'), 'https://cdn.example.com/imagen.jpg');
+  });
+
+  it('una ruta jonnys-assets/... se convierte a la URL publica de Supabase', async () => {
+    const resolve = await buildResolveInventarioImageUrl({ supabaseUrl: 'https://proyecto.supabase.co', apiUrl: 'https://api.jonnys.hn' });
+    assert.equal(
+      resolve('jonnys-assets/productos/294.webp'),
+      'https://proyecto.supabase.co/storage/v1/object/public/jonnys-assets/productos/294.webp'
+    );
+  });
+
+  it('una ruta relativa del backend se resuelve contra API_URL', async () => {
+    const resolve = await buildResolveInventarioImageUrl({ supabaseUrl: 'https://proyecto.supabase.co', apiUrl: 'https://api.jonnys.hn' });
+    assert.equal(resolve('/uploads/productos/294.webp'), 'https://api.jonnys.hn/uploads/productos/294.webp');
+  });
+
+  it('una cadena vacia (o solo espacios) produce cadena vacia -> los componentes muestran el placeholder', async () => {
+    const resolve = await buildResolveInventarioImageUrl({ supabaseUrl: 'https://proyecto.supabase.co', apiUrl: 'https://api.jonnys.hn' });
+    assert.equal(resolve(''), '');
+    assert.equal(resolve('   '), '');
+    assert.equal(resolve(null), '');
+    assert.equal(resolve(undefined), '');
+  });
+
+  it('jonnys-assets/... sin SUPABASE_URL configurado cae al fallback de API_URL (nunca revienta)', async () => {
+    const resolve = await buildResolveInventarioImageUrl({ supabaseUrl: '', apiUrl: 'https://api.jonnys.hn' });
+    assert.equal(resolve('jonnys-assets/productos/294.webp'), 'https://api.jonnys.hn/jonnys-assets/productos/294.webp');
   });
 });

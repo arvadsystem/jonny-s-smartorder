@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import ToolbarSucursalSelect from '../../../../components/common/ToolbarSucursalSelect';
+import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
 import {
   computeCanjeCartAfterAdd,
   computeCanjeConfirmDisabled,
@@ -17,9 +18,12 @@ const buildEmptyStateMessage = (backendMessage, saldoDisponible, sucursalMissing
 
 // Mismo patron de imagen/placeholder que VentaComposerCatalog.jsx (.vcp-card):
 // sin manejo de estado en React, la propia imagen oculta su <img> y revela
-// el placeholder hermano si la URL falla (onError). No se construye la URL
-// aqui: imagen_principal_url ya viene resuelta del backend
-// (attachImagenPrincipalUrls).
+// el placeholder hermano si la URL falla (onError). imagen_principal_url ya
+// viene resuelta a URL absoluta desde el backend (attachImagenPrincipalUrls),
+// pero igual se pasa por resolveInventarioImageUrl aqui -mismo punto unico de
+// resolucion que usa VentaComposerCatalog.jsx- para cubrir rutas relativas o
+// del bucket (jonnys-assets/...) si algun dia dejan de llegar absolutas, y
+// para nunca pasar una cadena vacia como si fuera una URL valida.
 const ProductoCanjeableMedia = ({ imagenUrl, nombre, puntos }) => (
   <div className="vcp-card__media">
     <span className="fidelizacion-canje-modal__points-badge">{formatPoints(puntos)} pts</span>
@@ -231,49 +235,54 @@ export default function GenerarCanjeModal({
                 <span>{buildEmptyStateMessage(canjeablesData?.message, saldoDisponible, false)}</span>
               </div>
             ) : (
-              <div className="fidelizacion-canje-modal__products">
+              <div className="fidelizacion-canje-modal__products ventas-catalog-grid">
                 {canjeables.map((producto) => {
                   const selected = carritoMap.get(producto.id_producto);
                   const sinStock = Number(producto.stock_disponible || 0) <= 0;
+                  const imagenResuelta = resolveInventarioImageUrl(producto.imagen_principal_url);
                   return (
                     <article
                       key={producto.id_producto}
-                      className={`vcp-card canjeable-card ${selected ? 'selected' : ''} ${sinStock ? 'is-out-of-stock' : ''}`}
-                      onClick={() => handleAgregar(producto)}
+                      className={`vcp-card ventas-catalog-card-compact canjeable-card ${selected ? 'selected' : ''} ${sinStock ? 'is-out-of-stock' : ''}`}
+                      onClick={() => {
+                        if (sinStock) return;
+                        handleAgregar(producto);
+                      }}
+                      data-testid="fidelizacion-canjeable-card"
                     >
                       <ProductoCanjeableMedia
-                        imagenUrl={producto.imagen_principal_url}
+                        imagenUrl={imagenResuelta}
                         nombre={producto.nombre_producto}
                         puntos={producto.puntos_requeridos}
                       />
                       <div className="vcp-card__body">
-                        <div className="vcp-card__name">{producto.nombre_producto}</div>
+                        <div className="vcp-card__meta-row">
+                          <span className="vcp-card__kind">PRODUCTO</span>
+                          {selected ? (
+                            <span className="fidelizacion-canje-modal__selected-chip">Seleccionado: {selected.cantidad}</span>
+                          ) : null}
+                        </div>
 
-                        <div className="fidelizacion-canje-modal__meta-rows">
-                          <div className="fidelizacion-canje-modal__meta-row">
-                            <span>Precio</span>
-                            <strong>L. {formatCurrency(producto.precio)}</strong>
-                          </div>
-                          <div className="fidelizacion-canje-modal__meta-row">
-                            <span>Disponible</span>
-                            <strong>{sinStock ? 'Agotado' : `${formatPoints(producto.stock_disponible)} unidades`}</strong>
-                          </div>
+                        <h6 className="vcp-card__name" title={producto.nombre_producto}>{producto.nombre_producto}</h6>
+
+                        <div className={`vcp-card__stock ${sinStock ? 'is-empty' : ''}`}>
+                          {sinStock ? 'Agotado' : `Disponible: ${formatPoints(producto.stock_disponible)}`}
                         </div>
 
                         <div className="vcp-card__footer">
-                          <small className="text-muted">
-                            {selected ? `Seleccionado: ${selected.cantidad}` : sinStock ? 'Sin stock' : 'Disponible para canje'}
-                          </small>
+                          <span className="vcp-card__price">L {formatCurrency(producto.precio)}</span>
                           <button
                             type="button"
                             className="vcp-card__add-btn"
                             disabled={sinStock}
                             onClick={(event) => {
                               event.stopPropagation();
+                              if (sinStock) return;
                               handleAgregar(producto);
                             }}
+                            aria-label={`Agregar ${producto.nombre_producto}`}
                           >
-                            <i className="bi bi-plus-lg" /> Agregar
+                            {sinStock ? 'Sin stock' : 'Agregar +'}
                           </button>
                         </div>
                       </div>
