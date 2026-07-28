@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import fidelizacionService from '../../../../services/fidelizacionService';
 import {
+  createLatestRequestTracker,
   extractApiMessage,
   normalizeCanje,
   normalizeCanjeableResponse,
@@ -33,6 +34,11 @@ const initialCanjesPagination = {
 };
 
 export const useFidelizacion = () => {
+  // Solo la solicitud mas reciente de clientes puede aplicar su resultado:
+  // evita que una respuesta lenta de una pagina vieja sobrescriba una
+  // pagina mas nueva que ya respondio (ver createLatestRequestTracker).
+  const clientesRequestTrackerRef = useRef(createLatestRequestTracker());
+
   const [panelData, setPanelData] = useState(null);
   const [clientes, setClientes] = useState([]);
   const [clientesMeta, setClientesMeta] = useState(initialClientesPagination);
@@ -87,20 +93,43 @@ export const useFidelizacion = () => {
   }, [openToast]);
 
   const loadClientes = useCallback(async (params = {}) => {
+    const tracker = clientesRequestTrackerRef.current;
+    const requestId = tracker.start();
+
     setLoadingClientes(true);
     try {
       const response = await fidelizacionService.listClientes(params);
       const rows = normalizeEnvelopeRows(response).map(normalizeCliente);
+      const meta = normalizeEnvelopeMeta(response, Number(params?.limit) || 9);
+
+      // Una solicitud vieja que responde despues de una mas reciente no
+      // debe sobrescribir clientes/clientesMeta (respuestas fuera de orden).
+      if (!tracker.isLatest(requestId)) {
+        return rows;
+      }
+
       setClientes(rows);
-      setClientesMeta(normalizeEnvelopeMeta(response, Number(params?.limit) || 9));
+      setClientesMeta(meta);
       return rows;
     } catch (err) {
+      // Una solicitud vieja que falla despues de una mas reciente se
+      // ignora de forma controlada: sin toast, sin error visible, sin
+      // relanzar (evita un unhandled rejection en un caller que ya no
+      // esta esperando esta llamada en particular).
+      if (!tracker.isLatest(requestId)) {
+        return [];
+      }
+
       const msg = extractApiMessage(err, 'Error al cargar la lista de clientes.');
       setError(msg);
       openToast('ERROR', msg, 'danger');
       throw err;
     } finally {
-      setLoadingClientes(false);
+      // Una solicitud vieja no debe apagar el loading de una mas reciente
+      // que todavia esta en curso.
+      if (tracker.isLatest(requestId)) {
+        setLoadingClientes(false);
+      }
     }
   }, [openToast]);
 

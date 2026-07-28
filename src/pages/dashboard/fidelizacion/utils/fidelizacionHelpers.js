@@ -246,3 +246,20 @@ export const formatCurrency = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
+
+// Controlador minimo de "solo la solicitud mas reciente puede aplicar su
+// resultado", usado por loadClientes (useFidelizacion.js) para evitar que
+// una respuesta lenta de una pagina vieja sobrescriba una pagina mas
+// reciente que ya respondio. Es una funcion pura (sin React) para poder
+// probarla directamente con promesas diferidas, sin necesidad de un arnes
+// para montar hooks.
+export const createLatestRequestTracker = () => {
+  let latestId = 0;
+  return {
+    start: () => {
+      latestId += 1;
+      return latestId;
+    },
+    isLatest: (id) => id === latestId
+  };
+};

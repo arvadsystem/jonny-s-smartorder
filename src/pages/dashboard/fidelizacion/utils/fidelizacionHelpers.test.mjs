@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   buildSaveConfiguracionPayload,
   computeConfiguracionSubmitState,
+  createLatestRequestTracker,
   normalizeConfiguracion,
   normalizeEnvelopeMeta
 } from './fidelizacionHelpers.js';
@@ -347,5 +348,249 @@ describe('Responsive: la paginacion de Fidelizacion no oculta los numeros de pag
       ventasCssSource,
       /\.ventas-page \.ventas-page__pagination-bar \.inv-warehouse-moves__pagination-pages \{\s*\n\s*display: none !important;/
     );
+  });
+});
+
+// Bloqueante 2 (auditoria independiente): loadClientes no descartaba
+// respuestas fuera de orden. createLatestRequestTracker es el helper puro
+// (sin React) que useFidelizacion.js usa de verdad dentro de loadClientes
+// para resolver esto; aqui se prueba ese MISMO helper con promesas
+// diferidas, simulando el mismo patron (start -> await -> isLatest ->
+// aplicar-o-descartar) que loadClientes ejecuta en produccion. No existe
+// un arnes para montar hooks en este repo (ver comentario al inicio del
+// archivo), asi que este es el camino que el propio requerimiento permite
+// como alternativa: probar el helper real con promesas diferidas.
+
+const createDeferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+};
+
+// Mismo patron que loadClientes real (useFidelizacion.js): start() antes
+// de esperar la respuesta, isLatest() antes de aplicar datos/metadata,
+// isLatest() antes de mostrar un error/toast, isLatest() antes de apagar
+// loading. state es un objeto mutable compartido que representa lo que
+// loadClientes expone (clientes/clientesMeta/loadingClientes/toastCount).
+const simulateLoadClientes = (tracker, state, deferred, pageLabel) => {
+  const requestId = tracker.start();
+  state.loadingClientes = true;
+
+  return deferred.promise
+    .then((response) => {
+      if (!tracker.isLatest(requestId)) return response;
+      state.clientes = response.clientes;
+      state.clientesMeta = { page: response.page };
+      return response;
+    })
+    .catch((error) => {
+      if (!tracker.isLatest(requestId)) return undefined;
+      state.toastCount += 1;
+      state.lastError = error;
+      throw error;
+    })
+    .finally(() => {
+      if (tracker.isLatest(requestId)) {
+        state.loadingClientes = false;
+      }
+    });
+};
+
+describe('createLatestRequestTracker: solo la solicitud mas reciente aplica su resultado (helper real de loadClientes, con promesas diferidas)', () => {
+  it('escenario 1: B (pagina 3) resuelve antes que A (pagina 2); A llega despues y queda ignorada', async () => {
+    const tracker = createLatestRequestTracker();
+    const state = { clientes: [], clientesMeta: null, loadingClientes: false, toastCount: 0, lastError: null };
+    const deferredA = createDeferred();
+    const deferredB = createDeferred();
+
+    const taskA = simulateLoadClientes(tracker, state, deferredA, 'pagina-2');
+    const taskB = simulateLoadClientes(tracker, state, deferredB, 'pagina-3');
+
+    deferredB.resolve({ clientes: ['cliente-b'], page: 3 });
+    await taskB;
+    assert.deepEqual(state.clientes, ['cliente-b']);
+    assert.deepEqual(state.clientesMeta, { page: 3 });
+
+    deferredA.resolve({ clientes: ['cliente-a'], page: 2 });
+    await taskA;
+    // A (obsoleta) no debe sobrescribir los datos/metadata que ya aplico B.
+    assert.deepEqual(state.clientes, ['cliente-b']);
+    assert.deepEqual(state.clientesMeta, { page: 3 });
+  });
+
+  it('escenario 2: B queda pendiente; A termina primero y NO apaga loading; B termina despues y si lo apaga', async () => {
+    const tracker = createLatestRequestTracker();
+    const state = { clientes: [], clientesMeta: null, loadingClientes: false, toastCount: 0, lastError: null };
+    const deferredA = createDeferred();
+    const deferredB = createDeferred();
+
+    const taskA = simulateLoadClientes(tracker, state, deferredA, 'A');
+    const taskB = simulateLoadClientes(tracker, state, deferredB, 'B');
+    assert.equal(state.loadingClientes, true);
+
+    deferredA.resolve({ clientes: [], page: 1 });
+    await taskA;
+    assert.equal(state.loadingClientes, true, 'A (obsoleta) no debe apagar el loading de B, que sigue pendiente');
+
+    deferredB.resolve({ clientes: [], page: 1 });
+    await taskB;
+    assert.equal(state.loadingClientes, false, 'B (vigente) si debe apagar el loading al terminar');
+  });
+
+  it('escenario 3: A falla despues de que empezo B; A no genera toast ni error visible; B responde bien y actualiza la vista', async () => {
+    const tracker = createLatestRequestTracker();
+    const state = { clientes: [], clientesMeta: null, loadingClientes: false, toastCount: 0, lastError: null };
+    const deferredA = createDeferred();
+    const deferredB = createDeferred();
+
+    const taskA = simulateLoadClientes(tracker, state, deferredA, 'A');
+    const taskB = simulateLoadClientes(tracker, state, deferredB, 'B');
+
+    deferredA.reject(new Error('A goes down'));
+    // La solicitud obsoleta se ignora de forma controlada: no debe
+    // relanzar ni producir un unhandled rejection.
+    await assert.doesNotReject(taskA);
+    assert.equal(state.toastCount, 0, 'A obsoleta no debe generar toast');
+    assert.equal(state.lastError, null, 'A obsoleta no debe dejar un error visible');
+
+    deferredB.resolve({ clientes: ['cliente-b'], page: 3 });
+    await taskB;
+    assert.deepEqual(state.clientes, ['cliente-b'], 'B (vigente) si debe actualizar la vista');
+  });
+
+  it('un id repetido nunca es "latest" dos veces: cada start() invalida el anterior', () => {
+    const tracker = createLatestRequestTracker();
+    const idA = tracker.start();
+    assert.equal(tracker.isLatest(idA), true);
+    const idB = tracker.start();
+    assert.equal(tracker.isLatest(idA), false);
+    assert.equal(tracker.isLatest(idB), true);
+  });
+});
+
+describe('useFidelizacion.js: loadClientes usa createLatestRequestTracker (el mismo helper probado arriba, no una implementacion paralela)', () => {
+  const getSource = () => readFile(new URL('../hooks/useFidelizacion.js', import.meta.url), 'utf8');
+
+  it('importa createLatestRequestTracker desde fidelizacionHelpers (no duplica el controlador)', async () => {
+    const source = await getSource();
+    assert.match(source, /createLatestRequestTracker/);
+    assert.match(source, /from '\.\.\/utils\/fidelizacionHelpers'/);
+  });
+
+  it('crea el tracker con useRef (identificador monotonico que sobrevive entre renders)', async () => {
+    const source = await getSource();
+    assert.match(source, /const clientesRequestTrackerRef = useRef\(createLatestRequestTracker\(\)\);/);
+  });
+
+  it('loadClientes llama tracker.start() antes de la llamada al servicio', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const loadClientes = useCallback');
+    const end = source.indexOf('}, [openToast]);', start);
+    const block = source.slice(start, end);
+    assert.match(block, /const requestId = tracker\.start\(\);/);
+    const requestIdIdx = block.indexOf('const requestId = tracker.start();');
+    const fetchIdx = block.indexOf('fidelizacionService.listClientes(params)');
+    assert.ok(requestIdIdx < fetchIdx, 'el requestId debe capturarse antes de iniciar la peticion');
+  });
+
+  it('solo aplica clientes/clientesMeta si tracker.isLatest(requestId) sigue siendo verdadero', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const loadClientes = useCallback');
+    const end = source.indexOf('}, [openToast]);', start);
+    const block = source.slice(start, end);
+    assert.match(block, /if \(!tracker\.isLatest\(requestId\)\) \{\s*\n\s*return rows;\s*\n\s*\}/);
+    const guardIdx = block.search(/if \(!tracker\.isLatest\(requestId\)\) \{\s*\n\s*return rows;/);
+    const setClientesIdx = block.indexOf('setClientes(rows);');
+    assert.ok(guardIdx < setClientesIdx, 'el guard de frescura debe evaluarse antes de aplicar setClientes');
+  });
+
+  it('una solicitud obsoleta que falla no muestra toast ni error (se ignora antes del catch actual)', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const loadClientes = useCallback');
+    const end = source.indexOf('}, [openToast]);', start);
+    const block = source.slice(start, end);
+    const catchIdx = block.indexOf('} catch (err) {');
+    const catchBlock = block.slice(catchIdx);
+    const staleGuardIdx = catchBlock.search(/if \(!tracker\.isLatest\(requestId\)\) \{\s*\n\s*return \[\];\s*\n\s*\}/);
+    const openToastIdx = catchBlock.indexOf('openToast(');
+    assert.notEqual(staleGuardIdx, -1);
+    assert.ok(staleGuardIdx < openToastIdx, 'el guard de solicitud obsoleta debe evaluarse antes de abrir el toast');
+  });
+
+  it('una solicitud obsoleta no apaga loadingClientes (guard tambien en el finally)', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const loadClientes = useCallback');
+    const end = source.indexOf('}, [openToast]);', start);
+    const block = source.slice(start, end);
+    const finallyIdx = block.indexOf('} finally {');
+    const finallyBlock = block.slice(finallyIdx);
+    assert.match(finallyBlock, /if \(tracker\.isLatest\(requestId\)\) \{\s*\n\s*setLoadingClientes\(false\);\s*\n\s*\}/);
+  });
+});
+
+describe('SecurityPaginationBar.jsx: prop "disabled" retrocompatible', () => {
+  const getSource = () => readFile(new URL('../../seguridad/components/SecurityPaginationBar.jsx', import.meta.url), 'utf8');
+
+  it('disabled tiene default false', async () => {
+    const source = await getSource();
+    assert.match(source, /disabled = false,/);
+  });
+
+  it('Anterior queda deshabilitado con disabled=true o en la primera pagina (comportamiento anterior conservado con ||)', async () => {
+    const source = await getSource();
+    assert.match(source, /disabled=\{disabled \|\| safeCurrentPage <= 1\}/);
+  });
+
+  it('todos los numeros de pagina quedan deshabilitados con disabled=true', async () => {
+    const source = await getSource();
+    const start = source.indexOf('{visiblePages.map((pageNumber) => (');
+    const end = source.indexOf('))}', start);
+    const block = source.slice(start, end);
+    assert.match(block, /disabled=\{disabled\}/);
+  });
+
+  it('Siguiente queda deshabilitado con disabled=true o en la ultima pagina (comportamiento anterior conservado con ||)', async () => {
+    const source = await getSource();
+    assert.match(source, /disabled=\{disabled \|\| safeCurrentPage >= totalPages\}/);
+  });
+
+  it('aria-busy en el contenedor principal refleja disabled', async () => {
+    const source = await getSource();
+    assert.match(source, /aria-busy=\{disabled\}/);
+  });
+
+  it('emitPage no llama a onPageChange cuando disabled=true (guard explicito, no solo el atributo HTML disabled)', async () => {
+    const source = await getSource();
+    const start = source.indexOf('const emitPage = (nextPage) => {');
+    const end = source.indexOf('};', start);
+    const block = source.slice(start, end);
+    assert.match(block, /if \(disabled\) return;/);
+    const disabledGuardIdx = block.indexOf('if (disabled) return;');
+    const onPageChangeIdx = block.indexOf('onPageChange(safeNext);');
+    assert.ok(disabledGuardIdx < onPageChangeIdx, 'el guard de disabled debe evaluarse antes de emitir onPageChange');
+  });
+
+  it('sin la prop disabled, el comportamiento anterior se conserva exactamente (|| false no cambia nada)', async () => {
+    const source = await getSource();
+    // safeCurrentPage <= 1 / >= totalPages siguen siendo, por si solos,
+    // suficientes para deshabilitar Anterior/Siguiente cuando disabled
+    // es false (valor por defecto): "false || X" === X.
+    assert.match(source, /disabled=\{disabled \|\| safeCurrentPage <= 1\}/);
+    assert.match(source, /disabled=\{disabled \|\| safeCurrentPage >= totalPages\}/);
+  });
+
+  it('Ventas y Seguridad no necesitan enviar la nueva prop: ningun otro archivo referencia disabled= al usar SecurityPaginationBar', async () => {
+    const ventasListSource = await readFile(
+      new URL('../../ventas/components/VentasList.jsx', import.meta.url),
+      'utf8'
+    );
+    const start = ventasListSource.indexOf('<SecurityPaginationBar');
+    const end = ventasListSource.indexOf('/>', start);
+    const block = ventasListSource.slice(start, end);
+    assert.doesNotMatch(block, /disabled=/, 'VentasList no deberia haberse tocado para esta correccion');
   });
 });

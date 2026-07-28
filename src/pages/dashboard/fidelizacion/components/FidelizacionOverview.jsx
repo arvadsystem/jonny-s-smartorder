@@ -374,6 +374,7 @@ export default function FidelizacionOverview({
               onPageChange={onPageChange}
               maxVisible={5}
               className="ventas-page__pagination-bar"
+              disabled={loadingClientes}
             />
             <div className="ventas-page__page-size-label">
               <span>9 por página</span>
