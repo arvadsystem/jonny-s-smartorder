@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import ToolbarSucursalSelect from '../../../../components/common/ToolbarSucursalSelect';
+import fidelizacionService from '../../../../services/fidelizacionService';
 import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
 import {
   computeCanjeCartAfterAdd,
   computeCanjeConfirmDisabled,
   consumeHandledAsyncError,
+  extractApiMessage,
   formatCurrency,
   formatPoints
 } from '../utils/fidelizacionHelpers';
@@ -55,7 +57,7 @@ export default function GenerarCanjeModal({
   loadingCanjeables,
   onLoadCanjeables,
   onResetCanjeables,
-  isSuperAdmin,
+  canSelectSucursal,
   sucursales,
   loadingSucursales,
   userSucursalId,
@@ -66,12 +68,20 @@ export default function GenerarCanjeModal({
   const [carrito, setCarrito] = useState([]);
   const [observacion, setObservacion] = useState('');
   const [selectedSucursalId, setSelectedSucursalId] = useState('');
+  const [sesiones, setSesiones] = useState([]);
+  const [selectedSesionId, setSelectedSesionId] = useState('');
+  const [loadingSesiones, setLoadingSesiones] = useState(false);
+  const [sesionesError, setSesionesError] = useState('');
 
   const canjeables = Array.isArray(canjeablesData?.items) ? canjeablesData.items : [];
   const saldoDisponible = Number(canjeablesData?.saldoCliente?.puntos_disponibles ?? cliente?.puntos_disponibles ?? 0);
   const sucursalNumerica = Number.parseInt(String(selectedSucursalId || ''), 10);
   const hasSucursalSeleccionada = Number.isInteger(sucursalNumerica) && sucursalNumerica > 0;
-  const sucursalMissing = isSuperAdmin && !hasSucursalSeleccionada;
+  const sucursalMissing = canSelectSucursal && !hasSucursalSeleccionada;
+  const sessionMissing = canSelectSucursal
+    && hasSucursalSeleccionada
+    && !loadingSesiones
+    && (!sesiones.length || !selectedSesionId);
 
   // Al abrir el modal (o cambiar de cliente): carrito vacio y sucursal
   // vacia para SUPER_ADMIN (nunca precargada con userSucursalId en
@@ -79,11 +89,21 @@ export default function GenerarCanjeModal({
   // inmediato y no es editable desde aqui.
   useEffect(() => {
     if (!open) return;
-    setCarrito([]);
-    setObservacion('');
-    setSelectedSucursalId(isSuperAdmin ? '' : (userSucursalId ? String(userSucursalId) : ''));
-    if (onResetCanjeables) onResetCanjeables();
-  }, [open, cliente?.id_cliente, isSuperAdmin, userSucursalId, onResetCanjeables]);
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      setCarrito([]);
+      setObservacion('');
+      setSelectedSucursalId(canSelectSucursal ? '' : (userSucursalId ? String(userSucursalId) : ''));
+      setSesiones([]);
+      setSelectedSesionId('');
+      setSesionesError('');
+      if (onResetCanjeables) onResetCanjeables();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, cliente?.id_cliente, canSelectSucursal, userSucursalId, onResetCanjeables]);
 
   // Carga (o recarga) el catalogo de canjeables cada vez que hay una
   // sucursal resuelta: nunca antes de que exista una (SUPER_ADMIN sin
@@ -93,6 +113,38 @@ export default function GenerarCanjeModal({
     void consumeHandledAsyncError(() => onLoadCanjeables(cliente.id_cliente, { id_sucursal: sucursalNumerica }));
     return undefined;
   }, [open, cliente?.id_cliente, hasSucursalSeleccionada, sucursalNumerica, onLoadCanjeables]);
+
+  useEffect(() => {
+    if (!open || !canSelectSucursal || !hasSucursalSeleccionada) return undefined;
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setLoadingSesiones(true);
+        setSesionesError('');
+      }
+    });
+    fidelizacionService.listCanjeSesiones({ id_sucursal: sucursalNumerica })
+      .then((response) => {
+        if (cancelled) return;
+        const items = Array.isArray(response?.items)
+          ? response.items
+          : Array.isArray(response?.data?.items) ? response.data.items : [];
+        setSesiones(items);
+        setSelectedSesionId(items.length === 1 ? String(items[0].id_sesion_caja) : '');
+      })
+      .catch((requestError) => {
+        if (cancelled) return;
+        setSesiones([]);
+        setSelectedSesionId('');
+        setSesionesError(extractApiMessage(requestError, 'No se pudieron cargar las sesiones de caja.'));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSesiones(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSelectSucursal, hasSucursalSeleccionada, open, sucursalNumerica]);
 
   useEffect(() => {
     if (!open || saving) return undefined;
@@ -111,6 +163,9 @@ export default function GenerarCanjeModal({
     setSelectedSucursalId(value);
     setCarrito([]);
     setObservacion('');
+    setSesiones([]);
+    setSelectedSesionId('');
+    setSesionesError('');
   };
 
   const carritoMap = useMemo(
@@ -150,10 +205,11 @@ export default function GenerarCanjeModal({
     carrito,
     saldoInsuficiente
   });
+  const finalConfirmDisabled = confirmDisabled || loadingSesiones || sessionMissing;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (confirmDisabled) return;
+    if (finalConfirmDisabled) return;
 
     await onSubmit(
       carrito.map((item) => ({
@@ -161,7 +217,8 @@ export default function GenerarCanjeModal({
         cantidad: item.cantidad
       })),
       observacion.trim(),
-      sucursalNumerica
+      sucursalNumerica,
+      canSelectSucursal ? Number(selectedSesionId) : null
     );
   };
 
@@ -197,7 +254,7 @@ export default function GenerarCanjeModal({
         <form className="ventas-modal__body ventas-create-modal__body fidelizacion-canje-modal__body" onSubmit={handleSubmit}>
           <div className="ventas-create-modal__catalog">
             <div className="fidelizacion-canje-modal__sucursal-bar">
-              {isSuperAdmin ? (
+              {canSelectSucursal ? (
                 <ToolbarSucursalSelect
                   value={selectedSucursalId}
                   onChange={handleSucursalChange}
@@ -214,6 +271,31 @@ export default function GenerarCanjeModal({
                 </div>
               )}
             </div>
+
+            {canSelectSucursal && hasSucursalSeleccionada ? (
+              <div className="fidelizacion-canje-modal__session-bar">
+                <label className="form-label" htmlFor="fidelizacion-canje-sesion">Sesión de caja</label>
+                {loadingSesiones ? (
+                  <div className="form-control bg-light">Cargando sesiones abiertas...</div>
+                ) : sesiones.length === 1 ? (
+                  <div className="form-control bg-light" id="fidelizacion-canje-sesion">
+                    {sesiones[0].codigo_caja || `Caja #${sesiones[0].id_caja}`} · Sesión #{sesiones[0].id_sesion_caja}
+                  </div>
+                ) : sesiones.length > 1 ? (
+                  <select id="fidelizacion-canje-sesion" className="form-select" value={selectedSesionId} onChange={(event) => setSelectedSesionId(event.target.value)} required>
+                    <option value="">Selecciona una sesión</option>
+                    {sesiones.map((sesion) => (
+                      <option key={sesion.id_sesion_caja} value={sesion.id_sesion_caja}>
+                        {sesion.codigo_caja || `Caja #${sesion.id_caja}`} · {sesion.nombre_caja || 'Caja'} · Sesión #{sesion.id_sesion_caja}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="alert alert-warning mb-0">No hay sesiones de caja abiertas disponibles en esta sucursal.</div>
+                )}
+                {sesionesError ? <div className="alert alert-danger mt-2 mb-0">{sesionesError}</div> : null}
+              </div>
+            ) : null}
 
             {sucursalMissing ? (
               <div className="ventas-create-modal__empty fidelizacion-canje-modal__empty">
@@ -305,7 +387,7 @@ export default function GenerarCanjeModal({
               <div className="d-flex justify-content-between text-muted small fw-medium mb-1">
                 <span>Sucursal del canje</span>
                 <span className="text-end">
-                  {isSuperAdmin
+                  {canSelectSucursal
                     ? (sucursales.find((row) => String(row.id_sucursal) === selectedSucursalId)?.nombre_sucursal || 'Sin seleccionar')
                     : (userSucursalNombre || 'Sucursal operativa')}
                 </span>
@@ -400,7 +482,7 @@ export default function GenerarCanjeModal({
               </button>
               <button
                 type="submit"
-                disabled={confirmDisabled}
+                disabled={finalConfirmDisabled}
                 className="btn btn-danger rounded-3 px-5 fw-bold shadow-sm"
               >
                 {saving ? (

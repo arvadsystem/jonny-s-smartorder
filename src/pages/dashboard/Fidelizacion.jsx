@@ -316,11 +316,12 @@ export default function FidelizacionPage() {
     }
   };
 
-  const handleCreateCanje = async (items, observacion, idSucursal) => {
+  const handleCreateCanje = async (items, observacion, idSucursal, idSesionCaja) => {
     if (!selectedCliente?.id_cliente) return null;
     const response = await createCanje({
       id_cliente: selectedCliente.id_cliente,
       id_sucursal: idSucursal,
+      ...(idSesionCaja ? { id_sesion_caja: idSesionCaja } : {}),
       items,
       observacion
     });
@@ -462,7 +463,7 @@ export default function FidelizacionPage() {
         loadingCanjeables={loadingCanjeables}
         onLoadCanjeables={loadCanjeables}
         onResetCanjeables={resetCanjeables}
-        isSuperAdmin={isSuperAdmin}
+        canSelectSucursal={canScopeMulti}
         sucursales={sucursales}
         loadingSucursales={loadingSucursales}
         userSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}

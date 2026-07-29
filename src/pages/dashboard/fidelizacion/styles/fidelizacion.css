@@ -432,6 +432,14 @@
   margin-bottom: 16px;
 }
 
+.fidelizacion-canje-modal__session-bar {
+  margin: 0.75rem 0;
+  padding: 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
 /* ToolbarSucursalSelect (.toolbar-scope-inline) fue disenado para un
    toolbar angosto: trae min-width:260px/max-width:340px (ventas.css), asi
    que dentro del modal (bastante mas ancho) el select quedaba comprimido a

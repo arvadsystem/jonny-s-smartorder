@@ -619,6 +619,8 @@ export default function SucursalFacturacionTab({
         open={configDrawerOpen}
         sucursalNombre={selectedSucursal?.nombre_sucursal || ''}
         form={configForm || normalizeConfig()}
+        facturaPrinter={(printerBySucursal[Number(selectedSucursal?.id_sucursal)]?.impresoras || [])
+          .find((item) => item.tipo_impresora === 'FACTURA') || null}
         saving={configSaving}
         logoPreviewUrl={logoPreviewUrl}
         logoUploading={logoUploading}

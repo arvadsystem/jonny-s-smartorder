@@ -4,6 +4,15 @@ const toNumber = (value, fallback = 0) => {
 };
 
 export const extractApiMessage = (error, defaultMessage = 'Ocurrio un error inesperado.') => {
+  const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+  const mapped = {
+    FIDELIZACION_SCHEMA_PENDIENTE: 'La configuración de Fidelización requerida aún no está disponible.',
+    FIDELIZACION_CANJE_SESSION_REQUIRED: 'No hay una sesión de caja abierta disponible para registrar el canje.',
+    FIDELIZACION_CANJE_SESSION_AMBIGUOUS: 'Tienes varias sesiones de caja abiertas y no se puede determinar cuál utilizar.',
+    FIDELIZACION_CANJE_SESSION_SELECTION_REQUIRED: 'Selecciona la sesión de caja donde se registrará el canje.',
+    FIDELIZACION_CANJE_SESSION_INVALID: 'La sesión de caja seleccionada no es válida o ya no está abierta.'
+  };
+  if (mapped[code]) return mapped[code];
   if (error?.data?.message && typeof error.data.message === 'string') {
     return error.data.message;
   }

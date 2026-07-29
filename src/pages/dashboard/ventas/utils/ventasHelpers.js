@@ -162,9 +162,21 @@ export const extractApiMessage = (error, fallbackMessage) => {
 
 export const resolveVentasApiErrorMessage = (error, fallbackMessage = 'No se pudo completar la operación.') => {
   const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+  const mapped = {
+    VENTAS_REVERSION_SESSION_MISSING: 'La venta no tiene una sesión de caja original válida.',
+    VENTAS_REVERSION_SESSION_AMBIGUOUS: 'La venta tiene cobros asociados a más de una sesión de caja.',
+    VENTAS_REVERSION_SESSION_MISMATCH: 'La sesión de caja original no coincide con la venta.',
+    VENTAS_REVERSION_SESION_CERRADA: 'La sesión original de caja ya fue cerrada.',
+    VENTAS_REVERSION_PREPARACION_INICIADA: 'La venta ya inició preparación y no puede reversarse.',
+    VENTAS_REVERSION_CANTIDAD_EXCEDE_DISPONIBLE: 'La cantidad solicitada supera la cantidad disponible.',
+    VENTAS_REVERSION_TOTALMENTE_APLICADA: 'La factura ya fue reversada completamente.',
+    VENTAS_REVERSION_INVENTARIO_TRACE_REQUIRED: 'No se pudo verificar el rastro de inventario requerido para esta reversión.',
+    FIDELIZACION_SCHEMA_PENDIENTE: 'La configuración de Fidelización requerida aún no está disponible.',
+    PRINTING_REVERSION_SCHEMA_PENDIENTE: 'La cola de impresión de reversiones aún no está disponible.'
+  };
+  if (mapped[code]) return mapped[code];
   const message = extractApiMessage(error, fallbackMessage);
-  if (!code || message.includes(code)) return message;
-  return `${message} (${code})`;
+  return message;
 };
 
 export const normalizeCategoriaRecord = (row) => ({
@@ -408,6 +420,7 @@ export const normalizeVentaDetail = (row) => {
     id_reversion: Number(reversion?.id_reversion ?? 0) || null,
     codigo_reversion: String(reversion?.codigo_reversion ?? ''),
     tipo_reversion: String(reversion?.tipo_reversion ?? ''),
+    resultado_acumulado: String(reversion?.resultado_acumulado ?? reversion?.estado_acumulado_resultante ?? ''),
     motivo: String(reversion?.motivo ?? ''),
     observacion: String(reversion?.observacion ?? '').trim(),
     monto_reversado: roundMoney(reversion?.monto_reversado),

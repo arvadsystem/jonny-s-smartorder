@@ -913,18 +913,18 @@ describe('GenerarCanjeModal.jsx: el efecto que dispara onLoadCanjeables consume 
   });
 });
 
-describe('GenerarCanjeModal.jsx: selector de sucursal obligatorio para SUPER_ADMIN', () => {
+describe('GenerarCanjeModal.jsx: selector de sucursal para usuarios con alcance multisucursal', () => {
   const getSource = () => readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
 
-  it('SUPER_ADMIN ve un selector (ToolbarSucursalSelect); un usuario local ve una etiqueta de solo lectura', async () => {
+  it('un usuario multisucursal ve ToolbarSucursalSelect; un usuario local ve una etiqueta de solo lectura', async () => {
     const source = await getSource();
-    assert.match(source, /\{isSuperAdmin \? \(\s*\n\s*<ToolbarSucursalSelect/);
+    assert.match(source, /\{canSelectSucursal \? \(\s*\n\s*<ToolbarSucursalSelect/);
     assert.match(source, /fidelizacion-canje-modal__sucursal-readonly/);
   });
 
-  it('el selector inicia vacio cada vez que se abre el modal (nunca precargado con userSucursalId para SUPER_ADMIN)', async () => {
+  it('el selector inicia vacio cada vez que se abre el modal para alcance multisucursal', async () => {
     const source = await getSource();
-    assert.match(source, /setSelectedSucursalId\(isSuperAdmin \? '' : \(userSucursalId \? String\(userSucursalId\) : ''\)\)/);
+    assert.match(source, /setSelectedSucursalId\(canSelectSucursal \? '' : \(userSucursalId \? String\(userSucursalId\) : ''\)\)/);
   });
 
   it('no se cargan productos antes de seleccionar sucursal: el efecto de carga exige hasSucursalSeleccionada', async () => {
@@ -960,7 +960,7 @@ describe('GenerarCanjeModal.jsx: selector de sucursal obligatorio para SUPER_ADM
     const end = source.indexOf('if (!open) return null;', start);
     const block = source.slice(start, end);
     assert.match(block, /await onSubmit\(/);
-    assert.match(block, /sucursalNumerica\s*\n\s*\);/);
+    assert.match(block, /sucursalNumerica,\s*\n\s*canSelectSucursal \? Number\(selectedSesionId\) : null\s*\n\s*\);/);
   });
 
   it('Confirmar canje usa computeCanjeConfirmDisabled (no una segunda copia de la regla de bloqueo)', async () => {
@@ -1305,13 +1305,14 @@ describe('Fidelizacion.jsx: no precarga canjeables y propaga id_sucursal al conf
     assert.doesNotMatch(block, /getClienteCanjeables/);
   });
 
-  it('handleCreateCanje recibe idSucursal y lo incluye en el payload de createCanje', async () => {
+  it('handleCreateCanje recibe sucursal y sesion e incluye ambas en el payload de createCanje', async () => {
     const source = await getSource();
-    const start = source.indexOf('const handleCreateCanje = async (items, observacion, idSucursal) => {');
+    const start = source.indexOf('const handleCreateCanje = async (items, observacion, idSucursal, idSesionCaja) => {');
     assert.notEqual(start, -1);
     const end = source.indexOf('};', start);
     const block = source.slice(start, end);
     assert.match(block, /id_sucursal: idSucursal,/);
+    assert.match(block, /id_sesion_caja: idSesionCaja/);
   });
 
   it('la carga de sucursales tambien se activa para canUseCanjeFlow (no solo canScopeMulti): necesaria para el selector y la etiqueta de sucursal operativa', async () => {
@@ -1319,12 +1320,12 @@ describe('Fidelizacion.jsx: no precarga canjeables y propaga id_sucursal al conf
     assert.match(source, /if \(!canScopeMulti && !canUseCanjeFlow\) return undefined;/);
   });
 
-  it('GenerarCanjeModal recibe isSuperAdmin, sucursales, userSucursalId, userSucursalNombre y los manejadores del catalogo de canjeables', async () => {
+  it('GenerarCanjeModal recibe alcance, sucursales y los manejadores del catalogo de canjeables', async () => {
     const source = await getSource();
     const start = source.indexOf('<GenerarCanjeModal');
     const end = source.indexOf('/>', start);
     const block = source.slice(start, end);
-    assert.match(block, /isSuperAdmin=\{isSuperAdmin\}/);
+    assert.match(block, /canSelectSucursal=\{canScopeMulti\}/);
     assert.match(block, /sucursales=\{sucursales\}/);
     assert.match(block, /userSucursalId=\{/);
     assert.match(block, /userSucursalNombre=\{userSucursalNombre\}/);
@@ -1946,5 +1947,39 @@ describe('resolveInventarioImageUrl (utils/inventarioImagenes.js): logica real e
   it('jonnys-assets/... sin SUPABASE_URL configurado cae al fallback de API_URL (nunca revienta)', async () => {
     const resolve = await buildResolveInventarioImageUrl({ supabaseUrl: '', apiUrl: 'https://api.jonnys.hn' });
     assert.equal(resolve('jonnys-assets/productos/294.webp'), 'https://api.jonnys.hn/jonnys-assets/productos/294.webp');
+  });
+});
+
+describe('GenerarCanjeModal: sesion de caja autorizada sin alterar tarjetas compactas', () => {
+  const getSource = () => readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
+
+  it('cajero no ve selector y administrador carga sesiones por sucursal', async () => {
+    const source = await getSource();
+    assert.match(source, /canSelectSucursal && hasSucursalSeleccionada/);
+    assert.match(source, /listCanjeSesiones\(\{ id_sucursal: sucursalNumerica \}\)/);
+    assert.match(source, /id="fidelizacion-canje-sesion"/);
+  });
+
+  it('una sesion se preselecciona, varias exigen seleccion y ninguna bloquea', async () => {
+    const source = await getSource();
+    assert.match(source, /items\.length === 1 \? String\(items\[0\]\.id_sesion_caja\) : ''/);
+    assert.match(source, /sesiones\.length > 1/);
+    assert.match(source, /sessionMissing/);
+    assert.match(source, /finalConfirmDisabled/);
+  });
+
+  it('envia id_sesion_caja y cambiar sucursal limpia carrito y sesion', async () => {
+    const modal = await getSource();
+    const page = await readFile(new URL('../../Fidelizacion.jsx', import.meta.url), 'utf8');
+    assert.match(modal, /setCarrito\(\[\]\)/);
+    assert.match(modal, /setSelectedSesionId\(''\)/);
+    assert.match(page, /id_sesion_caja: idSesionCaja/);
+  });
+
+  it('conserva las tarjetas compactas y resolucion de imagen existentes', async () => {
+    const source = await getSource();
+    assert.match(source, /ventas-catalog-card-compact canjeable-card/);
+    assert.match(source, /resolveInventarioImageUrl/);
+    assert.match(source, /fidelizacion-canje-modal__cart-item/);
   });
 });

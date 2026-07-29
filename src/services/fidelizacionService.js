@@ -32,6 +32,9 @@ const fidelizacionService = {
   saveConfiguracion: (payload) => apiFetch('/fidelizacion/configuracion', 'PUT', payload),
   
   createCanje: (payload) => apiFetch('/fidelizacion/canjes', 'POST', payload),
+
+  listCanjeSesiones: (params = {}) =>
+    apiFetch(`/fidelizacion/canje-sesiones${buildQuery(params)}`, 'GET'),
   
   listCanjes: (params = {}) => apiFetch(`/fidelizacion/canjes${buildQuery(params)}`, 'GET'),
   
