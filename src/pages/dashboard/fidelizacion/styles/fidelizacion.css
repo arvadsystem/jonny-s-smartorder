@@ -172,7 +172,12 @@
 
 .fidelizacion-canje-modal__products {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* 2 columnas fijas (no 3): con minmax(220px,1fr) el catalogo llegaba a 3
+     columnas en el ancho real del modal, dejando muy poco espacio para el
+     cuerpo de la tarjeta compacta (82px de imagen + el resto), y el precio
+     se superponia con el boton "Agregar +". Con 2 columnas cada tarjeta
+     conserva ancho suficiente para precio y boton sin solaparse. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   overflow-y: auto;
   padding-right: 4px;
@@ -362,14 +367,48 @@
   min-height: 0;
 }
 
-.fidelizacion-canje-modal__cart-product {
+/* Carrito compacto: cada item en dos renglones (nombre+subtotal, luego los
+   botones de cantidad) en vez de una tabla de 3 columnas fijas. Sin stock
+   disponible visible (se sigue respetando como limite del boton "+", solo
+   se dejo de mostrar como texto) y sin necesidad de scroll horizontal, ni
+   siquiera en el panel lateral angosto del modal. */
+.fidelizacion-canje-modal__cart-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
-.fidelizacion-canje-modal__cart-product small {
-  color: rgba(82, 44, 34, 0.72);
+.fidelizacion-canje-modal__cart-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.fidelizacion-canje-modal__cart-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fidelizacion-canje-modal__cart-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2f1a10;
+  font-size: 0.86rem;
+}
+
+.fidelizacion-canje-modal__cart-item-subtotal {
+  flex-shrink: 0;
+  color: #9a5319;
+  font-weight: 700;
+  font-size: 0.86rem;
 }
 
 .fidelizacion-canje-modal__qty {
@@ -852,6 +891,13 @@
   .fidelizacion-canje-modal,
   .fidelizacion-config-modal {
     width: calc(100% - 14px);
+  }
+
+  /* Una sola columna de productos en movil: con 2 columnas fijas, una
+     tarjeta compacta (imagen de 78px + cuerpo) queda demasiado angosta para
+     precio y boton en un telefono. */
+  .fidelizacion-canje-modal__products {
+    grid-template-columns: 1fr;
   }
 
   /* Movil (<=575.98px): columna de imagen un poco mas angosta, misma

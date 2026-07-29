@@ -344,47 +344,39 @@ export default function GenerarCanjeModal({
               {carrito.length === 0 ? (
                 <div className="ventas-detail-modal__empty">Selecciona al menos un producto para canjear.</div>
               ) : (
-                <div className="ventas-detail-modal__table-wrap">
-                  <table className="table ventas-detail-modal__table">
-                    <thead>
-                      <tr>
-                        <th>Producto</th>
-                        <th className="text-center">Cantidad</th>
-                        <th className="text-end">Subtotal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {carrito.map((item) => (
-                        <tr key={item.id_producto}>
-                          <td>
-                            <div className="fidelizacion-canje-modal__cart-product">
-                              <strong>{item.nombre_producto}</strong>
-                              <small>Disponible: {formatPoints(item.stock_disponible)}</small>
-                            </div>
-                          </td>
-                          <td className="text-center">
-                            <div className="btn-group btn-group-sm fidelizacion-canje-modal__qty">
-                              <button type="button" className="btn btn-outline-secondary" onClick={() => handleQuitar(item.id_producto)}>
-                                -
-                              </button>
-                              <button type="button" className="btn btn-light text-dark fw-bold px-3 border-secondary border-opacity-25" disabled>
-                                {item.cantidad}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-outline-secondary"
-                                onClick={() => handleAgregar(item)}
-                                disabled={Number(item.stock_disponible || 0) > 0 && item.cantidad >= Number(item.stock_disponible)}
-                              >
-                                +
-                              </button>
-                            </div>
-                          </td>
-                          <td className="text-end fw-semibold">{formatPoints(item.puntos_requeridos * item.cantidad)} pts</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                // Lista compacta de dos renglones por item (nunca una tabla
+                // con columnas fijas): el nombre/subtotal ya no compiten en
+                // ancho con los botones de cantidad, asi que el carrito no
+                // necesita scroll horizontal ni en el panel angosto.
+                <div className="fidelizacion-canje-modal__cart-list">
+                  {carrito.map((item) => (
+                    <div key={item.id_producto} className="fidelizacion-canje-modal__cart-item">
+                      <div className="fidelizacion-canje-modal__cart-item-row">
+                        <strong className="fidelizacion-canje-modal__cart-item-name">{item.nombre_producto}</strong>
+                        <span className="fidelizacion-canje-modal__cart-item-subtotal">
+                          {formatPoints(item.puntos_requeridos * item.cantidad)} pts
+                        </span>
+                      </div>
+                      <div className="fidelizacion-canje-modal__cart-item-row">
+                        <div className="btn-group btn-group-sm fidelizacion-canje-modal__qty">
+                          <button type="button" className="btn btn-outline-secondary" onClick={() => handleQuitar(item.id_producto)}>
+                            -
+                          </button>
+                          <button type="button" className="btn btn-light text-dark fw-bold px-3 border-secondary border-opacity-25" disabled>
+                            {item.cantidad}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary"
+                            onClick={() => handleAgregar(item)}
+                            disabled={Number(item.stock_disponible || 0) > 0 && item.cantidad >= Number(item.stock_disponible)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

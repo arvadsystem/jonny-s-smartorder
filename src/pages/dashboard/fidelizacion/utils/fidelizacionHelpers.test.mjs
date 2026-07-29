@@ -1191,6 +1191,108 @@ describe('fidelizacion.css: la tarjeta compacta de canje NO depende de .ventas-c
   });
 });
 
+// ---------------------------------------------------------------------------
+// Catalogo a 2 columnas (no 3) y carrito compacto sin scroll horizontal
+// ---------------------------------------------------------------------------
+// Defecto reportado: con 3 columnas (minmax(220px,1fr) auto-fit) el cuerpo
+// de cada tarjeta compacta (82px de imagen + resto) quedaba demasiado
+// angosto y el precio se superponia con el boton "Agregar +". Ademas, el
+// carrito lateral ("Items a canjear") era una <table> de 3 columnas fijas
+// que forzaba scroll horizontal dentro del panel angosto.
+describe('GenerarCanjeModal.jsx: catalogo a 2 columnas fijas (nunca 3), sin superposicion de precio y boton', () => {
+  const getCss = () => readFile(new URL('../styles/fidelizacion.css', import.meta.url), 'utf8');
+
+  it('.fidelizacion-canje-modal__products usa 2 columnas fijas, no auto-fit con minimo de 220px', async () => {
+    const css = await getCss();
+    const start = css.indexOf('.fidelizacion-canje-modal__products {');
+    assert.notEqual(start, -1);
+    const end = css.indexOf('}', start);
+    const block = css.slice(start, end);
+    assert.match(block, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
+    assert.doesNotMatch(block, /auto-fit/, 'ya no debe autoajustarse a 3 columnas en el ancho real del modal');
+  });
+
+  it('en movil (<=575.98px) el catalogo colapsa a una sola columna', async () => {
+    const css = await getCss();
+    const productsOccurrences = [...css.matchAll(/\.fidelizacion-canje-modal__products\s*\{/g)];
+    assert.ok(productsOccurrences.length >= 2, 'debe existir el bloque base y un override movil');
+    const mobileStart = productsOccurrences[productsOccurrences.length - 1].index;
+    const mobileEnd = css.indexOf('}', mobileStart);
+    const mobileBlock = css.slice(mobileStart, mobileEnd);
+    assert.match(mobileBlock, /grid-template-columns:\s*1fr;/);
+  });
+});
+
+describe('GenerarCanjeModal.jsx: "Items a canjear" es una lista compacta de dos renglones, sin tabla ni stock visible', () => {
+  const getSource = () => readFile(new URL('../components/GenerarCanjeModal.jsx', import.meta.url), 'utf8');
+  const getCss = () => readFile(new URL('../styles/fidelizacion.css', import.meta.url), 'utf8');
+
+  it('ya no es una <table> de 3 columnas: usa una lista (fidelizacion-canje-modal__cart-list/cart-item)', async () => {
+    const source = await getSource();
+    assert.match(source, /className="fidelizacion-canje-modal__cart-list"/);
+    assert.match(source, /className="fidelizacion-canje-modal__cart-item"/);
+    assert.doesNotMatch(source, /<table className="table ventas-detail-modal__table">/);
+  });
+
+  it('el nombre y el subtotal viven en un renglon propio, separado del renglon de los botones de cantidad', async () => {
+    const source = await getSource();
+    const start = source.indexOf('className="fidelizacion-canje-modal__cart-item"');
+    const end = source.indexOf('))}', start);
+    const block = source.slice(start, end);
+
+    const rows = [...block.matchAll(/className="fidelizacion-canje-modal__cart-item-row"/g)];
+    assert.equal(rows.length, 2, 'debe haber exactamente 2 renglones: nombre+subtotal, y cantidad');
+
+    const firstRowEnd = block.indexOf('fidelizacion-canje-modal__cart-item-row', rows[1].index);
+    const firstRow = block.slice(0, firstRowEnd);
+    assert.match(firstRow, /fidelizacion-canje-modal__cart-item-name/);
+    assert.match(firstRow, /fidelizacion-canje-modal__cart-item-subtotal/);
+
+    const secondRow = block.slice(firstRowEnd);
+    assert.match(secondRow, /fidelizacion-canje-modal__qty/);
+  });
+
+  it('ya no muestra "Disponible: N" en el carrito (el usuario pidio quitarlo de esta tarjeta)', async () => {
+    const source = await getSource();
+    const start = source.indexOf('className="fidelizacion-canje-modal__cart-list"');
+    const end = source.indexOf('className="mb-3"', start);
+    const block = source.slice(start, end);
+    assert.doesNotMatch(block, /Disponible:/);
+  });
+
+  it('el limite de stock del boton "+" se conserva como validacion funcional, aunque ya no se muestre el texto', async () => {
+    const source = await getSource();
+    assert.match(
+      source,
+      /disabled=\{Number\(item\.stock_disponible \|\| 0\) > 0 && item\.cantidad >= Number\(item\.stock_disponible\)\}/
+    );
+  });
+
+  it('la resta (-) y el boton "+" conservan handleQuitar/handleAgregar sin cambios de logica', async () => {
+    const source = await getSource();
+    assert.match(source, /onClick=\{\(\) => handleQuitar\(item\.id_producto\)\}/);
+    assert.match(source, /onClick=\{\(\) => handleAgregar\(item\)\}/);
+  });
+
+  it('el carrito ya no depende de .ventas-detail-modal__table-wrap (sin scroll horizontal propio de tabla)', async () => {
+    const source = await getSource();
+    const start = source.indexOf("carrito.length === 0");
+    const end = source.indexOf(')}', source.indexOf('fidelizacion-canje-modal__cart-list', start));
+    const block = source.slice(start, end);
+    assert.doesNotMatch(block, /ventas-detail-modal__table-wrap/);
+  });
+
+  it('cada item del carrito tiene su propia tarjeta compacta en CSS (sin ancho minimo de tabla que fuerce scroll)', async () => {
+    const css = await getCss();
+    assert.match(css, /\.fidelizacion-canje-modal__cart-item\s*\{/);
+    const start = css.indexOf('.fidelizacion-canje-modal__cart-item {');
+    const end = css.indexOf('}', start);
+    const block = css.slice(start, end);
+    assert.match(block, /display:\s*flex;/);
+    assert.match(block, /flex-direction:\s*column;/);
+  });
+});
+
 describe('Fidelizacion.jsx: no precarga canjeables y propaga id_sucursal al confirmar', () => {
   const getSource = () => readFile(new URL('../../Fidelizacion.jsx', import.meta.url), 'utf8');
 
