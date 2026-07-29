@@ -140,9 +140,16 @@ export default function VentaReversionModal({
       });
       const foundId = positiveInt(response?.data?.id_factura);
       if (!foundId) throw new Error('Venta no encontrada.');
-      setVenta(normalizeVenta(await getVentaDetail(foundId)));
+      const nextVenta = normalizeVenta(await getVentaDetail(foundId));
+      const nextFacturaId = positiveInt(nextVenta?.id_factura);
+      if (nextFacturaId !== idFactura) {
+        intentRef.current = null;
+      }
+      setConfirmOpen(false);
+      setVenta(nextVenta);
       setResult(null);
       setCantidades({});
+      setError('');
     } catch (requestError) {
       setVenta(null);
       setError(resolveVentasApiErrorMessage(requestError, 'No se encontró la venta solicitada.'));
@@ -163,7 +170,7 @@ export default function VentaReversionModal({
     submitInFlightRef.current = true;
     setSaving(true);
     setError('');
-    const intent = resolveReversionIntent(intentRef.current, payload);
+    const intent = resolveReversionIntent(intentRef.current, idFactura, payload);
     intentRef.current = intent;
     try {
       const response = await ventasService.createReversion(idFactura, payload, {

@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import AppSelect from '../../../../components/common/AppSelect';
+import { resolveInheritedFacturaPrinterDisplay } from '../utils/sucursalFacturacionPrinterDisplay';
 
 const VALID_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_PREFIX_RE = /^[A-Za-z0-9_-]+$/;
@@ -127,6 +128,7 @@ export default function SucursalFacturacionConfigDrawer({
 }) {
   if (!open) return null;
   const errors = buildValidationErrors(form);
+  const inheritedPrinter = resolveInheritedFacturaPrinterDisplay(facturaPrinter);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -370,8 +372,8 @@ export default function SucursalFacturacionConfigDrawer({
                   <div className="inv-prod-pmodal__section-title">Reversión</div>
                   <div className="alert alert-info py-2">
                     Utiliza la misma impresora configurada para Factura.
-                    <div><strong>Impresora heredada:</strong> {facturaPrinter?.nombre_impresora_sistema || 'Sin asignar'}</div>
-                    <div><strong>Modo:</strong> {facturaPrinter?.modo_impresion || 'BROWSER'} · <strong>Estado:</strong> {facturaPrinter?.activa === false ? 'Inactiva' : 'Activa'}</div>
+                    <div><strong>Impresora heredada:</strong> {inheritedPrinter.name}</div>
+                    <div><strong>Modo:</strong> {facturaPrinter?.modo_impresion || 'BROWSER'} · <strong>Estado:</strong> {inheritedPrinter.state}</div>
                     <div><strong>Ancho compartido con Factura:</strong> {form?.ancho_ticket_mm || 80}mm</div>
                   </div>
                   <div className="row g-2 mt-1">

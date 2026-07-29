@@ -29,8 +29,16 @@ export const stableReversionPayload = (payload = {}) => JSON.stringify({
     .sort((a, b) => a.id_detalle_factura - b.id_detalle_factura)
 });
 
-export const resolveReversionIntent = (current, payload) => {
-  const signature = stableReversionPayload(payload);
+export const buildReversionIntentSignature = (idFactura, payload) => {
+  const facturaId = Number(idFactura);
+  if (!Number.isSafeInteger(facturaId) || facturaId <= 0) {
+    throw new TypeError('idFactura debe ser un entero positivo para crear una intención de reversión.');
+  }
+  return `${facturaId}:${stableReversionPayload(payload)}`;
+};
+
+export const resolveReversionIntent = (current, idFactura, payload) => {
+  const signature = buildReversionIntentSignature(idFactura, payload);
   if (current?.signature === signature && current?.key) return current;
   return { signature, key: createReversionIdempotencyKey() };
 };

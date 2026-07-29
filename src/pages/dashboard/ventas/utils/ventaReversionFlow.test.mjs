@@ -2,12 +2,16 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 import {
+  buildReversionIntentSignature,
   buildReversionPayload,
   getPrintStateLabel,
   isFinalPrintState,
   resolveReversionIntent,
   stableReversionPayload
 } from './ventaReversionFlow.js';
+import {
+  resolveInheritedFacturaPrinterDisplay
+} from '../../sucursales/utils/sucursalFacturacionPrinterDisplay.js';
 
 describe('payload e idempotencia de reversion', () => {
   const items = [
@@ -35,14 +39,128 @@ describe('payload e idempotencia de reversion', () => {
     );
   });
 
-  it('la misma intencion conserva clave y un cambio de payload genera otra', () => {
+  it('misma factura y mismo payload conserva la clave, incluso tras timeout o reintento', () => {
     const payload = { tipo_reversion: 'TOTAL', motivo: 'OTRO', observacion: '' };
-    const first = resolveReversionIntent(null, payload);
-    const retry = resolveReversionIntent(first, payload);
-    const changed = resolveReversionIntent(first, { ...payload, motivo: 'CLIENTE_CANCELO' });
-    assert.equal(retry.key, first.key);
+    const first = resolveReversionIntent(null, 41, payload);
+    const retryAfterTimeout = resolveReversionIntent(first, 41, payload);
+    const retryInProgress = resolveReversionIntent(retryAfterTimeout, 41, payload);
+    assert.equal(retryAfterTimeout.key, first.key);
+    assert.equal(retryInProgress.key, first.key);
+  });
+
+  it('misma factura con cambio de cantidad genera una clave nueva', () => {
+    const base = {
+      tipo_reversion: 'PARCIAL',
+      motivo: 'OTRO',
+      observacion: '',
+      lineas: [{ id_detalle_factura: 11, cantidad: 1 }]
+    };
+    const first = resolveReversionIntent(null, 41, base);
+    const changed = resolveReversionIntent(first, 41, {
+      ...base,
+      lineas: [{ id_detalle_factura: 11, cantidad: 2 }]
+    });
     assert.notEqual(changed.key, first.key);
-    assert.notEqual(stableReversionPayload(payload), stableReversionPayload({ ...payload, motivo: 'CLIENTE_CANCELO' }));
+  });
+
+  it('factura distinta con el mismo payload genera una clave nueva', () => {
+    const payload = { tipo_reversion: 'TOTAL', motivo: 'OTRO', observacion: '' };
+    const first = resolveReversionIntent(null, 41, payload);
+    const changed = resolveReversionIntent(first, 42, payload);
+    assert.notEqual(changed.key, first.key);
+    assert.notEqual(
+      buildReversionIntentSignature(41, payload),
+      buildReversionIntentSignature(42, payload)
+    );
+  });
+
+  it('cambiar tipo, motivo, observacion o lineas genera una clave nueva', () => {
+    const payload = {
+      tipo_reversion: 'PARCIAL',
+      motivo: 'OTRO',
+      observacion: 'Original',
+      lineas: [{ id_detalle_factura: 11, cantidad: 1 }]
+    };
+    const first = resolveReversionIntent(null, 41, payload);
+    const changes = [
+      { ...payload, tipo_reversion: 'TOTAL' },
+      { ...payload, motivo: 'CLIENTE_CANCELO' },
+      { ...payload, observacion: 'Actualizada' },
+      { ...payload, lineas: [{ id_detalle_factura: 12, cantidad: 1 }] }
+    ];
+
+    for (const changedPayload of changes) {
+      const changed = resolveReversionIntent(first, 41, changedPayload);
+      assert.notEqual(changed.key, first.key);
+      assert.notEqual(stableReversionPayload(payload), stableReversionPayload(changedPayload));
+    }
+  });
+});
+
+describe('limpieza defensiva al cargar manualmente otra venta', () => {
+  it('descarta la intencion y el estado operativo de la venta anterior', async () => {
+    const source = await readFile(
+      new URL('../components/VentaReversionModal.jsx', import.meta.url),
+      'utf8'
+    );
+    const loadVentaBlock = source.slice(
+      source.indexOf('const loadVenta = async'),
+      source.indexOf('const changeCantidad')
+    );
+
+    assert.match(
+      loadVentaBlock,
+      /if\s*\(nextFacturaId !== idFactura\)\s*\{\s*intentRef\.current = null;\s*\}/
+    );
+    assert.match(loadVentaBlock, /setConfirmOpen\(false\);/);
+    assert.match(loadVentaBlock, /setResult\(null\);/);
+    assert.match(loadVentaBlock, /setCantidades\(\{\}\);/);
+    assert.match(loadVentaBlock, /setError\(''\);/);
+  });
+});
+
+describe('impresora FACTURA heredada', () => {
+  it('muestra Sin asignar y Sin configurar cuando no existe impresora valida', () => {
+    assert.deepEqual(resolveInheritedFacturaPrinterDisplay(null), {
+      name: 'Sin asignar',
+      state: 'Sin configurar'
+    });
+    assert.deepEqual(
+      resolveInheritedFacturaPrinterDisplay({
+        nombre_impresora_sistema: '   ',
+        activa: true
+      }),
+      {
+        name: 'Sin asignar',
+        state: 'Sin configurar'
+      }
+    );
+  });
+
+  it('muestra Activa cuando la impresora existe y no esta desactivada', () => {
+    assert.deepEqual(
+      resolveInheritedFacturaPrinterDisplay({
+        nombre_impresora_sistema: 'Caja principal',
+        activa: undefined
+      }),
+      {
+        name: 'Caja principal',
+        state: 'Activa'
+      }
+    );
+  });
+
+  it('muestra Inactiva cuando la impresora existe y activa es false', () => {
+    assert.deepEqual(
+      resolveInheritedFacturaPrinterDisplay({
+        nombre_impresora_sistema: 'Caja principal',
+        activa: false
+      }),
+      {
+        name: 'Caja principal',
+        state: 'Inactiva'
+      }
+    );
   });
 });
 
