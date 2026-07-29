@@ -1063,6 +1063,134 @@ describe('GenerarCanjeModal.jsx: la tarjeta reutiliza el patron estructural comp
   });
 });
 
+// ---------------------------------------------------------------------------
+// Defecto confirmado por la auditoria independiente (segunda ronda sobre este
+// mismo problema): el JSX ya traia la clase `ventas-catalog-card-compact`,
+// pero los estilos compactos REALES de Caja viven bajo selectores como
+// `.ventas-caja-page .ventas-catalog-card-compact` (ventas.css). El modal de
+// Fidelizacion nunca esta dentro de `.ventas-caja-page`, asi que esa clase
+// quedaba en el DOM sin ningun CSS aplicable: el navegador seguia usando la
+// tarjeta vertical base (.vcp-card { flex-direction: column },
+// .vcp-card__media { aspect-ratio: 4/3 }), no la horizontal compacta.
+//
+// Esta prueba NO se limita a buscar la clase en el JSX (eso ya pasaba antes
+// de esta correccion y el defecto seguia presente). Verifica, sobre el CSS
+// REAL de fidelizacion.css, que existe un selector propio de Fidelizacion
+// -nunca dependiente de .ventas-caja-page- que declara efectivamente
+// `display: grid` + `grid-template-columns` (las dos propiedades que
+// realmente convierten la tarjeta de vertical a horizontal), y que cada
+// sub-selector exigido por la auditoria (media, body, name, stock, footer)
+// tambien esta scoped bajo el mismo prefijo. Si se elimina el bloque nuevo
+// (o si alguien vuelve a depender solo de .ventas-caja-page), esta prueba
+// debe fallar.
+describe('fidelizacion.css: la tarjeta compacta de canje NO depende de .ventas-caja-page (scope propio de Fidelizacion)', () => {
+  const getCss = () => readFile(new URL('../styles/fidelizacion.css', import.meta.url), 'utf8');
+
+  const FIDELIZACION_COMPACT_SELECTOR = '.fidelizacion-canje-modal .ventas-catalog-card-compact';
+
+  it('existe un selector .fidelizacion-canje-modal .ventas-catalog-card-compact (no anidado bajo .ventas-caja-page) que declara display:grid y el grid-template-columns compacto', async () => {
+    const css = await getCss();
+    const start = css.indexOf(`${FIDELIZACION_COMPACT_SELECTOR} {`);
+    assert.notEqual(
+      start,
+      -1,
+      'no existe un bloque CSS propio de Fidelizacion para .ventas-catalog-card-compact: la clase quedaria sin estilos compactos aplicables fuera de .ventas-caja-page'
+    );
+
+    const end = css.indexOf('}', start);
+    const block = css.slice(start, end);
+
+    // El propio selector no debe llevar .ventas-caja-page como ancestro:
+    // Fidelizacion nunca debe depender de ese contenedor de Caja.
+    const selectorLine = css.slice(css.lastIndexOf('\n', start) + 1, start);
+    assert.doesNotMatch(selectorLine, /ventas-caja-page/);
+
+    // Las dos propiedades que realmente producen el layout horizontal
+    // (imagen izquierda, contenido derecha) en vez de la tarjeta vertical
+    // base (.vcp-card { flex-direction: column }).
+    assert.match(block, /display:\s*grid;/);
+    assert.match(block, /grid-template-columns:\s*82px minmax\(0,\s*1fr\);/);
+  });
+
+  it('cada sub-selector exigido por la auditoria esta scoped bajo el mismo prefijo de Fidelizacion, nunca bajo .ventas-caja-page', async () => {
+    const css = await getCss();
+    const requiredSelectors = [
+      `${FIDELIZACION_COMPACT_SELECTOR} .vcp-card__media`,
+      `${FIDELIZACION_COMPACT_SELECTOR} .vcp-card__body`,
+      `${FIDELIZACION_COMPACT_SELECTOR} .vcp-card__name`,
+      `${FIDELIZACION_COMPACT_SELECTOR} .vcp-card__stock`,
+      `${FIDELIZACION_COMPACT_SELECTOR} .vcp-card__footer`
+    ];
+
+    for (const selector of requiredSelectors) {
+      assert.match(
+        css,
+        new RegExp(`${selector.replace(/[.[\]()]/g, '\\$&')} \\{`),
+        `falta el selector real (no solo la clase en JSX): ${selector}`
+      );
+    }
+  });
+
+  it('la imagen queda horizontal y compacta: ancho fijo de 82px, height:100% (no aspect-ratio:4/3 de la tarjeta vertical base)', async () => {
+    const css = await getCss();
+    const start = css.indexOf(`${FIDELIZACION_COMPACT_SELECTOR} .vcp-card__media {`);
+    assert.notEqual(start, -1);
+    const end = css.indexOf('}', start);
+    const block = css.slice(start, end);
+
+    assert.match(block, /width:\s*82px;/);
+    assert.match(block, /height:\s*100%;/);
+    // aspect-ratio:auto desactiva explicitamente el 4:3 vertical heredado de
+    // .vcp-card__media base (ventas.css), que es exactamente la causa
+    // original del defecto (imagen grande arriba en vez de pequena a la
+    // izquierda).
+    assert.match(block, /aspect-ratio:\s*auto;/);
+  });
+
+  it('en movil (<=575.98px) la tarjeta sigue siendo horizontal (columna de imagen mas angosta), nunca vuelve a la vertical', async () => {
+    const css = await getCss();
+    // Ubica la segunda aparicion del selector compacto (la primera es el
+    // bloque base de escritorio; el override movil debe existir ademas,
+    // no en reemplazo).
+    const desktopIdx = css.indexOf(`${FIDELIZACION_COMPACT_SELECTOR} {`);
+    assert.notEqual(desktopIdx, -1);
+    const mobileIdx = css.indexOf(`${FIDELIZACION_COMPACT_SELECTOR} {`, desktopIdx + 1);
+    assert.notEqual(mobileIdx, -1, 'debe existir un segundo bloque (movil) para el mismo selector, angostando la columna de imagen');
+
+    const mobileEnd = css.indexOf('}', mobileIdx);
+    const mobileBlock = css.slice(mobileIdx, mobileEnd);
+    assert.match(mobileBlock, /grid-template-columns:\s*78px minmax\(0,\s*1fr\);/);
+    assert.doesNotMatch(mobileBlock, /flex-direction:\s*column/, 'no debe reintroducirse la tarjeta vertical en movil');
+
+    // Confirma que ese segundo bloque esta realmente dentro de un
+    // @media (max-width: 575.98px), no suelto fuera de contexto: cuenta
+    // llaves desde la apertura del @media hasta encontrar la que lo cierra
+    // (profundidad 0), y verifica que el selector movil quede ANTES de esa
+    // llave de cierre.
+    const precedingMedia = css.lastIndexOf('@media (max-width: 575.98px)', mobileIdx);
+    assert.notEqual(precedingMedia, -1);
+    const mediaBodyStart = css.indexOf('{', precedingMedia) + 1;
+    let depth = 1;
+    let cursor = mediaBodyStart;
+    while (depth > 0 && cursor < css.length) {
+      if (css[cursor] === '{') depth += 1;
+      else if (css[cursor] === '}') depth -= 1;
+      cursor += 1;
+    }
+    const mediaCloseIdx = cursor - 1;
+    assert.ok(mediaCloseIdx > mobileIdx, 'el override movil debe estar dentro del bloque @media (max-width: 575.98px)');
+  });
+
+  it('el badge de puntos sigue siendo visible (position:absolute dentro de vcp-card__media), ajustado al ancho angosto de la imagen', async () => {
+    const css = await getCss();
+    const start = css.indexOf('.fidelizacion-canje-modal__points-badge {');
+    assert.notEqual(start, -1);
+    const end = css.indexOf('}', start);
+    const block = css.slice(start, end);
+    assert.match(block, /position:\s*absolute;/);
+  });
+});
+
 describe('Fidelizacion.jsx: no precarga canjeables y propaga id_sucursal al confirmar', () => {
   const getSource = () => readFile(new URL('../../Fidelizacion.jsx', import.meta.url), 'utf8');
 
