@@ -35,7 +35,6 @@ export default function useVentaReversionPreview({ open, idFactura, payload, ena
           if (
             requestId === requestIdRef.current
             && requestError?.code !== 'REQUEST_ABORTED'
-            && requestError?.name !== 'AbortError'
           ) {
             setState({
               signature,

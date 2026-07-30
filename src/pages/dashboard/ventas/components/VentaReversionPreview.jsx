@@ -1,16 +1,21 @@
 const money = (value) => `L ${Number(value || 0).toFixed(2)}`;
 
 const resolveInventoryMessage = (line) => {
-  if (line?.tipo_item === 'RECETA' && line?.motivo_no_devolucion === 'PREPARACION_INICIADA') {
+  const lineName = String(line?.nombre || `Línea ${line?.id_detalle_factura || ''}`).trim();
+  const identifiedName = `${lineName} (línea ${line?.id_detalle_factura || '-'})`;
+  if (
+    line?.tipo_politica_inventario === 'CONSUMIBLE_PREPARABLE'
+    && line?.motivo_no_devolucion === 'PREPARACION_INICIADA'
+  ) {
     return {
       kind: 'warning',
-      text: 'Esta receta ya inició preparación. El importe será reversado, pero sus insumos no regresarán al inventario.'
+      text: `${identifiedName}: la receta ya inició preparación. El importe será reversado, pero sus insumos no regresarán al inventario.`
     };
   }
-  if (line?.tipo_item === 'PRODUCTO' && line?.devuelve_inventario) {
+  if (line?.tipo_politica_inventario === 'PRODUCTO_RETORNABLE' && line?.devuelve_inventario) {
     return {
       kind: 'info',
-      text: 'El producto será devuelto al inventario.'
+      text: `${identifiedName}: el producto será devuelto al inventario.`
     };
   }
   return null;

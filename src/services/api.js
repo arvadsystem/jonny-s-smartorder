@@ -158,8 +158,12 @@ const createRequestSignal = (config = {}) => {
   const externalSignal = config?.signal ?? null;
   const controller = new AbortController();
   let abortSource = null;
+  const setAbortSource = (source) => {
+    if (abortSource === null) abortSource = source;
+    return abortSource === source;
+  };
   const timerId = setTimeout(() => {
-    abortSource = 'timeout';
+    if (!setAbortSource('timeout')) return;
     try {
       controller.abort(new DOMException('Request timed out', 'AbortError'));
     } catch {
@@ -170,7 +174,7 @@ const createRequestSignal = (config = {}) => {
   let unsubscribeExternal = null;
   if (externalSignal && typeof externalSignal.addEventListener === 'function') {
     const onExternalAbort = () => {
-      abortSource = 'external';
+      if (!setAbortSource('external')) return;
       try {
         controller.abort(externalSignal.reason);
       } catch {
@@ -244,6 +248,7 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
     firstError = error;
     const shouldTryDirectBackend =
       import.meta.env.DEV &&
+      getAbortSource() === null &&
       !API_URL &&
       AUTH_ENDPOINTS_WITH_DEV_FALLBACK.has(String(endpoint || '').split('?')[0]) &&
       config?.disableDevDirectFallback !== true;
@@ -253,16 +258,19 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
     }
 
     if (!response) {
-      const aborted = error?.name === 'AbortError';
-      const externallyAborted = aborted && getAbortSource() === 'external';
-      const message = externallyAborted
+      const abortSource = getAbortSource();
+      const message = abortSource === 'external'
         ? 'Solicitud cancelada.'
-        : aborted
+        : abortSource === 'timeout'
           ? `Tiempo de espera agotado (${timeoutMs}ms) al conectar con el servidor.`
           : 'No se pudo establecer comunicacion con el servidor.';
       throw new ApiError(message, {
-        status: externallyAborted ? 0 : aborted ? 408 : 0,
-        code: externallyAborted ? 'REQUEST_ABORTED' : aborted ? 'REQUEST_TIMEOUT' : 'FETCH_ERROR',
+        status: abortSource === 'timeout' ? 408 : 0,
+        code: abortSource === 'external'
+          ? 'REQUEST_ABORTED'
+          : abortSource === 'timeout'
+            ? 'REQUEST_TIMEOUT'
+            : 'FETCH_ERROR',
         data: firstError || error
       });
     }

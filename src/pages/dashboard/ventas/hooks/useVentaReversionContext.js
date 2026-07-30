@@ -24,7 +24,7 @@ export default function useVentaReversionContext({ open, idFactura }) {
     ventasService.getReversionContext(idFactura, { signal: controller.signal })
       .then((response) => setContextState({ id: idFactura, value: response?.data || response }))
       .catch((requestError) => {
-        if (requestError?.code !== 'REQUEST_ABORTED' && requestError?.name !== 'AbortError') {
+        if (requestError?.code !== 'REQUEST_ABORTED') {
           setError(resolveVentasApiErrorMessage(requestError, 'No se pudo verificar la disponibilidad de reversión.'));
           setContextState({ id: idFactura, value: null });
         }

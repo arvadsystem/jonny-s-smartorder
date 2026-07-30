@@ -428,15 +428,22 @@ export const normalizeClienteDetalle = (payload) => {
 export const formatFechaHora = (fechaStr) => {
   if (!fechaStr) return '-';
   const rawValue = String(fechaStr).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+    const [year, month, day] = rawValue.split('-');
+    return `${day}/${month}/${year}`;
+  }
   const normalizedUtcLabel = rawValue.replace(/\s+UTC$/i, 'Z');
   const normalizedSeparator = normalizedUtcLabel.replace(
     /^(\d{4}-\d{2}-\d{2})\s(?=\d{2}:\d{2})/,
     '$1T'
   );
-  const hasExplicitZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalizedSeparator);
-  const isTimestampWithoutZone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalizedSeparator)
+  const normalizedOffset = normalizedSeparator
+    .replace(/([+-]\d{2})(\d{2})$/, '$1:$2')
+    .replace(/([+-]\d{2})$/, '$1:00');
+  const hasExplicitZone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalizedOffset);
+  const isTimestampWithoutZone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalizedOffset)
     && !hasExplicitZone;
-  const normalizedFraction = normalizedSeparator.replace(/(\.\d{3})\d+/, '$1');
+  const normalizedFraction = normalizedOffset.replace(/(\.\d{3})\d+/, '$1');
   const d = new Date(isTimestampWithoutZone ? `${normalizedFraction}Z` : normalizedFraction);
   if (Number.isNaN(d.getTime())) return '-';
   return d.toLocaleString('es-HN', {
