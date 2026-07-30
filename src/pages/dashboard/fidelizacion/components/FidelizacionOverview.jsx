@@ -1,41 +1,10 @@
 import { useState } from 'react';
-import { formatFechaHora, formatPoints } from '../utils/fidelizacionHelpers';
+import { formatCurrency, formatFechaHora, formatPoints } from '../utils/fidelizacionHelpers';
 import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
 import ToolbarSucursalSelect from '../../../../components/common/ToolbarSucursalSelect';
+import SecurityPaginationBar from '../../seguridad/components/SecurityPaginationBar';
 
-const Pagination = ({ meta, loading, onPageChange }) => {
-  const totalPages = Math.max(1, Math.ceil((meta?.total || 0) / (meta?.limit || 20)));
-  const currentPage = meta?.page || 1;
-
-  return (
-    <div className="ventas-page__pagination">
-      <span>
-        Mostrando {meta?.total || 0} clientes
-      </span>
-      <div className="d-flex align-items-center gap-2">
-        <button
-          type="button"
-          className="btn btn-outline-secondary btn-sm"
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={loading || currentPage <= 1}
-        >
-          Anterior
-        </button>
-        <span className="small text-muted fw-semibold">
-          Pagina {currentPage} de {totalPages}
-        </span>
-        <button
-          type="button"
-          className="btn btn-outline-secondary btn-sm"
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={loading || currentPage >= totalPages}
-        >
-          Siguiente
-        </button>
-      </div>
-    </div>
-  );
-};
+const CLIENTES_PAGE_SIZE = 9;
 
 export default function FidelizacionOverview({
   panelData,
@@ -71,7 +40,12 @@ export default function FidelizacionOverview({
     : panelData?.configuracion_activa
     ? {
         text: 'Configuradas y vigentes',
-        helper: `1 punto = L. ${formatPoints(panelData.configuracion_activa.lempiras_por_punto)}`,
+        // formatPoints redondea a entero: con una tasa de 0.01 mostraba
+        // "1 punto = L. 0", que ademas de ser incorrecto reforzaba la lectura
+        // invertida del campo. Se usa el formateador monetario (2 decimales)
+        // y se enuncia el sentido real de la tasa: lempiras necesarios para
+        // obtener 1 punto.
+        helper: `1 punto por cada L ${formatCurrency(panelData.configuracion_activa.lempiras_por_punto)}`,
         className: 'bg-success border-success text-white'
       }
     : {
@@ -89,6 +63,16 @@ export default function FidelizacionOverview({
     if (cliente.nombre_usuario) return `@${cliente.nombre_usuario}`;
     return `Cliente #${cliente.id_cliente}`;
   };
+
+  const hasActiveSearch = String(currentSearch || '').trim().length > 0;
+  const emptyClientesMessage = hasActiveSearch
+    ? 'No se encontró ningún cliente con esa búsqueda.'
+    : 'Aún no hay clientes con puntos acumulados.';
+
+  const clientesTotalPages = Math.max(
+    1,
+    Math.ceil((clientesMeta?.total || 0) / (clientesMeta?.limit || CLIENTES_PAGE_SIZE))
+  );
 
   return (
     <div className="fidelizacion-page d-flex flex-column gap-3 h-100 min-h-0">
@@ -239,7 +223,7 @@ export default function FidelizacionOverview({
                         <div className="ventas-create-modal__cart-empty-icon">
                           <i className="bi bi-inbox text-secondary" />
                         </div>
-                        <span>No se encontraron clientes con el filtro aplicado.</span>
+                        <span>{emptyClientesMessage}</span>
                       </div>
                     </td>
                   </tr>
@@ -320,7 +304,7 @@ export default function FidelizacionOverview({
                   <div className="ventas-create-modal__cart-empty-icon">
                     <i className="bi bi-inbox text-secondary" />
                   </div>
-                  <span>No se encontraron clientes con el filtro aplicado.</span>
+                  <span>{emptyClientesMessage}</span>
                 </div>
               </div>
             ) : (
@@ -386,8 +370,24 @@ export default function FidelizacionOverview({
           </div>
         </div>
 
-        {canViewClientes ? (
-          <Pagination meta={clientesMeta} loading={loadingClientes} onPageChange={onPageChange} />
+        {canViewClientes && clientesTotalPages > 1 ? (
+          <div className="ventas-page__pagination">
+            <SecurityPaginationBar
+              totalItems={clientesMeta?.total || 0}
+              pageSize={clientesMeta?.limit || CLIENTES_PAGE_SIZE}
+              currentPage={clientesMeta?.page || 1}
+              onPageChange={onPageChange}
+              maxVisible={5}
+              className="ventas-page__pagination-bar"
+              disabled={loadingClientes}
+            />
+            <div className="ventas-page__page-size-label">
+              <span>9 por página</span>
+              <span className="small text-muted">
+                Página {clientesMeta?.page || 1} de {clientesTotalPages}
+              </span>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>

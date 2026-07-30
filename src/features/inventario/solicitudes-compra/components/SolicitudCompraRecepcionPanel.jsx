@@ -1,6 +1,8 @@
 import useSolicitudCompraRecepcion from '../hooks/useSolicitudCompraRecepcion';
 import { formatFileSize } from '../utils/solicitudesCompraRecepcionUtils';
+import SolicitudCompraConfirmModal from './SolicitudCompraConfirmModal';
 import SolicitudCompraRecepcionLinea from './SolicitudCompraRecepcionLinea';
+import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel, subtractConversionDecimal } from '../utils/solicitudesCompraConversionUtils';
 
 export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, canReceive, reloadDetail, reloadList, openToast }) {
   const reception = useSolicitudCompraRecepcion({ solicitud, detalles, canReceive, reloadDetail, reloadList, openToast });
@@ -101,29 +103,58 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
 
       {reception.accessDenied ? <div className="sol-comp-contract-error" role="alert">No tienes permiso para registrar esta recepción.</div> : null}
 
-      {reception.confirmation ? (
-        <div className="sol-comp-inline-confirm sol-comp-inline-confirm--receive" role="group" aria-labelledby="sol-comp-receive-confirm-title" aria-live="polite">
-          <div>
-            <span className="sol-comp-inline-confirm__icon" aria-hidden="true"><i className="bi bi-box-arrow-in-down" /></span>
-            <strong id="sol-comp-receive-confirm-title">Confirmar recepción final</strong>
-            <p>La factura se guardará y las cantidades recibidas se aplicarán al inventario. Esta operación no puede repetirse en esta versión.</p>
-            <ul>
-              <li>{reception.lines.length} líneas</li>
-              <li>{reception.differences.length} diferencias</li>
-              <li>Factura: {reception.invoice.file?.name} ({formatFileSize(reception.invoice.file?.size)})</li>
-              {reception.observation.trim() ? <li>Observación: {reception.observation}</li> : null}
-            </ul>
-          </div>
-          <div>
-            <button type="button" className="btn btn-outline-secondary" disabled={reception.busy} onClick={() => reception.setConfirmation(false)}>Volver</button>
-            <button type="button" className="btn btn-primary" disabled={reception.busy || reception.receiveDisabled} onClick={reception.executeReception}>{reception.busy ? 'Registrando…' : 'Confirmar recepción'}</button>
-          </div>
-        </div>
-      ) : (
+      {!reception.confirmation ? (
         <div className="sol-comp-reception-actions">
           <button type="button" className="btn btn-primary" disabled={reception.receiveDisabled} onClick={reception.startConfirmation}>Registrar recepción</button>
         </div>
-      )}
+      ) : null}
+      <SolicitudCompraConfirmModal
+        open={reception.confirmation}
+        title="Confirmar recepción final"
+        description="La factura se guardará y las cantidades recibidas se aplicarán automáticamente al inventario."
+        icon="bi-box-arrow-in-down"
+        confirmLabel="Confirmar recepción"
+        busyLabel="Registrando…"
+        busy={reception.busy}
+        onClose={() => reception.setConfirmation(false)}
+        onConfirm={reception.executeReception}
+      >
+        <p className="sol-comp-inventory-warning">
+          <strong>Al confirmar, el sistema agregará automáticamente las cantidades base indicadas al inventario del almacén.</strong>
+          No realice un ajuste manual adicional, porque esta recepción aplica la entrada automáticamente.
+        </p>
+        <div className="sol-comp-confirm-summary" aria-label="Líneas que se recibirán">
+          {reception.lines.map((line) => {
+            const baseOnly = isBaseOnlyLine(line);
+            const input = {
+              presentationLabel: resolvePresentationLabel(line),
+              baseUnit: line.unidad_base,
+              factor: line.factor_conversion_snapshot || '1',
+              baseOnly
+            };
+            const approvedPreview = buildConversionPreview({ ...input, quantity: line.cantidad_aprobada });
+            const receivedPreview = buildConversionPreview({ ...input, quantity: line.cantidad_recibida });
+            const presentationDifference = subtractConversionDecimal(line.cantidad_recibida, line.cantidad_aprobada);
+            const baseDifference = approvedPreview.valid && receivedPreview.valid
+              ? subtractConversionDecimal(receivedPreview.baseQuantity, approvedPreview.baseQuantity)
+              : null;
+            const different = presentationDifference !== null && presentationDifference !== '0';
+            return (
+              <article className="sol-comp-confirm-row" key={line.id_solicitud_detalle}>
+                <strong>{line.nombre}</strong>
+                <span>{receivedPreview.valid ? `${receivedPreview.quantity} ${baseOnly ? receivedPreview.baseUnit : receivedPreview.presentationLabel}` : 'Cantidad pendiente'}</span>
+                {receivedPreview.valid ? <small>Entrada al inventario: {receivedPreview.baseQuantity} {receivedPreview.baseUnit}</small> : null}
+                {different ? <small className="sol-comp-confirm-row__difference">Diferencia: {presentationDifference} {baseOnly ? line.unidad_base : resolvePresentationLabel(line)}{baseDifference !== null ? ` · ${baseDifference} ${line.unidad_base}` : ''}</small> : null}
+              </article>
+            );
+          })}
+        </div>
+        <div className="sol-comp-confirm-meta">
+          <p><strong>Factura:</strong> {reception.invoice.file?.name} ({formatFileSize(reception.invoice.file?.size)})</p>
+          {reception.observation.trim() ? <p><strong>Observación:</strong> {reception.observation}</p> : null}
+          <p><i className="bi bi-lock" aria-hidden="true" /> Esta es una operación definitiva.</p>
+        </div>
+      </SolicitudCompraConfirmModal>
     </section>
   );
 }

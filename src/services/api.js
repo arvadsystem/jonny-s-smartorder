@@ -157,7 +157,13 @@ const createRequestSignal = (config = {}) => {
 
   const externalSignal = config?.signal ?? null;
   const controller = new AbortController();
+  let abortSource = null;
+  const setAbortSource = (source) => {
+    if (abortSource === null) abortSource = source;
+    return abortSource === source;
+  };
   const timerId = setTimeout(() => {
+    if (!setAbortSource('timeout')) return;
     try {
       controller.abort(new DOMException('Request timed out', 'AbortError'));
     } catch {
@@ -168,6 +174,7 @@ const createRequestSignal = (config = {}) => {
   let unsubscribeExternal = null;
   if (externalSignal && typeof externalSignal.addEventListener === 'function') {
     const onExternalAbort = () => {
+      if (!setAbortSource('external')) return;
       try {
         controller.abort(externalSignal.reason);
       } catch {
@@ -188,7 +195,12 @@ const createRequestSignal = (config = {}) => {
     if (unsubscribeExternal) unsubscribeExternal();
   };
 
-  return { signal: controller.signal, cleanup, timeoutMs };
+  return {
+    signal: controller.signal,
+    cleanup,
+    timeoutMs,
+    getAbortSource: () => abortSource
+  };
 };
 
 export const apiFetch = async (endpoint, method = 'GET', body = null, config = {}) => {
@@ -225,7 +237,7 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
     requestOptions.body = JSON.stringify(body);
   }
 
-  const { signal, cleanup, timeoutMs } = createRequestSignal(config);
+  const { signal, cleanup, timeoutMs, getAbortSource } = createRequestSignal(config);
   requestOptions.signal = signal;
 
   let response;
@@ -236,6 +248,7 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
     firstError = error;
     const shouldTryDirectBackend =
       import.meta.env.DEV &&
+      getAbortSource() === null &&
       !API_URL &&
       AUTH_ENDPOINTS_WITH_DEV_FALLBACK.has(String(endpoint || '').split('?')[0]) &&
       config?.disableDevDirectFallback !== true;
@@ -245,13 +258,19 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
     }
 
     if (!response) {
-      const aborted = error?.name === 'AbortError';
-      const message = aborted
-        ? `Tiempo de espera agotado (${timeoutMs}ms) al conectar con el servidor.`
-        : 'No se pudo establecer comunicacion con el servidor.';
+      const abortSource = getAbortSource();
+      const message = abortSource === 'external'
+        ? 'Solicitud cancelada.'
+        : abortSource === 'timeout'
+          ? `Tiempo de espera agotado (${timeoutMs}ms) al conectar con el servidor.`
+          : 'No se pudo establecer comunicacion con el servidor.';
       throw new ApiError(message, {
-        status: aborted ? 408 : 0,
-        code: aborted ? 'REQUEST_TIMEOUT' : 'FETCH_ERROR',
+        status: abortSource === 'timeout' ? 408 : 0,
+        code: abortSource === 'external'
+          ? 'REQUEST_ABORTED'
+          : abortSource === 'timeout'
+            ? 'REQUEST_TIMEOUT'
+            : 'FETCH_ERROR',
         data: firstError || error
       });
     }

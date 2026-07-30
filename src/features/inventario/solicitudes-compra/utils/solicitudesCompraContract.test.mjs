@@ -111,7 +111,7 @@ test('frontend conserva exactamente el orden recibido y no filtra disponibles', 
   assert.match(catalog, /visibleItems\.map/);
   assert.doesNotMatch(catalog, /\.sort\(|estado_stock\s*!==\s*['"]DISPONIBLE|\.filter\([^)]*estado_stock/);
   assert.match(catalog, /sol-comp-stock--\$\{String\(item\.estado_stock\)/);
-  assert.match(catalog, /<button type="button" className="btn sol-comp-add-action" onClick=\{add\}>/);
+  assert.match(catalog, /<button type="button" className="btn sol-comp-add-action"[^>]*onClick=\{add\}>/);
 });
 
 test('catalogo conserva badges presentaciones equivalencia y validaciones', async () => {
@@ -121,7 +121,7 @@ test('catalogo conserva badges presentaciones equivalencia y validaciones', asyn
   assert.match(catalog, /DISPONIBLE: 'Disponible'/);
   assert.match(catalog, /import AppSelect/);
   assert.match(catalog, /equivale a/);
-  assert.match(catalog, /hasta 4 decimales/);
+  assert.match(catalog, /hasta 6 decimales/);
   assert.match(catalog, /entera positiva/);
 });
 
@@ -231,16 +231,16 @@ test('presentacion conserva opcion base predeterminada equivalencia y payload vi
   assert.match(catalog, /<AppSelect label="Presentación de compra"/);
   assert.equal((catalog.match(/<small><i className="bi bi-arrow-left-right"/g) || []).length, 1);
   assert.match(catalog, /id_presentacion_insumo: Number\(presentation\)/);
-  assert.match(catalog, /factor_conversion_visual: selected \? String\(visualFactor\) : null/);
-  assert.match(catalog, /unidad_base_visual: selected\?\.unidad_base \|\| item\.unidad_base \|\| null/);
+  assert.match(catalog, /factor_conversion_visual: String\(visualFactor\)/);
+  assert.match(catalog, /unidad_base_visual: isSupply \? \(selected\?\.unidad_base \|\| item\.unidad_base/);
   assert.match(catalog, /nombre_presentacion_visual: selected\?\.nombre_presentacion \|\| null/);
 });
 
 test('cantidad del catalogo mantiene precision accesibilidad y limpieza selectiva', async () => {
   const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
-  assert.match(catalog, /step=\{isSupply \? '0\.0001' : '1'\}/);
+  assert.match(catalog, /step=\{isSupply \? '0\.000001' : '1'\}/);
   assert.match(catalog, /inputMode=\{isSupply \? 'decimal' : 'numeric'\}/);
-  assert.match(catalog, /aria-describedby=\{error \? quantityErrorId : undefined\}/);
+  assert.match(catalog, /aria-describedby=\{error \? quantityErrorId : \(!isSolicitable \? unavailableMessageId : undefined\)\}/);
   assert.match(catalog, /id=\{quantityErrorId\}[^>]*role="alert"/);
   assert.match(catalog, /setQuantity\(''\)/);
   assert.doesNotMatch(catalog, /setPresentation\((?:''|'base'|null)\)/);
@@ -254,18 +254,18 @@ test('resumen conserva llave transaccional lineas y eliminacion accesible', asyn
   assert.doesNotMatch(summary, /key=\{index\}/);
   assert.match(summary, /title="Eliminar línea"/);
   assert.match(summary, /aria-label=\{`Eliminar \$\{line\.nombre\}`\}/);
-  assert.match(summary, /buildVisualEquivalence\(line\)/);
+  assert.match(summary, /buildConversionPreview\(\{/);
 });
 
 test('resumen muestra errores especificos vinculados sin cambiar validacion', async () => {
   const summary = await read('../components/SolicitudCompraResumen.jsx');
   assert.match(summary, /parseRequestedQuantity\(line\.cantidad, line\.tipo_item\)/);
   assert.match(summary, /Ingresa una cantidad entera mayor que cero\./);
-  assert.match(summary, /Ingresa una cantidad mayor que cero con hasta cuatro decimales\./);
+  assert.match(summary, /Ingresa una cantidad mayor que cero con hasta seis decimales\./);
   assert.match(summary, /aria-invalid=\{!valid\}/);
   assert.match(summary, /aria-describedby=\{!valid \? errorId : undefined\}/);
   assert.match(summary, /id=\{errorId\}[^>]*role="alert"/);
-  assert.match(summary, /step=\{line\.tipo_item === 'producto' \? '1' : '0\.0001'\}/);
+  assert.match(summary, /step=\{line\.tipo_item === 'producto' \? '1' : '0\.000001'\}/);
   assert.match(summary, /inputMode=\{line\.tipo_item === 'producto' \? 'numeric' : 'decimal'\}/);
 });
 
@@ -411,23 +411,23 @@ test('revision conserva hook proveedores AppSelect y contratos de edicion', asyn
   assert.doesNotMatch(line, /<select/);
   assert.match(line, /value=\{line\.cantidad_aprobada\}/);
   assert.match(line, /onChange=\{\(event\) => line\.onChange\(\{ cantidad_aprobada: event\.target\.value \}\)\}/);
-  assert.match(line, /step=\{isProduct \? '1' : '0\.0001'\}/);
+  assert.match(line, /step=\{isProduct \? '1' : '0\.000001'\}/);
   assert.match(line, /inputMode=\{isProduct \? 'numeric' : 'decimal'\}/);
   assert.match(line, /aria-invalid=\{Boolean\(errors\.cantidad\)\}/);
   assert.match(line, /aria-describedby=\{errors\.cantidad \? quantityErrorId : undefined\}/);
 });
 
-test('revision conserva comentario acciones y confirmacion inline', async () => {
+test('revision conserva comentario acciones y usa modal para aprobar', async () => {
   const panel = await read('../components/SolicitudCompraRevisionPanel.jsx');
   assert.match(panel, /maxLength="1000"/);
   assert.match(panel, /review\.comment\.length\} \/ 1000/);
   assert.match(panel, /disabled=\{review\.rejectDisabled\}/);
   assert.match(panel, /disabled=\{review\.approveDisabled\}/);
-  assert.match(panel, /review\.confirmation \?/);
-  assert.match(panel, /review\.execute\(review\.confirmation\)/);
+  assert.match(panel, /open=\{review\.confirmation === 'approve'\}/);
+  assert.match(panel, /review\.execute\('approve'\)/);
   assert.match(panel, /Aprobando…/);
   assert.match(panel, /Rechazando…/);
-  assert.doesNotMatch(panel, /window\.confirm|<Modal|createPortal/);
+  assert.doesNotMatch(panel, /window\.confirm|sol-comp-inline-confirm--approve/);
 });
 
 test('recepcion conserva hook lineas validacion decimal y estados comparativos', async () => {
@@ -441,7 +441,7 @@ test('recepcion conserva hook lineas validacion decimal y estados comparativos',
   assert.match(line, /Cantidad inválida/);
   assert.match(line, /Diferencia/);
   assert.match(line, /Igual/);
-  assert.match(line, /Aprobada: \{value\(line\.cantidad_aprobada\)\} · Recibida: \{value\(line\.cantidad_recibida\)\}/);
+  assert.match(line, /subtractConversionDecimal\(line\.cantidad_recibida, line\.cantidad_aprobada\)/);
 });
 
 test('recepcion conserva diferencias observacion y factura accesible', async () => {
@@ -462,12 +462,12 @@ test('recepcion conserva diferencias observacion y factura accesible', async () 
 
 test('confirmacion de recepcion conserva contrato irreversible sin recepcion parcial', async () => {
   const panel = await read('../components/SolicitudCompraRecepcionPanel.jsx');
-  assert.match(panel, /reception\.confirmation \?/);
+  assert.match(panel, /open=\{reception\.confirmation\}/);
   assert.match(panel, /Confirmar recepción final/);
-  assert.match(panel, /onClick=\{reception\.executeReception\}/);
-  assert.match(panel, /reception\.busy \|\| reception\.receiveDisabled/);
+  assert.match(panel, /onConfirm=\{reception\.executeReception\}/);
+  assert.match(panel, /busy=\{reception\.busy\}/);
   assert.match(panel, /Registrando…/);
-  assert.doesNotMatch(panel, /recepción parcial|recepcion parcial|window\.confirm|<Modal/);
+  assert.doesNotMatch(panel, /recepción parcial|recepcion parcial|window\.confirm|sol-comp-inline-confirm--receive/);
 });
 
 test('evidencias conserva carga bajo demanda acceso temporal y seguridad del enlace', async () => {
@@ -485,7 +485,7 @@ test('evidencias conserva carga bajo demanda acceso temporal y seguridad del enl
 test('paneles mantienen CSS institucional responsive sin recorte rigido', async () => {
   const css = await read('../solicitudesCompra.css');
   assert.match(css, /\.sol-comp-workflow-heading/);
-  assert.match(css, /\.sol-comp-inline-confirm--approve/);
+  assert.match(css, /\.sol-comp-confirm-modal/);
   assert.match(css, /\.sol-comp-inline-confirm--reject/);
   assert.match(css, /\.sol-comp-difference--invalid/);
   assert.match(css, /\.sol-comp-evidence-trigger/);

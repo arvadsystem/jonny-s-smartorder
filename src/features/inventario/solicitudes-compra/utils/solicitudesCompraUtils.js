@@ -1,3 +1,11 @@
+import {
+  buildConversionPreview,
+  formatConversionQuantity,
+  isBaseOnlyLine,
+  normalizeConversionDecimal,
+  resolvePresentationLabel
+} from './solicitudesCompraConversionUtils.js';
+
 export const SOLICITUD_ESTADOS = Object.freeze({
   PENDIENTE: { label: 'Pendiente', message: 'Administración revisará la solicitud.' },
   APROBADA: { label: 'Aprobada', message: 'La solicitud fue aprobada y está pendiente de recepción.' },
@@ -15,9 +23,10 @@ export const normalizeObservation = (value) => {
 
 export const parseRequestedQuantity = (value, type) => {
   const text = String(value ?? '').trim();
-  const pattern = String(type).toLowerCase() === 'producto' ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/;
-  if (!pattern.test(text) || Number(text) <= 0) return null;
-  return Number(text);
+  const product = String(type).toLowerCase() === 'producto';
+  const pattern = product ? /^[1-9]\d*$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
+  if (!pattern.test(text) || BigInt(text.replace('.', '')) === 0n) return null;
+  return product ? Number(text) : normalizeConversionDecimal(text);
 };
 
 export const getDraftLineKey = (line) => [
@@ -26,51 +35,40 @@ export const getDraftLineKey = (line) => [
   line?.id_presentacion_insumo ? Number(line.id_presentacion_insumo) : 'base'
 ].join(':');
 
-const DECIMAL_SCALE = 10_000n;
+const DECIMAL_SCALE = 1_000_000n;
 
-const decimalToScaled4 = (value) => {
+const decimalToScaled6 = (value) => {
   const text = String(value ?? '').trim();
-  if (!/^\d+(?:\.\d{1,4})?$/.test(text)) return null;
+  if (!/^\d+(?:\.\d{1,6})?$/.test(text)) return null;
   const [whole, fraction = ''] = text.split('.');
-  return BigInt(whole) * DECIMAL_SCALE + BigInt(fraction.padEnd(4, '0') || '0');
+  return BigInt(whole) * DECIMAL_SCALE + BigInt(fraction.padEnd(6, '0') || '0');
 };
 
-const scaled4ToCanonical = (scaled) => {
+const scaled6ToCanonical = (scaled) => {
   const integer = scaled / DECIMAL_SCALE;
-  const fraction = String(scaled % DECIMAL_SCALE).padStart(4, '0').replace(/0+$/, '');
+  const fraction = String(scaled % DECIMAL_SCALE).padStart(6, '0').replace(/0+$/, '');
   return fraction ? `${integer}.${fraction}` : String(integer);
 };
 
 export const addDecimalQuantities = (left, right) => {
-  const leftScaled = decimalToScaled4(left);
-  const rightScaled = decimalToScaled4(right);
+  const leftScaled = decimalToScaled6(left);
+  const rightScaled = decimalToScaled6(right);
   if (leftScaled === null || rightScaled === null) return null;
-  return scaled4ToCanonical(leftScaled + rightScaled);
-};
-
-const multiplyVisualQuantity = (quantity, factor) => {
-  const quantityScaled = decimalToScaled4(quantity);
-  const factorScaled = decimalToScaled4(factor);
-  if (quantityScaled === null || factorScaled === null) return null;
-  const raw = quantityScaled * factorScaled;
-  const roundedScaled = (raw + DECIMAL_SCALE / 2n) / DECIMAL_SCALE;
-  return scaled4ToCanonical(roundedScaled);
-};
-
-const formatVisualNumber = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed)
-    ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 4, useGrouping: true }).format(parsed)
-    : String(value);
+  return scaled6ToCanonical(leftScaled + rightScaled);
 };
 
 export const buildVisualEquivalence = (line) => {
-  if (!line?.id_presentacion_insumo || !line?.factor_conversion_visual) return null;
-  const baseQuantity = multiplyVisualQuantity(line.cantidad, line.factor_conversion_visual);
-  if (baseQuantity === null) return null;
-  const presentation = String(line.nombre_presentacion_visual || line.presentacion || 'Presentación');
-  const baseUnit = String(line.unidad_base_visual || 'Unidad base');
-  return `${formatVisualNumber(line.cantidad)} ${presentation} ≈ ${formatVisualNumber(baseQuantity)} ${baseUnit}`;
+  if (!line?.id_presentacion_insumo) return null;
+  const preview = buildConversionPreview({
+    quantity: line?.cantidad,
+    presentationLabel: resolvePresentationLabel(line),
+    baseUnit: line?.unidad_base_visual || line?.unidad_base,
+    factor: line?.factor_conversion_visual || '1',
+    baseOnly: isBaseOnlyLine(line)
+  });
+  return preview.valid && !preview.baseOnly
+    ? `${formatConversionQuantity(preview.quantity)} ${preview.presentationLabel} ≈ ${formatConversionQuantity(preview.baseQuantity)} ${preview.baseUnit}`
+    : null;
 };
 
 export const createEmptyCatalogState = (warehouseId = null, loading = false) => ({
@@ -116,7 +114,9 @@ export const buildSolicitudPayload = ({ idAlmacen, observacion, detalles }) => (
     const detail = {
       tipo_item: String(line.tipo_item).toLowerCase(),
       id_item: Number(line.id_item),
-      cantidad: Number(line.cantidad)
+      cantidad: String(line.tipo_item).toLowerCase() === 'insumo'
+        ? parseRequestedQuantity(line.cantidad, 'insumo')
+        : parseRequestedQuantity(line.cantidad, 'producto')
     };
     if (detail.tipo_item === 'insumo' && line.id_presentacion_insumo) {
       detail.id_presentacion_insumo = Number(line.id_presentacion_insumo);

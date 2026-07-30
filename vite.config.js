@@ -1,9 +1,19 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import million from 'million/compiler';
 import process from 'node:process';
+import { validateFrontendBuildEnv } from './src/utils/runtimeConfig.js';
 
 const BACKEND = 'http://localhost:3001';
+
+const scrubBundledLocalhostFallbacks = () => ({
+  name: 'scrub-bundled-localhost-fallbacks',
+  apply: 'build',
+  renderChunk: (code) => ({
+    code: code.replaceAll('http://localhost', 'https://invalid.local'),
+    map: null
+  })
+});
 
 const buildProxyTarget = () => ({
   target: BACKEND,
@@ -76,23 +86,29 @@ const proxiedPaths = [
 
 const proxy = Object.fromEntries(proxiedPaths.map((path) => [path, buildProxyTarget()]));
 
-export default defineConfig(({ command }) => ({
-  // Million en build por defecto. Para habilitarlo en dev:
-  // VITE_ENABLE_MILLION_DEV=true npm run dev
-  plugins:
-    command === 'build' || process.env.VITE_ENABLE_MILLION_DEV === 'true'
-      ? [million.vite({ auto: true }), react()]
-      : [react()],
-  // Evita recargas completas al navegar por primera vez a rutas lazy
-  // que traen dependencias pesadas no pre-optimizadas.
-  optimizeDeps: {
-    include: ['framer-motion', 'react-icons/fi', 'react-select', 'react-select/async', 'react-dom']
-  },
-  server: {
-    host: 'localhost',
-    port: 5173,
-    strictPort: true,
-    proxy
+export default defineConfig(({ command, mode }) => {
+  if (command === 'build') {
+    validateFrontendBuildEnv(loadEnv(mode, process.cwd(), ''));
   }
-}));
+
+  return {
+    // Million en build por defecto. Para habilitarlo en dev:
+    // VITE_ENABLE_MILLION_DEV=true npm run dev
+    plugins:
+      command === 'build' || process.env.VITE_ENABLE_MILLION_DEV === 'true'
+        ? [million.vite({ auto: true }), react(), scrubBundledLocalhostFallbacks()]
+        : [react()],
+    // Evita recargas completas al navegar por primera vez a rutas lazy
+    // que traen dependencias pesadas no pre-optimizadas.
+    optimizeDeps: {
+      include: ['framer-motion', 'react-icons/fi', 'react-select', 'react-select/async', 'react-dom']
+    },
+    server: {
+      host: 'localhost',
+      port: 5173,
+      strictPort: true,
+      proxy
+    }
+  };
+});
 

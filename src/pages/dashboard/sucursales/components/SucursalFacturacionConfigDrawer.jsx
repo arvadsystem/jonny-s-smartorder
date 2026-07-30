@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import AppSelect from '../../../../components/common/AppSelect';
+import { resolveInheritedFacturaPrinterDisplay } from '../utils/sucursalFacturacionPrinterDisplay';
 
 const VALID_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_PREFIX_RE = /^[A-Za-z0-9_-]+$/;
@@ -114,6 +115,7 @@ export default function SucursalFacturacionConfigDrawer({
   open,
   sucursalNombre = '',
   form,
+  facturaPrinter = null,
   onChange,
   saving = false,
   logoPreviewUrl = '',
@@ -126,6 +128,7 @@ export default function SucursalFacturacionConfigDrawer({
 }) {
   if (!open) return null;
   const errors = buildValidationErrors(form);
+  const inheritedPrinter = resolveInheritedFacturaPrinterDisplay(facturaPrinter);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -169,6 +172,11 @@ export default function SucursalFacturacionConfigDrawer({
 
         <form className="suc-facturacion-drawer__form" onSubmit={handleSubmit}>
           <div className="inv-prod-drawer-body inv-cat-v2__drawer-body suc-facturacion-drawer__body">
+              <div className="d-flex flex-wrap gap-2 mb-3" aria-label="Secciones de impresión">
+                {['Factura', 'Comanda', 'Reversión', 'Reglas'].map((label) => (
+                  <span className="badge text-bg-light border px-3 py-2" key={label}>{label}</span>
+                ))}
+              </div>
               <div className="inv-prod-pmodal__sections">
                 <section className="inv-prod-pmodal__section">
                   <div className="inv-prod-pmodal__section-title">Datos del emisor</div>
@@ -361,7 +369,13 @@ export default function SucursalFacturacionConfigDrawer({
                 </section>
 
                 <section className="inv-prod-pmodal__section">
-                  <div className="inv-prod-pmodal__section-title">Comprobante de reversión</div>
+                  <div className="inv-prod-pmodal__section-title">Reversión</div>
+                  <div className="alert alert-info py-2">
+                    Utiliza la misma impresora configurada para Factura.
+                    <div><strong>Impresora heredada:</strong> {inheritedPrinter.name}</div>
+                    <div><strong>Modo:</strong> {facturaPrinter?.modo_impresion || 'BROWSER'} · <strong>Estado:</strong> {inheritedPrinter.state}</div>
+                    <div><strong>Ancho compartido con Factura:</strong> {form?.ancho_ticket_mm || 80}mm</div>
+                  </div>
                   <div className="row g-2 mt-1">
                     {REVERSION_FLAGS.map(([field, label]) => (
                       <div className="col-12 col-md-6" key={field}>

@@ -13,6 +13,7 @@ export default function useSolicitudesCompra({ canView, openToast }) {
   const [view, setView] = useState('listado');
   const [listState, setListState] = useState({ ...INITIAL_LIST, loading: false, error: '' });
   const [filter, setFilterState] = useState('');
+  const [search, setSearchState] = useState('');
   const [detailState, setDetailState] = useState({ id: null, data: null, loading: false, error: '' });
   const [warehouses, setWarehouses] = useState([]);
   const [warehousesLoading, setWarehousesLoading] = useState(false);
@@ -20,29 +21,50 @@ export default function useSolicitudesCompra({ canView, openToast }) {
   const listRequest = useRef(0);
   const catalogRequest = useRef(createCatalogRequestCoordinator());
   const submitLock = useRef(false);
+  const mounted = useRef(true);
+  const debounceRef = useRef(null);
 
-  const loadList = useCallback(async ({ page = 1, estado = '' } = {}) => {
+  const loadList = useCallback(async ({ page = 1, estado = '', buscar = '' } = {}) => {
     if (!canView) return;
     const requestId = ++listRequest.current;
     setListState((current) => ({ ...current, loading: true, error: '' }));
     try {
-      const payload = await solicitudesCompraService.getSolicitudes({ estado, page, limit: 10 });
-      if (requestId !== listRequest.current) return;
+      const payload = await solicitudesCompraService.getSolicitudes({ estado, buscar, page, limit: 10 });
+      if (!mounted.current || requestId !== listRequest.current) return;
       setListState({
         solicitudes: Array.isArray(payload?.solicitudes) ? payload.solicitudes : [],
         pagination: payload?.pagination || { page, total_pages: 1, total: 0 }, loading: false, error: ''
       });
     } catch (error) {
-      if (requestId === listRequest.current) setListState((current) => ({ ...current, loading: false, error: mapSolicitudError(error) }));
+      if (mounted.current && requestId === listRequest.current) setListState((current) => ({ ...current, loading: false, error: mapSolicitudError(error) }));
     }
   }, [canView]);
 
   useEffect(() => { void loadList({ page: 1, estado: '' }); }, [loadList]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      listRequest.current += 1;
+    };
+  }, []);
 
   const setFilter = useCallback((estado) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     setFilterState(estado);
-    void loadList({ page: 1, estado });
-  }, [loadList]);
+    void loadList({ page: 1, estado, buscar: search });
+  }, [loadList, search]);
+
+  const setSearch = useCallback((value, { immediate = false } = {}) => {
+    setSearchState(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const execute = () => void loadList({ page: 1, estado: filter, buscar: value });
+    if (immediate) execute();
+    else debounceRef.current = setTimeout(execute, 300);
+  }, [filter, loadList]);
+
+  const clearSearch = useCallback(() => setSearch('', { immediate: true }), [setSearch]);
 
   const openCreate = useCallback(async () => {
     setView('nueva');
@@ -91,6 +113,7 @@ export default function useSolicitudesCompra({ canView, openToast }) {
       const result = await solicitudesCompraService.crearSolicitud(payload);
       openToast('SOLICITUD ENVIADA', 'La solicitud fue enviada a Administración.', 'success');
       setFilterState('PENDIENTE');
+      setSearchState('');
       setView('listado');
       await loadList({ page: 1, estado: 'PENDIENTE' });
       return result;
@@ -101,7 +124,7 @@ export default function useSolicitudesCompra({ canView, openToast }) {
   }, [loadList, openToast]);
 
   return {
-    view, setView, listState, filter, setFilter, loadList, openCreate, openDetail,
+    view, setView, listState, filter, setFilter, search, setSearch, clearSearch, loadList, openCreate, openDetail,
     detailState, warehouses, warehousesLoading, catalogState, loadCatalog, submit
   };
 }

@@ -97,6 +97,22 @@
   padding: 0.85rem 0;
 }
 
+.sol-comp-list-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--sol-comp-border);
+  border-radius: 11px;
+  background: #fff;
+}
+
+.sol-comp-list-search > i { color: var(--c-terracotta); }
+.sol-comp-list-search input { min-width: 0; border: 0; outline: 0; }
+.sol-comp-result-count { margin: 0.4rem 0 0; color: var(--sol-comp-muted); font-size: 0.82rem; }
+
 .sol-comp-filters button,
 .sol-comp-scope button {
   border: 1px solid var(--c-border-strong);
@@ -580,6 +596,125 @@
 .sol-comp-catalog-card--sin_stock { border-top-color: var(--c-accent); }
 .sol-comp-catalog-card--stock_bajo { border-top-color: var(--c-terracotta); }
 .sol-comp-catalog-card--disponible { border-top-color: var(--c-info); }
+.sol-comp-catalog-card--configuration-pending {
+  border-color: #d69e2e;
+  background: #fffaf0;
+}
+
+.sol-comp-catalog-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.sol-comp-configuration-badge {
+  border-radius: 999px;
+  padding: 0.27rem 0.55rem;
+  color: #744210;
+  background: #fef3c7;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.sol-comp-configuration-message {
+  padding: 0.65rem 0.7rem;
+  border-left: 3px solid #d69e2e;
+  border-radius: 7px;
+  color: #744210 !important;
+  background: #fffbeb;
+  line-height: 1.45;
+}
+
+.sol-comp-catalog-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-bottom: 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #e8b949;
+  border-radius: 10px;
+  color: #744210;
+  background: #fffbeb;
+  font-size: 0.86rem;
+}
+
+.sol-comp-conversion-info,
+.sol-comp-conversion-preview,
+.sol-comp-calculated-base {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sol-comp-conversion-info,
+.sol-comp-conversion-preview {
+  margin-top: 0.55rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--c-border-soft);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.sol-comp-conversion-preview strong,
+.sol-comp-calculated-base strong {
+  color: var(--c-text);
+}
+
+.sol-comp-base-presentation span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.sol-comp-equivalence {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  color: var(--c-text);
+  background: rgba(243, 241, 216, 0.5);
+}
+
+.sol-comp-calculated-base {
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.65rem;
+  border-left: 3px solid var(--c-info);
+  border-radius: 7px;
+  background: rgba(224, 242, 254, 0.55);
+}
+
+.sol-comp-calculated-base em {
+  color: var(--sol-comp-muted);
+  font-size: 0.76rem;
+  font-style: normal;
+}
+
+.sol-comp-conversion-confirmation {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.65rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sol-comp-conversion-confirmation li {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--c-border-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.sol-comp-inventory-warning {
+  padding: 0.65rem 0.7rem;
+  border-left: 3px solid var(--c-terracotta);
+  border-radius: 7px;
+  background: #fff8ed;
+}
 
 .sol-comp-catalog-card p {
   margin: 0.42rem 0;
@@ -1418,18 +1553,6 @@
   grid-column: 2;
 }
 
-.sol-comp-inline-confirm--approve,
-.sol-comp-inline-confirm--receive {
-  border-color: rgba(45, 107, 102, 0.35);
-  background: rgba(45, 107, 102, 0.07);
-}
-
-.sol-comp-inline-confirm--approve .sol-comp-inline-confirm__icon,
-.sol-comp-inline-confirm--receive .sol-comp-inline-confirm__icon {
-  color: var(--c-info);
-  background: rgba(45, 107, 102, 0.13);
-}
-
 .sol-comp-inline-confirm--reject {
   border-color: rgba(178, 45, 48, 0.35);
   background: rgba(178, 45, 48, 0.06);
@@ -1444,6 +1567,93 @@
   display: flex;
   gap: 0.6rem;
   flex-shrink: 0;
+}
+
+.sol-comp-confirm-modal-backdrop {
+  z-index: 1090;
+  padding: clamp(0.75rem, 3vw, 2rem);
+}
+
+.sol-comp-confirm-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: calc(100vh - clamp(1.5rem, 6vw, 4rem));
+  overflow: clip;
+}
+
+.sol-comp-confirm-modal__body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sol-comp-confirm-modal__footer {
+  flex-shrink: 0;
+}
+
+.sol-comp-confirm-modal__footer .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.sol-comp-confirm-modal__spinner {
+  animation: sol-comp-spin 0.8s linear infinite;
+}
+
+.sol-comp-confirm-summary {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.sol-comp-confirm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(140px, 0.65fr);
+  gap: 0.25rem 1rem;
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  background: var(--c-surface);
+}
+
+.sol-comp-confirm-row > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sol-comp-confirm-row > span {
+  text-align: right;
+  font-weight: 700;
+}
+
+.sol-comp-confirm-row > small {
+  grid-column: 1 / -1;
+  color: var(--c-text-soft);
+}
+
+.sol-comp-confirm-row__difference {
+  color: #725500 !important;
+}
+
+.sol-comp-confirm-meta {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 10px;
+  background: var(--c-bg-soft);
+}
+
+.sol-comp-confirm-meta p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@keyframes sol-comp-spin {
+  to { transform: rotate(360deg); }
 }
 
 .sol-comp-reception-line.is-different {
@@ -1568,10 +1778,18 @@
   display: block;
   width: 100%;
   max-width: 100%;
-  max-height: 420px;
   object-fit: contain;
   border-radius: 9px;
   background: #f2f4f5;
+}
+
+.sol-comp-invoice-preview img {
+  height: clamp(180px, 28vw, 280px);
+  max-height: 280px;
+}
+
+.sol-comp-evidence-card img {
+  max-height: 420px;
 }
 
 .sol-comp-invoice-preview > div,
@@ -2027,6 +2245,40 @@
 
   .sol-comp-inline-confirm > div:first-child {
     grid-template-columns: 2.5rem minmax(0, 1fr);
+  }
+
+  .sol-comp-confirm-modal-backdrop {
+    padding: 0.65rem;
+  }
+
+  .sol-comp-confirm-modal {
+    max-height: calc(100vh - 1.3rem);
+  }
+
+  .sol-comp-confirm-modal__footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .sol-comp-confirm-modal__footer .btn,
+  .sol-comp-confirm-row {
+    width: 100%;
+  }
+
+  .sol-comp-confirm-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sol-comp-confirm-row > span {
+    text-align: left;
+  }
+
+  .sol-comp-confirm-row > small {
+    grid-column: auto;
+  }
+
+  .sol-comp-invoice-preview img {
+    height: min(240px, 52vw);
   }
 
   .sol-comp-evidence-meta {

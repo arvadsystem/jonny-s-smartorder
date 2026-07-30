@@ -1,49 +1,37 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ventasService from '../../../../services/ventasService';
+import useVentaReversionContext from '../hooks/useVentaReversionContext';
+import useVentaReversionPreview from '../hooks/useVentaReversionPreview';
 import {
-  resolveVentaReversionBlockReason,
-  resolveVentasApiErrorMessage
-} from '../utils/ventasHelpers';
-import VentaReversionTicketPrint from './VentaReversionTicketPrint';
-import './VentaReversionTicketPrint.css';
+  buildReversionPayload,
+  isValidReversionPayload,
+  resolveReversionIntent
+} from '../utils/ventaReversionFlow';
+import { resolveVentasApiErrorMessage } from '../utils/ventasHelpers';
+import VentaReversionLines from './VentaReversionLines';
+import VentaReversionPreview from './VentaReversionPreview';
+import VentaReversionResult from './VentaReversionResult';
 
 const MOTIVOS = [
-  { code: 'PRODUCTO_EQUIVOCADO', label: 'Producto equivocado' },
-  { code: 'CANTIDAD_EQUIVOCADA', label: 'Cantidad equivocada' },
-  { code: 'VENTA_DUPLICADA', label: 'Venta duplicada' },
-  { code: 'CLIENTE_CANCELO', label: 'Cliente canceló' },
-  { code: 'METODO_PAGO_EQUIVOCADO', label: 'Método de pago equivocado' },
-  { code: 'ERROR_OPERATIVO', label: 'Error operativo' },
-  { code: 'OTRO', label: 'Otro' }
+  ['PRODUCTO_EQUIVOCADO', 'Producto equivocado'],
+  ['CANTIDAD_EQUIVOCADA', 'Cantidad equivocada'],
+  ['VENTA_DUPLICADA', 'Venta duplicada'],
+  ['CLIENTE_CANCELO', 'Cliente canceló'],
+  ['METODO_PAGO_EQUIVOCADO', 'Método de pago equivocado'],
+  ['ERROR_OPERATIVO', 'Error operativo'],
+  ['OTRO', 'Otro']
 ];
 
-const toPositiveInt = (value) => {
+const positiveInt = (value) => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const formatCurrency = (value) => {
-  const amount = Number(value || 0);
-  return `L ${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
-};
-
-const normalizeVentaHeader = (rawVenta) => {
-  if (!rawVenta || typeof rawVenta !== 'object') return null;
-  return {
-    ...rawVenta,
-    numero_venta: rawVenta.numero_venta || rawVenta.codigo_venta || null,
-    cliente_nombre: rawVenta.cliente_nombre || rawVenta.cliente || 'Consumidor final',
-    nombre_sucursal: rawVenta.nombre_sucursal || rawVenta.sucursal || '--',
-    items: Array.isArray(rawVenta.items) ? rawVenta.items : []
-  };
-};
-
-const canPrintReversionTicket = (venta) => {
-  const ticket = venta?.facturacion?.ticket && typeof venta.facturacion.ticket === 'object'
-    ? venta.facturacion.ticket
-    : {};
-  return ticket.imprimir_comprobante_reversion !== false;
-};
+const normalizeVenta = (venta) => venta ? {
+  ...venta,
+  codigo_venta: venta.codigo_venta || venta.numero_venta,
+  nombre_sucursal: venta.nombre_sucursal || venta.sucursal || '--'
+} : null;
 
 export default function VentaReversionModal({
   open,
@@ -54,490 +42,246 @@ export default function VentaReversionModal({
   sucursales,
   selectedVenta
 }) {
-  const [codigoVentaInput, setCodigoVentaInput] = useState('');
-  const [fechaOperacionInput, setFechaOperacionInput] = useState('');
-  const [idSucursalInput, setIdSucursalInput] = useState('');
-  const [loadingVenta, setLoadingVenta] = useState(false);
+  const [venta, setVenta] = useState(null);
+  const [codigo, setCodigo] = useState('');
+  const [fecha, setFecha] = useState('');
+  const [sucursal, setSucursal] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [tipo, setTipo] = useState('TOTAL');
+  const [motivo, setMotivo] = useState(MOTIVOS[0][0]);
+  const [observacion, setObservacion] = useState('');
+  const [cantidades, setCantidades] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [venta, setVenta] = useState(null);
-  const [tipoReversion, setTipoReversion] = useState('TOTAL');
-  const [motivo, setMotivo] = useState(MOTIVOS[0].code);
-  const [observacion, setObservacion] = useState('');
-  const [lineQty, setLineQty] = useState({});
-  const [reversionResult, setReversionResult] = useState(null);
-  const [ticketWidthMm, setTicketWidthMm] = useState(80);
-  const [showTicketPreview, setShowTicketPreview] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [result, setResult] = useState(null);
+  const intentRef = useRef(null);
+  const submitInFlightRef = useRef(false);
+  const firstInputRef = useRef(null);
 
-  const isFromDetail = Boolean(selectedVenta?.id_factura);
+  const idFactura = positiveInt(venta?.id_factura);
   const canSelectSucursal = Boolean(scopeInfo?.canSelectSucursal);
-  const userSucursalId = toPositiveInt(scopeInfo?.userSucursalId);
-  const allowedSucursalIds = useMemo(
-    () => (Array.isArray(scopeInfo?.allowedSucursalIds)
-      ? scopeInfo.allowedSucursalIds.map((id) => toPositiveInt(id)).filter(Boolean)
-      : []),
+  const userSucursalId = positiveInt(scopeInfo?.userSucursalId);
+  const allowedIds = useMemo(
+    () => new Set((scopeInfo?.allowedSucursalIds || []).map(positiveInt).filter(Boolean)),
     [scopeInfo?.allowedSucursalIds]
   );
+  const selectableSucursales = useMemo(
+    () => (sucursales || []).filter((item) => allowedIds.has(positiveInt(item.id_sucursal))),
+    [allowedIds, sucursales]
+  );
 
-  const selectableSucursales = useMemo(() => {
-    const allowed = new Set(allowedSucursalIds);
-    return (Array.isArray(sucursales) ? sucursales : [])
-      .filter((row) => allowed.has(toPositiveInt(row?.id_sucursal)))
-      .sort((a, b) =>
-        String(a?.nombre_sucursal || '').localeCompare(String(b?.nombre_sucursal || ''), 'es', {
-          sensitivity: 'base'
-        })
-      );
-  }, [allowedSucursalIds, sucursales]);
-  const userSucursalLabel = useMemo(() => {
-    const fromCatalog = selectableSucursales.find(
-      (row) => Number(row.id_sucursal) === Number(userSucursalId)
-    );
-    if (fromCatalog?.nombre_sucursal) return fromCatalog.nombre_sucursal;
-    if (userSucursalId) return `Sucursal #${userSucursalId}`;
-    return null;
-  }, [selectableSucursales, userSucursalId]);
-
-  const items = useMemo(() => (Array.isArray(venta?.items) ? venta.items : []), [venta]);
-  const partialMetrics = useMemo(() => {
-    const pendingLines = items
-      .map((item) => Number.parseInt(String(item?.cantidad ?? 0), 10))
-      .filter((qty) => Number.isInteger(qty) && qty > 0);
-    const hasMultiplePendingLines = pendingLines.length > 1;
-    const hasPendingQtyGreaterThanOne = pendingLines.some((qty) => qty > 1);
-    return {
-      partialApplies: hasMultiplePendingLines || hasPendingQtyGreaterThanOne
-    };
-  }, [items]);
-  const reversionBlockReason = resolveVentaReversionBlockReason(venta);
-  const reversionPrintEnabled = canPrintReversionTicket(venta);
+  const { context, loading: contextLoading, error: contextError, reload: reloadContext } =
+    useVentaReversionContext({ open, idFactura });
+  const items = useMemo(() => (Array.isArray(context?.items) ? context.items : []), [context?.items]);
+  const payload = useMemo(
+    () => buildReversionPayload({ tipo, motivo, observacion, cantidades, items }),
+    [cantidades, items, motivo, observacion, tipo]
+  );
+  const previewEnabled = Boolean(context?.reversible) && !result;
+  const { preview, loading: previewLoading, error: previewError } =
+    useVentaReversionPreview({ open, idFactura, payload, enabled: previewEnabled });
+  const partialCompletesWholeOriginal = tipo === 'PARCIAL'
+    && preview?.estado_acumulado_resultante === 'TOTAL'
+    && context?.factura?.estado_reversion === 'NINGUNA';
+  const canConfirm = Boolean(
+    idFactura
+    && context?.reversible
+    && preview
+    && isValidReversionPayload(payload)
+    && !previewLoading
+    && !partialCompletesWholeOriginal
+    && !saving
+    && !result
+  );
 
   useEffect(() => {
     if (!open) return;
-
-    setError('');
-    setReversionResult(null);
-    setShowTicketPreview(false);
-    setTipoReversion('TOTAL');
-    setMotivo(MOTIVOS[0].code);
+    const base = normalizeVenta(selectedVenta);
+    setVenta(base);
+    setCodigo(base?.codigo_venta || '');
+    setFecha(String(base?.fecha_operacion || '').slice(0, 10));
+    setSucursal(String(base?.id_sucursal || (!canSelectSucursal ? userSucursalId || '' : '')));
+    setTipo('TOTAL');
+    setMotivo(MOTIVOS[0][0]);
     setObservacion('');
-    setLineQty({});
-    setTicketWidthMm(80);
-
-    if (isFromDetail) {
-      const baseVenta = normalizeVentaHeader(selectedVenta);
-      setVenta(baseVenta);
-      setCodigoVentaInput(baseVenta?.codigo_venta || '');
-      setFechaOperacionInput(String(baseVenta?.fecha_operacion || '').slice(0, 10));
-      setIdSucursalInput(String(baseVenta?.id_sucursal || userSucursalId || ''));
-
-      const initialQty = {};
-      (Array.isArray(baseVenta?.items) ? baseVenta.items : []).forEach((item) => {
-        const detailId = Number(item.id_detalle || 0);
-        if (detailId > 0) initialQty[detailId] = 0;
-      });
-      setLineQty(initialQty);
-      return;
-    }
-
-    setVenta(null);
-    setCodigoVentaInput('');
-    setFechaOperacionInput('');
-    setIdSucursalInput(canSelectSucursal ? '' : String(userSucursalId || ''));
-  }, [open, isFromDetail, selectedVenta, canSelectSucursal, userSucursalId]);
-
-  if (!open) return null;
-
-  const close = () => {
+    setCantidades({});
     setError('');
-    setVenta(null);
-    setCodigoVentaInput('');
-    setFechaOperacionInput('');
-    setIdSucursalInput('');
-    setTipoReversion('TOTAL');
-    setMotivo(MOTIVOS[0].code);
-    setObservacion('');
-    setLineQty({});
-    setReversionResult(null);
-    setTicketWidthMm(80);
-    setShowTicketPreview(false);
-    onClose?.();
-  };
+    setResult(null);
+    setConfirmOpen(false);
+    intentRef.current = null;
+    window.setTimeout(() => firstInputRef.current?.focus(), 0);
+  }, [canSelectSucursal, open, selectedVenta, userSucursalId]);
 
-  const loadVentaByCriteria = async () => {
+  useEffect(() => {
+    if (!open || saving) return undefined;
+    const handleKey = (event) => {
+      if (event.key !== 'Escape') return;
+      if (confirmOpen) setConfirmOpen(false);
+      else onClose?.();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [confirmOpen, onClose, open, saving]);
+
+  const loadVenta = async () => {
     setError('');
-    setReversionResult(null);
-    setShowTicketPreview(false);
-
-    const codigoVenta = String(codigoVentaInput || '').trim().toUpperCase();
-    const fechaOperacion = String(fechaOperacionInput || '').trim();
-    const idSucursalResolved = canSelectSucursal
-      ? toPositiveInt(idSucursalInput)
-      : userSucursalId;
-
-    if (!codigoVenta) {
-      setError('Ingresa el código de venta.');
+    const idSucursal = canSelectSucursal ? positiveInt(sucursal) : userSucursalId;
+    if (!codigo.trim() || !fecha || !idSucursal) {
+      setError('Completa código, fecha y sucursal para buscar la venta.');
       return;
     }
-    if (!fechaOperacion) {
-      setError('Selecciona la fecha de operación.');
-      return;
-    }
-    if (!idSucursalResolved) {
-      setError(canSelectSucursal ? 'Selecciona la sucursal.' : 'No se pudo determinar tu sucursal asignada.');
-      return;
-    }
-
-    setLoadingVenta(true);
+    setSearching(true);
     try {
       const response = await ventasService.buscarVenta({
-        codigo_venta: codigoVenta,
-        fecha_operacion: fechaOperacion,
-        id_sucursal: idSucursalResolved
+        codigo_venta: codigo.trim().toUpperCase(),
+        fecha_operacion: fecha,
+        id_sucursal: idSucursal
       });
-      const found = response?.data || null;
-      const idFactura = Number(found?.id_factura || 0);
-      if (!idFactura) {
-        throw new Error('No se encontró una venta con ese código, fecha y sucursal.');
+      const foundId = positiveInt(response?.data?.id_factura);
+      if (!foundId) throw new Error('Venta no encontrada.');
+      const nextVenta = normalizeVenta(await getVentaDetail(foundId));
+      const nextFacturaId = positiveInt(nextVenta?.id_factura);
+      if (nextFacturaId !== idFactura) {
+        intentRef.current = null;
       }
-      const detail = await getVentaDetail(idFactura);
-      const normalized = normalizeVentaHeader(detail);
-      setVenta(normalized);
-      const initialQty = {};
-      (Array.isArray(normalized?.items) ? normalized.items : []).forEach((item) => {
-        const detailId = Number(item.id_detalle || 0);
-        if (detailId > 0) initialQty[detailId] = 0;
-      });
-      setLineQty(initialQty);
-    } catch (err) {
+      setConfirmOpen(false);
+      setVenta(nextVenta);
+      setResult(null);
+      setCantidades({});
+      setError('');
+    } catch (requestError) {
       setVenta(null);
-      setError(resolveVentasApiErrorMessage(err, 'No se encontró una venta con ese código, fecha y sucursal.'));
+      setError(resolveVentasApiErrorMessage(requestError, 'No se encontró la venta solicitada.'));
     } finally {
-      setLoadingVenta(false);
+      setSearching(false);
     }
   };
 
-  const handleSubmit = async () => {
-    setError('');
-    const idFactura = Number(venta?.id_factura || 0);
-    if (!idFactura) {
-      setError('Primero debes seleccionar una venta válida.');
-      return;
-    }
-    if (reversionBlockReason) {
-      setError(reversionBlockReason);
-      return;
-    }
+  const changeCantidad = (id, rawValue, max) => {
+    const raw = String(rawValue ?? '');
+    const parsed = Number(raw);
+    const valid = /^\d+$/.test(raw) && Number.isSafeInteger(parsed) && parsed > 0 && parsed <= max;
+    setCantidades((current) => ({ ...current, [id]: valid ? parsed : '' }));
+  };
 
-    const payload = {
-      tipo_reversion: tipoReversion,
-      motivo,
-      observacion: observacion.trim()
-    };
-
-    if (tipoReversion === 'PARCIAL') {
-      if (!partialMetrics.partialApplies) {
-        setError('Esta venta solo tiene una unidad pendiente. Usa reversión total.');
-        return;
-      }
-      const lineas = items
-        .map((item) => {
-          const idDetalle = Number(item.id_detalle || 0);
-          const qty = Number.parseInt(String(lineQty[idDetalle] ?? 0), 10);
-          return idDetalle > 0 && Number.isInteger(qty) && qty > 0
-            ? { id_detalle_factura: idDetalle, cantidad: qty }
-            : null;
-        })
-        .filter(Boolean);
-
-      if (!lineas.length) {
-        setError('Selecciona al menos una línea con cantidad para reversión parcial.');
-        return;
-      }
-
-      payload.lineas = lineas;
-    }
-
+  const submit = async () => {
+    if (!canConfirm || saving || submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setSaving(true);
+    setError('');
+    const intent = resolveReversionIntent(intentRef.current, idFactura, payload);
+    intentRef.current = intent;
     try {
-      const response = await ventasService.createReversion(idFactura, payload);
-      const result = response?.data || response;
-      const refreshedDetail = await getVentaDetail(idFactura).catch(() => null);
-      if (refreshedDetail) {
-        const normalized = normalizeVentaHeader(refreshedDetail);
-        setVenta(normalized);
-        const nextQty = {};
-        (Array.isArray(normalized?.items) ? normalized.items : []).forEach((item) => {
-          const detailId = Number(item.id_detalle || 0);
-          if (detailId > 0) nextQty[detailId] = 0;
-        });
-        setLineQty(nextQty);
-      }
-      setReversionResult(result);
-      setShowTicketPreview(reversionPrintEnabled);
-      onSuccess?.(result, refreshedDetail);
-    } catch (err) {
-      setError(resolveVentasApiErrorMessage(err, 'No se pudo registrar la reversión.'));
+      const response = await ventasService.createReversion(idFactura, payload, {
+        idempotencyKey: intent.key
+      });
+      const nextResult = response?.data || response;
+      setResult(nextResult);
+      setConfirmOpen(false);
+      const refreshed = await getVentaDetail(idFactura).catch(() => null);
+      if (refreshed) setVenta(normalizeVenta(refreshed));
+      reloadContext();
+      onSuccess?.(nextResult, refreshed);
+    } catch (requestError) {
+      setConfirmOpen(false);
+      setError(resolveVentasApiErrorMessage(requestError, 'No se pudo registrar la reversión.'));
     } finally {
+      submitInFlightRef.current = false;
       setSaving(false);
     }
   };
 
-  const handlePrintTicket = () => {
-    if (typeof window === 'undefined' || !reversionResult) return;
-
-    document.body.classList.add('venta-reversion-ticket-printing');
-    const cleanup = () => {
-      document.body.classList.remove('venta-reversion-ticket-printing');
-      window.removeEventListener('afterprint', cleanup);
-    };
-
-    window.addEventListener('afterprint', cleanup);
-    window.requestAnimationFrame(() => {
-      window.print();
-      window.setTimeout(cleanup, 1200);
-    });
-  };
+  if (!open) return null;
+  const originalSession = context?.sesion_original;
 
   return (
-    <div className="ventas-modal-backdrop" role="presentation" onClick={close}>
-      <section
-        className="ventas-modal ventas-detail-modal"
-        role="dialog"
-        aria-modal="true"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div className="ventas-modal-backdrop" role="presentation" onClick={saving ? undefined : onClose}>
+      <section className="ventas-modal ventas-detail-modal" role="dialog" aria-modal="true" aria-labelledby="reversion-title" onClick={(event) => event.stopPropagation()}>
         <header className="ventas-modal__header">
           <div className="ventas-modal__title-wrap">
-            <span className="ventas-modal__icon" aria-hidden="true">
-              <i className="bi bi-arrow-counterclockwise" />
-            </span>
-            <div>
-              <h3>Registrar reversión</h3>
-              <p>Documento compensatorio REV</p>
-            </div>
+            <span className="ventas-modal__icon"><i className="bi bi-arrow-counterclockwise" /></span>
+            <div><h3 id="reversion-title">Registrar reversión</h3><p>Documento compensatorio REV</p></div>
           </div>
-          <button type="button" className="ventas-modal__close-btn" onClick={close} aria-label="Cerrar">
-            <i className="bi bi-x-lg" />
-          </button>
+          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={saving} aria-label="Cerrar"><i className="bi bi-x-lg" /></button>
         </header>
 
         <div className="ventas-modal__body ventas-detail-modal__body">
-          {!isFromDetail ? (
+          {!selectedVenta?.id_factura ? (
             <div className="row g-2">
-              <div className="col-md-4">
-                <label className="form-label">Código de venta</label>
-                <input
-                  className="form-control"
-                  value={codigoVentaInput}
-                  onChange={(event) => setCodigoVentaInput(event.target.value.toUpperCase())}
-                  placeholder="Ej: VTA-00001"
-                />
-              </div>
+              <div className="col-md-4"><label className="form-label" htmlFor="reversion-codigo">Código de venta</label><input ref={firstInputRef} id="reversion-codigo" className="form-control" value={codigo} onChange={(event) => setCodigo(event.target.value.toUpperCase())} /></div>
+              <div className="col-md-3"><label className="form-label" htmlFor="reversion-fecha">Fecha de operación</label><input id="reversion-fecha" className="form-control" type="date" value={fecha} onChange={(event) => setFecha(event.target.value)} /></div>
               <div className="col-md-3">
-                <label className="form-label">Fecha de operación</label>
-                <input
-                  className="form-control"
-                  type="date"
-                  value={fechaOperacionInput}
-                  onChange={(event) => setFechaOperacionInput(event.target.value)}
-                />
-              </div>
-              <div className="col-md-3">
-                <label className="form-label">Sucursal</label>
+                <label className="form-label" htmlFor="reversion-sucursal">Sucursal</label>
                 {canSelectSucursal ? (
-                  <select
-                    className="form-select"
-                    value={idSucursalInput}
-                    onChange={(event) => setIdSucursalInput(event.target.value)}
-                  >
+                  <select id="reversion-sucursal" className="form-select" value={sucursal} onChange={(event) => setSucursal(event.target.value)}>
                     <option value="">Selecciona sucursal</option>
-                    {selectableSucursales.map((sucursal) => (
-                      <option key={sucursal.id_sucursal} value={String(sucursal.id_sucursal)}>
-                        {sucursal.nombre_sucursal}
-                      </option>
-                    ))}
+                    {selectableSucursales.map((item) => <option key={item.id_sucursal} value={item.id_sucursal}>{item.nombre_sucursal}</option>)}
                   </select>
-                ) : (
-                  <div className="ventas-summary__static-field">
-                    {userSucursalLabel || 'No se pudo determinar tu sucursal asignada.'}
-                  </div>
-                )}
+                ) : <div className="form-control bg-light">Sucursal operativa</div>}
               </div>
-              <div className="col-md-2 d-flex align-items-end">
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary w-100"
-                  onClick={loadVentaByCriteria}
-                  disabled={loadingVenta}
-                >
-                  {loadingVenta ? 'Buscando...' : 'Buscar venta'}
-                </button>
+              <div className="col-md-2 d-flex align-items-end"><button type="button" className="btn btn-outline-secondary w-100" onClick={loadVenta} disabled={searching}>{searching ? 'Buscando...' : 'Buscar venta'}</button></div>
+            </div>
+          ) : null}
+
+          {venta ? <div className="alert alert-light mt-3 mb-0">Venta original: <strong>{venta.codigo_venta}</strong> · Sucursal: <strong>{venta.nombre_sucursal}</strong></div> : null}
+          {contextLoading ? <div className="alert alert-info mt-3 mb-0">Verificando disponibilidad de reversión...</div> : null}
+          {contextError ? <div className="alert alert-danger mt-3 mb-0">{contextError}</div> : null}
+          {context && !context.reversible ? <div className="alert alert-warning mt-3 mb-0">{context.motivo_bloqueo || 'Esta venta no puede reversarse.'}<small className="d-block text-muted">Referencia: {context.code}</small></div> : null}
+
+          {context?.reversible && !result ? (
+            <>
+              <div className="row g-2 mt-1">
+                <div className="col-md-4">
+                  <label className="form-label" htmlFor="reversion-tipo">Tipo</label>
+                  <select ref={selectedVenta?.id_factura ? firstInputRef : undefined} id="reversion-tipo" className="form-select" value={tipo} onChange={(event) => setTipo(event.target.value)}>
+                    <option value="TOTAL">Reversar todo el saldo pendiente</option>
+                    <option value="PARCIAL">Reversión parcial</option>
+                  </select>
+                </div>
+                <div className="col-md-4"><label className="form-label" htmlFor="reversion-motivo">Motivo</label><select id="reversion-motivo" className="form-select" value={motivo} onChange={(event) => setMotivo(event.target.value)}>{MOTIVOS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+                <div className="col-md-4"><label className="form-label" htmlFor="reversion-observacion">Observación</label><input id="reversion-observacion" className="form-control" maxLength="300" value={observacion} onChange={(event) => setObservacion(event.target.value)} /></div>
               </div>
-            </div>
+              {tipo === 'TOTAL' ? (
+                <div className="alert alert-light mt-3 mb-0">Se reversarán las cantidades disponibles determinadas por el servidor. Saldo disponible: <strong>L {Number(context.factura?.total_restante || 0).toFixed(2)}</strong>.</div>
+              ) : <VentaReversionLines items={items} cantidades={cantidades} onChange={changeCantidad} disabled={saving} />}
+              <VentaReversionPreview preview={preview} loading={previewLoading} error={previewError} />
+              {partialCompletesWholeOriginal ? <div className="alert alert-danger mt-2 mb-0">Esta selección representa toda la factura original. Utiliza la opción TOTAL.</div> : null}
+            </>
           ) : null}
 
-          {venta ? (
-            <div className="alert alert-light mt-3 mb-2">
-              Venta: <strong>{venta.numero_venta || venta.codigo_venta}</strong> | Fecha: <strong>{String(venta.fecha_operacion || '').slice(0, 10) || '--'}</strong> | Sucursal: <strong>{venta.nombre_sucursal || '--'}</strong>
-              <br />
-              Cliente: <strong>{venta.cliente_nombre || 'Consumidor final'}</strong> | Total: <strong>{formatCurrency(venta.total)}</strong>
-            </div>
-          ) : null}
-
-          <div className="row g-2 mt-1">
-            <div className="col-md-4">
-              <label className="form-label">Tipo</label>
-              <select className="form-select" value={tipoReversion} onChange={(e) => setTipoReversion(e.target.value)}>
-                <option value="TOTAL">TOTAL</option>
-                <option value="PARCIAL" disabled={venta && !partialMetrics.partialApplies}>PARCIAL</option>
-              </select>
-            </div>
-            <div className="col-md-4">
-              <label className="form-label">Motivo</label>
-              <select className="form-select" value={motivo} onChange={(e) => setMotivo(e.target.value)}>
-                {MOTIVOS.map((item) => (
-                  <option key={item.code} value={item.code}>{item.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="col-md-4">
-              <label className="form-label">Observación</label>
-              <input className="form-control" value={observacion} onChange={(e) => setObservacion(e.target.value)} maxLength={300} />
-            </div>
-          </div>
-
-          {venta && !partialMetrics.partialApplies ? (
-            <div className="alert alert-warning mt-3 mb-0">
-              Esta venta solo tiene una unidad pendiente. Usa reversión total.
-            </div>
-          ) : null}
-
-          {venta && reversionBlockReason ? (
-            <div className="alert alert-warning mt-3 mb-0">
-              {reversionBlockReason}
-            </div>
-          ) : null}
-
-          {venta && tipoReversion === 'PARCIAL' && partialMetrics.partialApplies ? (
-            <div className="table-responsive mt-3">
-              <table className="table table-sm">
-                <thead>
-                  <tr>
-                    <th>Detalle</th>
-                    <th>Item</th>
-                    <th>Cantidad vendida</th>
-                    <th>Cantidad a reversar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, index) => {
-                    const idDetalle = Number(item.id_detalle || 0);
-                    return (
-                      <tr key={`${idDetalle || index}`}>
-                        <td>{idDetalle || '-'}</td>
-                        <td>{item.nombre_item || item.nombre_producto || 'Item'}</td>
-                        <td>{item.cantidad || 0}</td>
-                        <td>
-                          <input
-                            className="form-control form-control-sm"
-                            type="number"
-                            min="1"
-                            max={item.cantidad || 0}
-                            step="1"
-                            value={lineQty[idDetalle] ?? ''}
-                            onChange={(e) => {
-                              const maxQty = Number(item.cantidad || 0);
-                              const parsed = Number.parseInt(String(e.target.value ?? ''), 10);
-                              const next = Number.isInteger(parsed) && parsed > 0
-                                ? Math.min(parsed, maxQty)
-                                : 0;
-                              setLineQty((prev) => ({ ...prev, [idDetalle]: next }));
-                            }}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-
-          {reversionResult ? (
-            <div className="alert alert-success mt-3 mb-0">
-              <div>
-                Reversión registrada: <strong>{reversionResult.codigo_reversion}</strong> sobre{' '}
-                <strong>{reversionResult.codigo_venta || `VTA-${String(reversionResult.id_factura_original || '').padStart(5, '0')}`}</strong>.
-              </div>
-              <div>
-                Monto reversado: <strong>L {Number(reversionResult.monto_reversado || 0).toFixed(2)}</strong>
-              </div>
-            </div>
-          ) : null}
-
+          <VentaReversionResult open={open} result={result} />
           {error ? <div className="alert alert-danger mt-3 mb-0">{error}</div> : null}
         </div>
 
         <footer className="ventas-reversion-modal__footer">
           <div className="ventas-reversion-modal__footer-actions">
-            <button type="button" className="btn btn-outline-secondary" onClick={close} disabled={saving}>
-              Cancelar
-            </button>
-
-            {reversionResult ? (
-              <>
-                {reversionPrintEnabled ? (
-                  <>
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => setShowTicketPreview((prev) => !prev)}
-                    >
-                      {showTicketPreview ? 'Ocultar comprobante REV' : 'Ver comprobante REV'}
-                    </button>
-                    <select
-                      className="form-select form-select-sm"
-                      value={ticketWidthMm}
-                      onChange={(event) => setTicketWidthMm(Number(event.target.value) === 58 ? 58 : 80)}
-                      aria-label="Ancho de comprobante de reversión"
-                      style={{ maxWidth: 110 }}
-                    >
-                      <option value={80}>80mm</option>
-                      <option value={58}>58mm</option>
-                    </select>
-                    <button type="button" className="btn btn-primary" onClick={handlePrintTicket}>
-                      <i className="bi bi-printer" /> Imprimir comprobante REV
-                    </button>
-                  </>
-                ) : (
-                  <span className="text-muted small">Comprobante REV desactivado para esta sucursal.</span>
-                )}
-              </>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={handleSubmit}
-                disabled={saving || !venta || Boolean(reversionBlockReason)}
-                title={reversionBlockReason || 'Registrar reversión'}
-              >
-                {saving ? 'Registrando...' : 'Registrar reversión'}
-              </button>
-            )}
+            <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>{result ? 'Cerrar' : 'Cancelar'}</button>
+            {!result ? <button type="button" className="btn btn-danger" disabled={!canConfirm} onClick={() => setConfirmOpen(true)}>{saving ? 'Registrando...' : 'Revisar y confirmar'}</button> : null}
           </div>
         </footer>
 
-        {reversionResult ? (
-          <VentaReversionTicketPrint
-            reversion={reversionResult}
-            venta={venta}
-            paperWidth={ticketWidthMm}
-            preview={showTicketPreview}
-          />
+        {confirmOpen ? (
+          <div className="ventas-modal-backdrop" role="presentation" onClick={() => !saving && setConfirmOpen(false)}>
+            <section className="ventas-modal ventas-detail-modal" role="alertdialog" aria-modal="true" aria-labelledby="reversion-confirm-title" onClick={(event) => event.stopPropagation()}>
+              <header className="ventas-modal__header"><div><h3 id="reversion-confirm-title">Confirmar reversión</h3><p>Esta acción no debe duplicarse.</p></div></header>
+              <div className="ventas-modal__body">
+                <dl>
+                  <div><dt>Venta original</dt><dd>{venta?.codigo_venta}</dd></div>
+                  <div><dt>Tipo solicitado</dt><dd>{tipo}</dd></div>
+                  <div><dt>Resultado esperado</dt><dd>{preview?.estado_acumulado_resultante}</dd></div>
+                  <div><dt>Motivo</dt><dd>{MOTIVOS.find(([value]) => value === motivo)?.[1]}</dd></div>
+                  <div><dt>Líneas seleccionadas</dt><dd>{tipo === 'TOTAL' ? 'Todo el saldo pendiente' : payload.lineas?.length}</dd></div>
+                  <div><dt>Monto a reversar</dt><dd>L {Number(preview?.total || 0).toFixed(2)}</dd></div>
+                  <div><dt>Sesión original</dt><dd>{originalSession?.id_sesion_caja ? `#${originalSession.id_sesion_caja} (${originalSession.estado})` : '--'}</dd></div>
+                </dl>
+                <div className="alert alert-warning">La reversión afectará Caja, Inventario, Cocina y Fidelización.<br />Esta acción no debe duplicarse.</div>
+              </div>
+              <footer className="ventas-reversion-modal__footer"><button type="button" className="btn btn-outline-secondary" onClick={() => setConfirmOpen(false)} disabled={saving}>Volver</button><button type="button" className="btn btn-danger" onClick={submit} disabled={saving}>{saving ? 'Registrando...' : 'Confirmar reversión'}</button></footer>
+            </section>
+          </div>
         ) : null}
       </section>
     </div>
   );
 }
-

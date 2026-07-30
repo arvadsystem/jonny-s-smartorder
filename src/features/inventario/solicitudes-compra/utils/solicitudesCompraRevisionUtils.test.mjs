@@ -57,14 +57,23 @@ test('actualizacion usa id_solicitud_detalle y no id_item', () => {
   assert.strictEqual(updateApprovalDraftLine(draft, 230, { cantidad_aprobada: '9' })[0], draft[0]);
 });
 
-test('producto acepta entero y rechaza decimal', () => {
-  assert.equal(parseApprovedQuantity('3', 'PRODUCTO'), 3);
-  assert.equal(parseApprovedQuantity('3.5', 'PRODUCTO'), null);
+test('producto acepta enteros equivalentes con hasta seis ceros decimales', () => {
+  for (const value of [2, '2', '2.0', '2.00', '2.0000', '2.000000']) {
+    assert.equal(parseApprovedQuantity(value, 'PRODUCTO'), 2);
+  }
+  for (const value of ['2.000001', '2.5', '0.000000', '-1.000000', '1e0', '+1', '01.000000', '2.0000000']) {
+    assert.equal(parseApprovedQuantity(value, 'PRODUCTO'), null);
+  }
 });
 
-test('insumo acepta cuatro decimales y rechaza cinco', () => {
-  assert.equal(parseApprovedQuantity('1.2345', 'INSUMO'), 1.2345);
-  assert.equal(parseApprovedQuantity('1.23456', 'INSUMO'), null);
+test('borrador normaliza producto escalado e insumo canonico', () => {
+  assert.equal(createApprovalDraft([detail({ tipo_item: 'PRODUCTO', cantidad_solicitada: '2.000000' })])[0].cantidad_aprobada, '2');
+  assert.equal(createApprovalDraft([detail({ cantidad_solicitada: '2.000000' })])[0].cantidad_aprobada, '2');
+});
+
+test('insumo acepta seis decimales como texto y rechaza siete', () => {
+  assert.equal(parseApprovedQuantity('1.123456', 'INSUMO'), '1.123456');
+  assert.equal(parseApprovedQuantity('1.1234567', 'INSUMO'), null);
 });
 
 for (const value of ['0', '-1']) test(`cantidad ${value} se rechaza`, () => {
@@ -95,7 +104,7 @@ test('payload de aprobacion contiene exclusivamente campos autorizados', () => {
   const payload = buildApprovalPayload({ comentario: '  compra   urgente ', detalles: draft });
   assert.deepEqual(payload, {
     comentario_revision: 'compra urgente',
-    detalles: [{ id_solicitud_detalle: 15, cantidad_aprobada: 2, id_proveedor: 5 }]
+    detalles: [{ id_solicitud_detalle: 15, cantidad_aprobada: '2', id_proveedor: 5 }]
   });
   assert.doesNotMatch(JSON.stringify(payload), /id_item|tipo_item|nombre|presentacion|stock|cantidad_solicitada|cantidad_base|precio|costo|impuesto|total/);
 });

@@ -172,22 +172,178 @@
 
 .fidelizacion-canje-modal__products {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* 2 columnas fijas (no 3): con minmax(220px,1fr) el catalogo llegaba a 3
+     columnas en el ancho real del modal, dejando muy poco espacio para el
+     cuerpo de la tarjeta compacta (82px de imagen + el resto), y el precio
+     se superponia con el boton "Agregar +". Con 2 columnas cada tarjeta
+     conserva ancho suficiente para precio y boton sin solaparse. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   overflow-y: auto;
   padding-right: 4px;
+  /* align-content:start evita que el catalogo, al ser un item de grid
+     (.fidelizacion-canje-modal__body) estirado en align-items:stretch por
+     defecto para igualar la altura del panel lateral, reparta ese alto
+     "prestado" entre las filas de productos: sin esto las filas se
+     comprimian por debajo de su alto natural y las tarjetas quedaban
+     recortadas (sin nombre visible). Con start, cada fila conserva su alto
+     de contenido real y el contenedor scrollea (overflow-y: auto) si hay
+     mas productos de los que caben. */
+  align-content: start;
 }
 
+/* .vcp-card (compartida con Ventas) trae height:100%, pensado para que la
+   tarjeta llene la altura de FILA que le da el grid. En este catalogo esa
+   altura de fila terminaba siendo menor a lo que la tarjeta necesita
+   (imagen + nombre + precio/disponible + boton), y overflow:hidden en
+   .vcp-card recortaba el contenido en vez de mostrarlo. align-self:start +
+   height:auto hacen que cada tarjeta tome su alto natural de contenido,
+   nunca el de la fila del grid. Esto es independiente del layout INTERNO de
+   la tarjeta (vertical u horizontal) y se conserva con la tarjeta compacta
+   de abajo. */
+.fidelizacion-canje-modal__products .vcp-card {
+  align-self: start;
+  height: auto;
+}
+
+/* ---------------------------------------------------------------------
+   Defecto confirmado por la auditoria independiente: el JSX ya traia la
+   clase `ventas-catalog-card-compact`, pero los estilos compactos reales
+   de Caja viven bajo selectores como
+   `.ventas-caja-page .ventas-catalog-card-compact` (ventas.css). El modal
+   de Fidelizacion nunca esta dentro de `.ventas-caja-page`, asi que esa
+   clase quedaba en el DOM sin ningun estilo aplicable: el navegador seguia
+   usando la tarjeta vertical base (.vcp-card { flex-direction: column },
+   .vcp-card__media { aspect-ratio: 4/3 }), no la horizontal compacta.
+
+   Solucion: portar aqui, bajo un scope propio de Fidelizacion
+   (.fidelizacion-canje-modal .ventas-catalog-card-compact), el layout
+   REALMENTE RENDERIZADO por Caja hoy. En ventas.css existen varios bloques
+   historicos con el mismo selector (`.ventas-caja-page .vcp-card` /
+   `.ventas-caja-page .ventas-catalog-card-compact`, lineas ~4926, ~5391 y
+   ~5886) que se van pisando entre si por orden de cascada (misma
+   especificidad, gana el ultimo declarado); las propiedades de abajo son
+   el resultado YA RESUELTO de esa cascada (verificado leyendo ventas.css de
+   arriba a abajo), no una copia de un solo bloque. No se toca ventas.css:
+   Fidelizacion nunca depende de `.ventas-caja-page` ni de que Caja no
+   cambie su cascada interna.
+   --------------------------------------------------------------------- */
+.fidelizacion-canje-modal .ventas-catalog-card-compact {
+  height: auto;
+  min-height: 112px;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  border-radius: 12px;
+}
+
+/* Imagen horizontal y compacta a la izquierda (no el bloque vertical 4:3
+   base): mismo ancho/alto que la columna del grid, object-fit:cover ya lo
+   trae la regla base .vcp-card__image (ventas.css) sin cambios. */
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__media {
+  width: 82px;
+  height: 100%;
+  min-height: 112px;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__placeholder-icon {
+  font-size: 1.2rem;
+}
+
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__body {
+  position: relative;
+  min-width: 0;
+  padding: 10px;
+  gap: 4px;
+}
+
+/* Defecto confirmado: el badge no estaba posicionado en absoluto dentro de
+   .vcp-card__media (que si tiene position:relative), asi que quedaba en el
+   flujo normal del flex centrado -compitiendo por espacio con la imagen
+   absolutamente posicionada- en vez de flotar en una esquina como el badge
+   de descuento real de Caja (.vcp-card__discount-badge). Dentro de la
+   columna de imagen compacta (82px) se reduce ademas su tamano, para que
+   quepa sin invadir el area de la imagen. */
 .fidelizacion-canje-modal__points-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 4;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 110px;
-  padding: 10px 14px;
+  gap: 4px;
+  padding: 2px 6px;
   border-radius: 999px;
   background: linear-gradient(145deg, #9a5319, #b86821);
   color: #fff;
+  font-size: 0.62rem;
   font-weight: 800;
+  box-shadow: 0 2px 8px rgba(18, 7, 3, 0.25);
+}
+
+/* vcp-card__meta-row/vcp-card__kind (compartidas con Ventas) solo traen
+   estilo dentro de .ventas-caja-page (ventas.css): fuera de ese contexto
+   -este modal- se renderizan sin clase alguna aplicada. Se replica aqui el
+   mismo diseno compacto (eyebrow "PRODUCTO" + chip de seleccion), sin tocar
+   ventas.css ni afectar su uso en Caja. A diferencia de Caja (que solo
+   necesita el eyebrow "PRODUCTO" y lo flota en absoluto sobre el nombre),
+   aqui conviven el eyebrow Y el chip de cantidad seleccionada; se
+   mantienen en flujo normal (fila propia, no flotante) para que ambos
+   quepan sin superponerse al nombre en una tarjeta mas angosta. */
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__kind {
+  display: inline-flex;
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(154, 83, 25, 0.08);
+  color: #9a5319;
+  font-size: 0.62rem;
+  font-weight: 900;
+}
+
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__name {
+  margin: 0 0 2px;
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__stock {
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__footer {
+  margin-top: auto;
+}
+
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__price {
+  font-size: 0.92rem;
+}
+
+.fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__add-btn {
+  min-height: 30px;
+  padding: 5px 10px;
+  font-size: 0.74rem;
+}
+
+.fidelizacion-canje-modal__selected-chip {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(25, 135, 84, 0.12);
+  color: #157347;
+  font-size: 0.66rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .fidelizacion-canje-modal__aside {
@@ -211,14 +367,48 @@
   min-height: 0;
 }
 
-.fidelizacion-canje-modal__cart-product {
+/* Carrito compacto: cada item en dos renglones (nombre+subtotal, luego los
+   botones de cantidad) en vez de una tabla de 3 columnas fijas. Sin stock
+   disponible visible (se sigue respetando como limite del boton "+", solo
+   se dejo de mostrar como texto) y sin necesidad de scroll horizontal, ni
+   siquiera en el panel lateral angosto del modal. */
+.fidelizacion-canje-modal__cart-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
-.fidelizacion-canje-modal__cart-product small {
-  color: rgba(82, 44, 34, 0.72);
+.fidelizacion-canje-modal__cart-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.fidelizacion-canje-modal__cart-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fidelizacion-canje-modal__cart-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2f1a10;
+  font-size: 0.86rem;
+}
+
+.fidelizacion-canje-modal__cart-item-subtotal {
+  flex-shrink: 0;
+  color: #9a5319;
+  font-weight: 700;
+  font-size: 0.86rem;
 }
 
 .fidelizacion-canje-modal__qty {
@@ -227,6 +417,70 @@
 
 .fidelizacion-canje-modal__empty {
   min-height: 280px;
+}
+
+.fidelizacion-canje-modal__loading {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(82, 44, 34, 0.72);
+}
+
+.fidelizacion-canje-modal__sucursal-bar {
+  margin-bottom: 16px;
+}
+
+.fidelizacion-canje-modal__session-bar {
+  margin: 0.75rem 0;
+  padding: 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+/* ToolbarSucursalSelect (.toolbar-scope-inline) fue disenado para un
+   toolbar angosto: trae min-width:260px/max-width:340px (ventas.css), asi
+   que dentro del modal (bastante mas ancho) el select quedaba comprimido a
+   ~170px y el nombre de la sucursal se truncaba. Se levanta ese limite solo
+   en este contexto (no se toca el componente compartido ni su uso en otros
+   toolbars) y se agranda para que la sucursal se lea completa. */
+.fidelizacion-canje-modal__sucursal-select.toolbar-scope-inline {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 52px;
+  padding: 10px 16px;
+  border-radius: 14px;
+  box-shadow: 0 10px 22px rgba(18, 7, 3, 0.06);
+}
+
+.fidelizacion-canje-modal__sucursal-select .toolbar-scope-inline__label {
+  font-size: 0.74rem;
+}
+
+.fidelizacion-canje-modal__sucursal-select .toolbar-scope-inline__select {
+  height: 34px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.fidelizacion-canje-modal__sucursal-readonly {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(154, 83, 25, 0.08);
+  border: 1px solid rgba(154, 83, 25, 0.18);
+  color: #9a5319;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.canjeable-card.is-out-of-stock {
+  cursor: default;
 }
 
 .fidelizacion-detail-modal {
@@ -280,12 +534,153 @@
   font-weight: 600;
 }
 
+/* Equivalencia de la tasa: significado, previsualizacion, advertencia y
+   confirmacion. lempiras_por_punto = lempiras necesarios para 1 punto; el
+   campo resultaba ambiguo y se guardo 0.01 creyendo lo contrario. */
+.fidelizacion-config-modal__rate-meaning {
+  font-weight: 600;
+  color: #4b250d;
+}
+
+.fidelizacion-config-modal__preview {
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  border-radius: 16px;
+  background: rgba(248, 244, 238, 0.92);
+  padding: 14px 16px;
+}
+
+.fidelizacion-config-modal__preview-title {
+  font-weight: 700;
+  color: #4b250d;
+  margin-bottom: 8px;
+}
+
+.fidelizacion-config-modal__preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.fidelizacion-config-modal__preview-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: rgba(82, 44, 34, 0.82);
+}
+
+.fidelizacion-config-modal__preview-list strong {
+  color: #4b250d;
+  white-space: nowrap;
+}
+
+.fidelizacion-config-modal__rate-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-bottom: 0;
+  /* La advertencia debe leerse completa tambien en movil: nunca se recorta. */
+  overflow-wrap: anywhere;
+}
+
+.fidelizacion-config-modal__confirm {
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 251, 244, 0.96);
+  padding: 14px 16px 14px 42px;
+}
+
+.fidelizacion-config-modal__confirm .form-check-input {
+  /* Objetivo tactil comodo en movil, sin depender del tamano por defecto. */
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-left: -28px;
+}
+
+.fidelizacion-config-modal__confirm .form-check-label {
+  font-weight: 600;
+  color: #4b250d;
+  overflow-wrap: anywhere;
+}
+
+.fidelizacion-config-modal__confirm .form-check-label span {
+  font-weight: 500;
+  color: rgba(82, 44, 34, 0.78);
+  margin-top: 2px;
+}
+
+@media (max-width: 575.98px) {
+  .fidelizacion-config-modal__preview-list li {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .fidelizacion-config-modal__confirm {
+    padding: 12px 12px 12px 38px;
+  }
+}
+
 .fidelizacion-config-modal__toolbar {
   margin-bottom: 14px;
 }
 
 .fidelizacion-config-modal__table-wrap {
   max-height: 420px;
+}
+
+/* Bug preexistente: este wrap reutiliza .ventas-detail-modal__table-wrap
+   (ventas.css), que a <=767.98px se pone display:none porque el modal de
+   detalle de venta cambia a tarjetas (.ventas-detail-modal__item-cards) en
+   ese ancho. ConfiguracionReglasModal.jsx nunca renderiza esa alternativa de
+   tarjetas, asi que sin este override la tabla entera -incluida la columna
+   "Costo en puntos"- desaparecia en movil sin nada que la reemplace. El
+   selector compuesto (dos clases) tiene mayor especificidad que el selector
+   de una clase de ventas.css, asi que gana sin tener que tocar ese archivo
+   compartido. La tabla conserva su min-width propio (ventas-detail-modal__table)
+   y el wrap su overflow:auto: el resultado es scroll horizontal controlado,
+   no una tarjeta por producto. */
+@media (max-width: 767.98px) {
+  .fidelizacion-config-modal__table-wrap.ventas-detail-modal__table-wrap {
+    display: block;
+  }
+}
+
+.fidelizacion-config-modal__product-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Miniatura compacta (28x28): tabla administrativa, no tarjetas grandes. */
+.fidelizacion-config-modal__thumb {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f7f2ea, #efe7da);
+}
+
+.fidelizacion-config-modal__thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fidelizacion-config-modal__thumb-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c9bcae;
+  font-size: 0.75rem;
 }
 
 .fidelizacion-config-modal__product-name {
@@ -296,6 +691,36 @@
 
 .fidelizacion-config-modal__product-name small {
   color: rgba(82, 44, 34, 0.72);
+}
+
+/* Costo en puntos (antes "Override puntos"): campo + ayuda contextual
+   (automatico / personalizado / error de validacion) apiladas, con un ancho
+   minimo para que el numero y el texto de ayuda no queden ilegibles dentro
+   de la columna angosta de la tabla. */
+.fidelizacion-config-modal__points-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 190px;
+}
+
+.fidelizacion-config-modal__points-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.74rem;
+  color: rgba(82, 44, 34, 0.68);
+  line-height: 1.3;
+}
+
+.fidelizacion-config-modal__points-hint--custom {
+  font-weight: 700;
+  color: #9a5319;
+}
+
+.fidelizacion-config-modal__points-hint--error {
+  color: #9a1c12;
+  font-weight: 600;
 }
 
 .fidelizacion-mobile-list {
@@ -428,6 +853,36 @@
   .fidelizacion-mobile-card__body {
     grid-template-columns: 1fr;
   }
+
+  /* SecurityPaginationBar (compartida con Ventas) oculta los numeros de
+     pagina y la etiqueta "9 por pagina" por debajo de 767.98px (ver
+     ventas.css). En Fidelizacion los numeros deben seguir siendo
+     accesibles en movil (maximo 5 visibles), asi que se reactivan solo
+     dentro de .fidelizacion-page, sin tocar el comportamiento de Ventas. */
+  .fidelizacion-page .ventas-page__pagination-bar .inv-warehouse-moves__pagination-controls {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .fidelizacion-page .ventas-page__pagination-bar .inv-warehouse-moves__pagination-controls > * {
+    order: initial;
+  }
+
+  .fidelizacion-page .ventas-page__pagination-bar .inv-warehouse-moves__pagination-pages {
+    display: flex !important;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .fidelizacion-page .ventas-page__page-size-label {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
 }
 
 @media (max-width: 575.98px) {
@@ -444,5 +899,26 @@
   .fidelizacion-canje-modal,
   .fidelizacion-config-modal {
     width: calc(100% - 14px);
+  }
+
+  /* Una sola columna de productos en movil: con 2 columnas fijas, una
+     tarjeta compacta (imagen de 78px + cuerpo) queda demasiado angosta para
+     precio y boton en un telefono. */
+  .fidelizacion-canje-modal__products {
+    grid-template-columns: 1fr;
+  }
+
+  /* Movil (<=575.98px): columna de imagen un poco mas angosta, misma
+     referencia que usa Caja en su propio breakpoint mas estrecho
+     (ventas.css). La tarjeta sigue siendo horizontal (imagen izquierda,
+     contenido derecha): nunca vuelve a la tarjeta vertical base. */
+  .fidelizacion-canje-modal .ventas-catalog-card-compact {
+    grid-template-columns: 78px minmax(0, 1fr);
+    min-height: 100px;
+  }
+
+  .fidelizacion-canje-modal .ventas-catalog-card-compact .vcp-card__media {
+    width: 78px;
+    min-height: 100px;
   }
 }

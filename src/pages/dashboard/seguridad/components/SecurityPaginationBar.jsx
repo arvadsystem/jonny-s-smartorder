@@ -29,6 +29,7 @@ const SecurityPaginationBar = ({
   onPageChange,
   maxVisible = 5,
   className = "",
+  disabled = false,
 }) => {
   const safeTotal = Math.max(0, Number(totalItems) || 0);
   const safePageSize = clampPositiveInt(pageSize, 10);
@@ -41,6 +42,7 @@ const SecurityPaginationBar = ({
   const visiblePages = buildVisiblePages(safeCurrentPage, totalPages, maxVisible);
 
   const emitPage = (nextPage) => {
+    if (disabled) return;
     if (!onPageChange) return;
     const safeNext = Math.min(totalPages, Math.max(1, Number(nextPage) || 1));
     if (safeNext === safeCurrentPage) return;
@@ -48,7 +50,10 @@ const SecurityPaginationBar = ({
   };
 
   return (
-    <div className={`inv-warehouse-moves__pagination inv-ins-pagination sec-pagination-bar ${className}`.trim()}>
+    <div
+      className={`inv-warehouse-moves__pagination inv-ins-pagination sec-pagination-bar ${className}`.trim()}
+      aria-busy={disabled}
+    >
       <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
         {`Mostrando ${pageWindow} de ${safeTotal}`}
       </div>
@@ -58,7 +63,7 @@ const SecurityPaginationBar = ({
           type="button"
           className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
           onClick={() => emitPage(safeCurrentPage - 1)}
-          disabled={safeCurrentPage <= 1}
+          disabled={disabled || safeCurrentPage <= 1}
           aria-label="Página anterior"
         >
           <i className="bi bi-chevron-left" aria-hidden="true" />
@@ -72,6 +77,7 @@ const SecurityPaginationBar = ({
               type="button"
               className={`inv-warehouse-moves__page-number ${pageNumber === safeCurrentPage ? "is-active" : ""}`.trim()}
               onClick={() => emitPage(pageNumber)}
+              disabled={disabled}
               aria-label={`Ir a la página ${pageNumber}`}
               aria-current={pageNumber === safeCurrentPage ? "page" : undefined}
             >
@@ -88,7 +94,7 @@ const SecurityPaginationBar = ({
           type="button"
           className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
           onClick={() => emitPage(safeCurrentPage + 1)}
-          disabled={safeCurrentPage >= totalPages}
+          disabled={disabled || safeCurrentPage >= totalPages}
           aria-label="Página siguiente"
         >
           <span>Siguiente</span>

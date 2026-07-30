@@ -5,8 +5,7 @@ import {
   formatCurrency,
   formatDateLabel,
   formatTimeLabel,
-  getLineDiscountPercent,
-  resolveVentaReversionBlockReason
+  getLineDiscountPercent
 } from '../utils/ventasHelpers';
 import { buildVentaDetailSummary } from '../utils/ventasDetailSummary';
 import VentaTicketPrint from './VentaTicketPrint';
@@ -19,6 +18,7 @@ import {
   setDocumentPrintError
 } from '../utils/ventasPrintActions';
 import { canPrintKitchenComanda } from '../utils/ventasKitchenRouting';
+import VentaReversionReprintAction from './VentaReversionReprintAction';
 
 const DEFAULT_TICKET_WIDTH_MM = 80;
 
@@ -202,7 +202,6 @@ export default function VentaDetalleModal({
   const extrasSubtotalFromItems = detailSummary.extras;
   const grossSubtotal = detailSummary.subtotal_bruto || Number(venta?.subtotal_bruto ?? 0) || (Number(venta?.sub_total || 0) + resolvedDiscountTotal);
   const shouldShowItemDiscount = detailItems.some((item) => getLineDiscountPercent(item) !== null);
-  const reversionBlockReason = resolveVentaReversionBlockReason(venta);
   const delivery = venta?.delivery && typeof venta.delivery === 'object' ? venta.delivery : null;
   const contexto = venta?.contexto && typeof venta.contexto === 'object' ? venta.contexto : null;
   const isDeliveryDetail = Boolean(delivery);
@@ -430,6 +429,12 @@ export default function VentaDetalleModal({
                             </div>
                           ))}
                         </div>
+                        <div className="small text-muted mt-2">
+                          Resultado acumulado: <strong>{reversion.resultado_acumulado || 'No disponible'}</strong>
+                          {' · '}Fecha: <strong>{formatDateLabel(reversion.creada_en || reversion.fecha_operacion)} {formatTimeLabel(reversion.creada_en || reversion.fecha_operacion)}</strong>
+                          {' · '}Usuario: <strong>{reversion.usuario || 'Sin usuario'}</strong>
+                        </div>
+                        <VentaReversionReprintAction idReversion={reversion.id_reversion} />
                       </article>
                     ))}
                   </div>
@@ -539,8 +544,8 @@ export default function VentaDetalleModal({
                       type="button"
                       className="btn btn-outline-danger"
                       onClick={() => onOpenReversion?.(venta)}
-                      disabled={!venta?.id_factura || Boolean(reversionBlockReason)}
-                      title={reversionBlockReason || 'Registrar reversión'}
+                      disabled={!venta?.id_factura}
+                      title="El servidor verificará si la venta todavía puede reversarse"
                     >
                       <i className="bi bi-arrow-counterclockwise" /> Registrar reversión
                     </button>

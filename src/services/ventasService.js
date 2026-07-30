@@ -222,7 +222,21 @@ const ventasService = {
     withIdempotencyKey({}, idempotencyKey)
   ),
   getPrintJob: (id) => apiFetch(`/ventas/print-jobs/${id}`, 'GET'),
-  createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload, withIdempotencyKey()),
+  getReversionContext: (id, config = {}) =>
+    apiFetch(`/ventas/${id}/reversion-context`, 'GET', null, config),
+  previewReversion: (id, payload, config = {}) =>
+    apiFetch(`/ventas/${id}/reversion-preview`, 'POST', payload, config),
+  createReversion: (id, payload, options = {}) => {
+    const { idempotencyKey, ...config } = options;
+    return apiFetch(
+      `/ventas/${id}/reversiones`,
+      'POST',
+      payload,
+      withIdempotencyKey(config, idempotencyKey)
+    );
+  },
+  reprintReversion: (idReversion) =>
+    apiFetch(`/ventas/reversiones/${idReversion}/print-jobs`, 'POST', {}),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
   create: (payload, options = {}) => createVentaWithRecovery(payload, options),
   createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload, withIdempotencyKey()),

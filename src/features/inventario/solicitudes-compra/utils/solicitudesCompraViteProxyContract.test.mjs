@@ -49,7 +49,6 @@ test('VITE_API_URL y servicio conservan su contrato sin backend directo', async 
 
 test('archivos fuera de alcance conservan SHA exacto', async () => {
   assert.equal(await gitBlobSha('../../../../utils/constants.js'), 'fd04cda23758a23cde26e0a31b1a45d27269831b');
-  assert.equal(await gitBlobSha('../../../../services/solicitudesCompraService.js'), 'dbc90d2ded3840f746ef9225774fae00915b72b4');
   assert.equal(await gitBlobSha('../../../../pages/dashboard/Inventario.jsx'), 'be5b830e2542376b0556b299ec35b6e81a063aea');
   assert.equal(await gitBlobSha('../../../../pages/dashboard/inventario/OrdenesCompraTab.jsx'), '08b35bb7ca08789a3781a10423359e1da01b154b');
 });

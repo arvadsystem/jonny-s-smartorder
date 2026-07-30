@@ -29,9 +29,11 @@ export default function FidelizacionPage() {
     clientesMeta,
     canjes,
     canjesMeta,
+    canjeablesData,
     loadingPanel,
     loadingClientes,
     loadingCanjes,
+    loadingCanjeables,
     detailLoading,
     saving,
     toast,
@@ -41,7 +43,8 @@ export default function FidelizacionPage() {
     loadClientes,
     loadCanjes,
     getClienteById,
-    getClienteCanjeables,
+    loadCanjeables,
+    resetCanjeables,
     getConfiguracion,
     saveConfiguracion,
     createCanje,
@@ -59,7 +62,6 @@ export default function FidelizacionPage() {
   const [detailOpen, setDetailOpen] = useState(false);
 
   const [canjeModalOpen, setCanjeModalOpen] = useState(false);
-  const [canjeablesData, setCanjeablesData] = useState({ items: [], message: '', saldoCliente: null });
 
   const [configOpen, setConfigOpen] = useState(false);
   const [configActiva, setConfigActiva] = useState(null);
@@ -70,7 +72,7 @@ export default function FidelizacionPage() {
   const [clientesQuery, setClientesQuery] = useState({
     search: '',
     page: 1,
-    limit: 20
+    limit: 9
   });
   const [canjesQuery, setCanjesQuery] = useState({
     page: 1,
@@ -99,6 +101,13 @@ export default function FidelizacionPage() {
   const canScopeMulti =
     isSuperAdmin || canAny([PERMISSIONS.FIDELIZACION_VER_MULTISUCURSAL]);
   const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
+  // Solo para mostrar la etiqueta de solo lectura en el modal de canje: el
+  // backend sigue resolviendo la sucursal operativa real del usuario no
+  // superadmin (nunca se envia/confia en este nombre para autorizar nada).
+  const userSucursalNombre = useMemo(() => {
+    const match = sucursales.find((row) => row.id_sucursal === userSucursalId);
+    return match?.nombre_sucursal || '';
+  }, [sucursales, userSucursalId]);
 
   const activeTab = useMemo(() => {
     if (!fallbackTab) return null;
@@ -133,7 +142,12 @@ export default function FidelizacionPage() {
   }, [detailOpen, canjeDetalleOpen, canjeModalOpen, configOpen]);
 
   useEffect(() => {
-    if (!canScopeMulti) return undefined;
+    // canScopeMulti: ya se necesitaba para el selector general del panel.
+    // canUseCanjeFlow: el modal de canje tambien necesita el catalogo de
+    // sucursales, tanto para el selector obligatorio del SUPER_ADMIN como
+    // para mostrarle al usuario local el NOMBRE de su propia sucursal
+    // operativa (solo lectura, nunca editable).
+    if (!canScopeMulti && !canUseCanjeFlow) return undefined;
 
     let ignore = false;
     const loadSucursales = async () => {
@@ -165,7 +179,7 @@ export default function FidelizacionPage() {
     return () => {
       ignore = true;
     };
-  }, [canScopeMulti, openToast]);
+  }, [canScopeMulti, canUseCanjeFlow, openToast]);
 
   useEffect(() => {
     if (scopeInitialized) return;
@@ -223,6 +237,14 @@ export default function FidelizacionPage() {
     scopeQuery
   ]);
 
+  const handleClientesSucursalChange = (value) => {
+    setSelectedSucursalId(value);
+    setClientesQuery((previous) => ({
+      ...previous,
+      page: 1
+    }));
+  };
+
   const buildScopeQueryByValue = (value) => {
     const parsed = Number.parseInt(String(value || ''), 10);
     return Number.isInteger(parsed) && parsed > 0 ? { id_sucursal: parsed } : {};
@@ -273,19 +295,13 @@ export default function FidelizacionPage() {
     }
   };
 
-  const openCanjeModal = async (cliente) => {
+  // No precarga canjeables: GenerarCanjeModal decide cuando pedirlas (solo
+  // despues de resolver la sucursal -propia para un usuario local, elegida
+  // explicitamente para SUPER_ADMIN- via su prop onLoadCanjeables).
+  const openCanjeModal = (cliente) => {
     if (!cliente?.id_cliente || !canUseCanjeFlow) return;
     setSelectedCliente(cliente);
     setCanjeModalOpen(true);
-    setCanjeablesData({ items: [], message: '', saldoCliente: null });
-    try {
-      const payload = await getClienteCanjeables(cliente.id_cliente);
-      setCanjeablesData(payload);
-    } catch {
-      setCanjeModalOpen(false);
-      setSelectedCliente(null);
-      setCanjeablesData({ items: [], message: '', saldoCliente: null });
-    }
   };
 
   const openCanjeDetalle = async (canje) => {
@@ -300,10 +316,12 @@ export default function FidelizacionPage() {
     }
   };
 
-  const handleCreateCanje = async (items, observacion) => {
+  const handleCreateCanje = async (items, observacion, idSucursal, idSesionCaja) => {
     if (!selectedCliente?.id_cliente) return null;
     const response = await createCanje({
       id_cliente: selectedCliente.id_cliente,
+      id_sucursal: idSucursal,
+      ...(idSesionCaja ? { id_sesion_caja: idSesionCaja } : {}),
       items,
       observacion
     });
@@ -383,7 +401,7 @@ export default function FidelizacionPage() {
             currentSearch={clientesQuery.search}
             onSearch={(search) => setClientesQuery((prev) => ({ ...prev, page: 1, search }))}
             onPageChange={(page) => setClientesQuery((prev) => ({ ...prev, page }))}
-            onSucursalChange={(value) => setSelectedSucursalId(value)}
+            onSucursalChange={handleClientesSucursalChange}
             onRefresh={refreshPanelData}
             onOpenConfiguracion={openConfiguracion}
             onOpenDetalle={openClienteDetalle}
@@ -438,10 +456,18 @@ export default function FidelizacionPage() {
           if (saving) return;
           setCanjeModalOpen(false);
           setSelectedCliente(null);
-          setCanjeablesData({ items: [], message: '', saldoCliente: null });
+          resetCanjeables();
         }}
         cliente={selectedCliente}
         canjeablesData={canjeablesData}
+        loadingCanjeables={loadingCanjeables}
+        onLoadCanjeables={loadCanjeables}
+        onResetCanjeables={resetCanjeables}
+        canSelectSucursal={canScopeMulti}
+        sucursales={sucursales}
+        loadingSucursales={loadingSucursales}
+        userSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
+        userSucursalNombre={userSucursalNombre}
         saving={saving}
         onSubmit={handleCreateCanje}
       />
