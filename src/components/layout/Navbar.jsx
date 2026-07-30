@@ -5,6 +5,7 @@ import { usePermisos } from '../../context/PermisosContext';
 import { securityService } from '../../services/securityService';
 import { API_URL } from '../../utils/constants';
 import { getAllowedTabs, PERMISSIONS } from '../../utils/permissions';
+import { resolveOptionalSupabasePublicUrl } from '../../utils/runtimeConfig';
 import {
   isPlanillasContext,
   PLANILLAS_NAV_QUERY_PARAM,
@@ -16,10 +17,10 @@ const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/|data:image\/)/i;
 const NOTIFICATION_SOUND_BUCKET_PATH = 'notificacion/NotificacionJonnys.mp3';
 const SECURITY_NOTIFICATIONS_STREAM_PATH = '/seguridad/notificaciones/stream';
 const NOTIFICATIONS_MAX_ROWS = 30;
-const SUPABASE_PUBLIC_BASE = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '');
+const SUPABASE_PUBLIC_BASE = resolveOptionalSupabasePublicUrl(import.meta.env.VITE_SUPABASE_URL);
 const NOTIFICATION_SOUND_URL = SUPABASE_PUBLIC_BASE
   ? `${SUPABASE_PUBLIC_BASE}/storage/v1/object/public/${NOTIFICATION_SOUND_BUCKET_PATH}`
-  : `https://ooofeoziqaoqcufifqci.supabase.co/storage/v1/object/public/${NOTIFICATION_SOUND_BUCKET_PATH}`;
+  : '';
 const INVENTARIO_STRONG_ADMIN_PERMISSIONS = [
   PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS,
   PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR,
@@ -279,13 +280,14 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab, onMoreOpenChange }) =
   useEffect(() => {
     if (!moreOpen) return undefined;
 
-    updateMoreBackdropTop();
+    const animationFrame = window.requestAnimationFrame(updateMoreBackdropTop);
 
     const handleViewportChange = () => updateMoreBackdropTop();
     window.addEventListener('resize', handleViewportChange);
     window.addEventListener('scroll', handleViewportChange, true);
 
     return () => {
+      window.cancelAnimationFrame(animationFrame);
       window.removeEventListener('resize', handleViewportChange);
       window.removeEventListener('scroll', handleViewportChange, true);
     };
@@ -442,6 +444,8 @@ const Navbar = () => {
   );
 
   const ensureNotificationAudio = useCallback(() => {
+    if (!NOTIFICATION_SOUND_URL) return null;
+
     const currentAudio = notificationAudioRef.current;
     const currentSource = currentAudio?.getAttribute?.('data-sound-src') || '';
     if (currentAudio && currentSource === NOTIFICATION_SOUND_URL) {
