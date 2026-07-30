@@ -157,7 +157,9 @@ const createRequestSignal = (config = {}) => {
 
   const externalSignal = config?.signal ?? null;
   const controller = new AbortController();
+  let abortSource = null;
   const timerId = setTimeout(() => {
+    abortSource = 'timeout';
     try {
       controller.abort(new DOMException('Request timed out', 'AbortError'));
     } catch {
@@ -168,6 +170,7 @@ const createRequestSignal = (config = {}) => {
   let unsubscribeExternal = null;
   if (externalSignal && typeof externalSignal.addEventListener === 'function') {
     const onExternalAbort = () => {
+      abortSource = 'external';
       try {
         controller.abort(externalSignal.reason);
       } catch {
@@ -188,7 +191,12 @@ const createRequestSignal = (config = {}) => {
     if (unsubscribeExternal) unsubscribeExternal();
   };
 
-  return { signal: controller.signal, cleanup, timeoutMs };
+  return {
+    signal: controller.signal,
+    cleanup,
+    timeoutMs,
+    getAbortSource: () => abortSource
+  };
 };
 
 export const apiFetch = async (endpoint, method = 'GET', body = null, config = {}) => {
@@ -225,7 +233,7 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
     requestOptions.body = JSON.stringify(body);
   }
 
-  const { signal, cleanup, timeoutMs } = createRequestSignal(config);
+  const { signal, cleanup, timeoutMs, getAbortSource } = createRequestSignal(config);
   requestOptions.signal = signal;
 
   let response;
@@ -246,12 +254,15 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
 
     if (!response) {
       const aborted = error?.name === 'AbortError';
-      const message = aborted
-        ? `Tiempo de espera agotado (${timeoutMs}ms) al conectar con el servidor.`
-        : 'No se pudo establecer comunicacion con el servidor.';
+      const externallyAborted = aborted && getAbortSource() === 'external';
+      const message = externallyAborted
+        ? 'Solicitud cancelada.'
+        : aborted
+          ? `Tiempo de espera agotado (${timeoutMs}ms) al conectar con el servidor.`
+          : 'No se pudo establecer comunicacion con el servidor.';
       throw new ApiError(message, {
-        status: aborted ? 408 : 0,
-        code: aborted ? 'REQUEST_TIMEOUT' : 'FETCH_ERROR',
+        status: externallyAborted ? 0 : aborted ? 408 : 0,
+        code: externallyAborted ? 'REQUEST_ABORTED' : aborted ? 'REQUEST_TIMEOUT' : 'FETCH_ERROR',
         data: firstError || error
       });
     }

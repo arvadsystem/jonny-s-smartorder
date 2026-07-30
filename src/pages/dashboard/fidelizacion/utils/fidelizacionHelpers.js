@@ -427,14 +427,26 @@ export const normalizeClienteDetalle = (payload) => {
 
 export const formatFechaHora = (fechaStr) => {
   if (!fechaStr) return '-';
-  const d = new Date(fechaStr);
+  const rawValue = String(fechaStr).trim();
+  const normalizedUtcLabel = rawValue.replace(/\s+UTC$/i, 'Z');
+  const normalizedSeparator = normalizedUtcLabel.replace(
+    /^(\d{4}-\d{2}-\d{2})\s(?=\d{2}:\d{2})/,
+    '$1T'
+  );
+  const hasExplicitZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalizedSeparator);
+  const isTimestampWithoutZone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalizedSeparator)
+    && !hasExplicitZone;
+  const normalizedFraction = normalizedSeparator.replace(/(\.\d{3})\d+/, '$1');
+  const d = new Date(isTimestampWithoutZone ? `${normalizedFraction}Z` : normalizedFraction);
   if (Number.isNaN(d.getTime())) return '-';
-  return d.toLocaleDateString('es-HN', {
+  return d.toLocaleString('es-HN', {
+    timeZone: 'America/Tegucigalpa',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: true
   });
 };
 

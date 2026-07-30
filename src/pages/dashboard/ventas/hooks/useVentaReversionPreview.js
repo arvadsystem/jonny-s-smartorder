@@ -32,7 +32,11 @@ export default function useVentaReversionPreview({ open, idFactura, payload, ena
           }
         })
         .catch((requestError) => {
-          if (requestId === requestIdRef.current && requestError?.name !== 'AbortError') {
+          if (
+            requestId === requestIdRef.current
+            && requestError?.code !== 'REQUEST_ABORTED'
+            && requestError?.name !== 'AbortError'
+          ) {
             setState({
               signature,
               preview: null,
