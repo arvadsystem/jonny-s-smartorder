@@ -22,12 +22,22 @@ import {
   setDocumentPrintError
 } from './ventasPrintActions.js';
 
+const kitchenRecipeItem = {
+  id_detalle: 1,
+  id_receta: 21,
+  id_producto: null,
+  tipo_item: 'RECETA',
+  cantidad: 1,
+  nombre_item: 'Alitas'
+};
+
 const paidVenta = {
   id_factura: 41,
   id_pedido: 12,
   id_sucursal: 2,
   numero_venta: 'VTA-00041',
-  items: [{ id_detalle: 1, cantidad: 1, nombre_item: 'Alitas' }]
+  requiere_cocina: true,
+  items: [{ ...kitchenRecipeItem }]
 };
 
 const pendingPedido = {
@@ -35,7 +45,8 @@ const pendingPedido = {
   id_pedido: 12,
   id_sucursal: 2,
   numero_pedido: 'PED-00012',
-  items: [{ id_detalle: 1, cantidad: 1, nombre_item: 'Alitas' }]
+  requiere_cocina: true,
+  items: [{ ...kitchenRecipeItem }]
 };
 
 const createDeferred = () => {
@@ -337,6 +348,80 @@ describe('acciones independientes de impresion en ventas', () => {
     }));
     assert.match(html, /aria-label="Reimprimir comanda"/);
     assert.doesNotMatch(html, /aria-label="Imprimir factura"/);
+  });
+
+  it('una venta con solo producto puro conserva factura pero no muestra accion de comanda', () => {
+    const html = renderToStaticMarkup(React.createElement(VentaDetalleModal, {
+      open: true,
+      venta: {
+        ...paidVenta,
+        items: [{
+          id_detalle: 1,
+          id_producto: 10,
+          id_receta: null,
+          tipo_item: 'PRODUCTO',
+          cantidad: 1,
+          nombre_item: 'Refresco'
+        }]
+      },
+      loading: false,
+      canPrint: true,
+      canExport: false,
+      onClose() {},
+      onPrintFactura() {},
+      onPrintComanda() {}
+    }));
+
+    assert.match(html, /aria-label="Imprimir factura"/);
+    assert.doesNotMatch(html, /aria-label="Imprimir comanda"/);
+  });
+
+  it('requiere_cocina=false oculta comanda aunque exista una receta valida', () => {
+    const html = renderToStaticMarkup(React.createElement(VentaDetalleModal, {
+      open: true,
+      venta: { ...paidVenta, requiere_cocina: false },
+      loading: false,
+      canPrint: true,
+      canExport: false,
+      onClose() {},
+      onPrintFactura() {},
+      onPrintComanda() {}
+    }));
+
+    assert.match(html, /aria-label="Imprimir factura"/);
+    assert.doesNotMatch(html, /aria-label="Imprimir comanda"/);
+  });
+
+  it('requiere_revision=true oculta comanda aunque exista una receta valida', () => {
+    const html = renderToStaticMarkup(React.createElement(VentaDetalleModal, {
+      open: true,
+      venta: { ...paidVenta, requiere_revision: true },
+      loading: false,
+      canPrint: true,
+      canExport: false,
+      onClose() {},
+      onPrintFactura() {},
+      onPrintComanda() {}
+    }));
+
+    assert.match(html, /aria-label="Imprimir factura"/);
+    assert.doesNotMatch(html, /aria-label="Imprimir comanda"/);
+  });
+
+  it('la factura sigue disponible con id_factura aunque no exista contenido de cocina', () => {
+    const html = renderToStaticMarkup(React.createElement(VentaDetalleModal, {
+      open: true,
+      venta: { ...paidVenta, items: [] },
+      loading: false,
+      canPrint: true,
+      canExport: false,
+      onClose() {},
+      onPrintFactura() {},
+      onPrintComanda() {}
+    }));
+
+    assert.match(html, /aria-label="Imprimir factura"/);
+    assert.doesNotMatch(html, /aria-label="Imprimir comanda"/);
   });
 
   it('cada boton invoca solamente su manejador y el ancho fiscal no dispara comanda', async () => {
