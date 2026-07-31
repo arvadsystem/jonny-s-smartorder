@@ -209,6 +209,12 @@ describe('integracion declarada del flujo', () => {
     const action = await readFile(new URL('../components/VentaReversionReprintAction.jsx', import.meta.url), 'utf8');
     assert.match(action, /reprintReversion/);
     assert.match(action, /usePrintJobStatus/);
+    assert.match(action, /million-ignore/);
+    assert.match(action, /data-action="reprint-reversion"/);
+    assert.match(action, /addEventListener\('click', handleNativeClick\)/);
+    assert.match(action, /removeEventListener\('click', handleNativeClick\)/);
+    assert.match(action, /inFlightRef\.current/);
+    assert.doesNotMatch(action, /onClick=\{reprint\}/);
     assert.doesNotMatch(action, /createReversion/);
   });
 
