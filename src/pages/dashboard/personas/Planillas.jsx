@@ -81,7 +81,7 @@ const resolvePeriodoOperativoLabel = ({ periodo, tipoPeriodo, quincena }) => {
   const periodoLabel = String(periodo || '').trim() || 'Sin periodo';
   if (normalizeTipoPeriodo(tipoPeriodo) !== TIPO_PERIODO.quincenal) return `${periodoLabel} (Mensual)`;
   const quincenaLabel = normalizeQuincena(quincena) === '2' ? 'Q2 (16-fin)' : 'Q1 (1-15)';
-  return `${periodoLabel} Â· ${quincenaLabel}`;
+  return `${periodoLabel} · ${quincenaLabel}`;
 };
 
 const buildPlanillasSucursalSelectStyles = () => ({
@@ -2625,7 +2625,7 @@ export default function Planillas({
       }
 
       if (!periodoValue) {
-        safeToast('ERROR', 'Selecciona un periodo valido antes de registrar movimientos.', 'warning');
+        safeToast('ERROR', 'Selecciona un período válido antes de registrar movimientos.', 'warning');
         return null;
       }
 
@@ -2789,16 +2789,16 @@ export default function Planillas({
         if (typeof options.onSuccess === 'function') {
           await options.onSuccess();
         }
-        if (successMessage) safeToast('OK', successMessage, 'success');
         if (!skipReload) {
           await refreshPlanillaData();
         }
+        if (successMessage) safeToast('OK', successMessage, 'success');
         return true;
       } catch (error) {
         if (typeof options.onError === 'function') {
           options.onError(error);
         }
-        safeToast('ERROR', error.message || 'No se pudo ejecutar la accion', 'danger');
+        safeToast('ERROR', error.message || 'No se pudo ejecutar la acción', 'danger');
         return false;
       } finally {
         setLoadingAction(false);
@@ -2816,8 +2816,8 @@ export default function Planillas({
       open: true,
       actionType: config.actionType || '',
       title: config.title || 'CONFIRMAR ACCION',
-      subtitle: config.subtitle || 'Esta accion puede afectar la planilla',
-      question: config.question || 'Deseas continuar con esta accion?',
+      subtitle: config.subtitle || 'Esta acción puede afectar la planilla',
+      question: config.question || '¿Deseas continuar con esta acción?',
       description: config.description || '',
       detail: config.detail || '',
       detailIconClass: config.detailIconClass || 'bi bi-wallet2',
@@ -4211,10 +4211,10 @@ export default function Planillas({
     openConfirmModal({
       actionType: 'anular_movimiento',
       title: 'CONFIRMAR ANULACION',
-      subtitle: 'Esta accion es permanente',
+      subtitle: 'Esta acción es permanente',
       question: 'Deseas anular este movimiento de planilla?',
       description:
-        'El movimiento se anulara del calculo actual y quedara trazabilidad en la bitacora de la planilla.',
+        'El movimiento se anulará del cálculo actual y quedará trazabilidad en la bitácora de la planilla.',
       detail: movimiento.concepto || `Movimiento #${id}`,
       detailIconClass: 'bi bi-journal-x',
       confirmText: 'Anular',
@@ -4442,7 +4442,7 @@ export default function Planillas({
         ...previous,
         deletingId: payload.rowId || payload.idMovimiento
       }));
-      const updated = await withAction(
+      await withAction(
         async () => {
           await planillasService.anularMovimientoPlanilla(payload.idMovimiento, {
             motivo,
@@ -4450,45 +4450,9 @@ export default function Planillas({
             id_sucursal: payload.idSucursal
           });
         },
-        {
-          successMessage: 'Movimiento anulado correctamente',
-          skipReload: true,
-          onSuccess: () => {
-            setBonosDeduccionesHistorial((previous) =>
-              (Array.isArray(previous) ? previous : []).map((row) => {
-                const sameRow =
-                  safeNumber(resolveMovimientoPlanillaId(row), 0) === safeNumber(payload.idMovimiento, 0);
-                if (!sameRow) return row;
-                return {
-                  ...row,
-                  anulado: true,
-                  es_anulado: true,
-                  estado: 'ANULADO',
-                  observacion: motivo || row?.observacion || 'Movimiento anulado.'
-                };
-              })
-            );
-            setBonosDeduccionesHistorialModal((previous) => ({
-              ...previous,
-              items: (Array.isArray(previous.items) ? previous.items : []).map((row) => {
-                const sameRow =
-                  String(row?.id || '') === String(payload.rowId || '') ||
-                  safeNumber(row?.id_movimiento, 0) === safeNumber(payload.idMovimiento, 0);
-                if (!sameRow) return row;
-                return {
-                  ...row,
-                  estado: MOVIMIENTO_ESTADO.anulada,
-                  observacion: motivo || row?.observacion || 'Movimiento anulado.'
-                };
-              })
-            }));
-          }
-        }
+        'Movimiento anulado correctamente'
       );
       setBonosDeduccionesHistorialModal((previous) => ({ ...previous, deletingId: null }));
-      if (updated) {
-        void refreshPlanillaData();
-      }
     }
   }, [
     closeConfirmModal,
@@ -5250,7 +5214,7 @@ export default function Planillas({
                     onChange={(event) =>
                       setConfirmModal((prev) => ({ ...prev, reason: event.target.value }))
                     }
-                    placeholder="Escribe un motivo para la bitacora..."
+                    placeholder="Escribe un motivo para la bitácora..."
                   />
                 </div>
               ) : null}
