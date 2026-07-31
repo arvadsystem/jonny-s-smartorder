@@ -4,6 +4,15 @@ import ventasService from '../../../../services/ventasService';
 import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
 import { formatCurrency } from '../utils/ventasHelpers';
 import CuentaDivididaDraftBuilder from './CuentaDivididaDraftBuilder';
+import {
+  resolveActiveDivisionAssignedItemIds,
+  computeFinancialSummary,
+  resolveEstadoBadges,
+  resolvePendingBalanceDisplay,
+  shouldAutoActivateOrphanRecovery,
+  resolveSplitDraftDivisionOrden,
+  resolveCobrarDivisionOrden
+} from '../utils/splitPaymentModalHelpers.mjs';
 
 const INITIAL_FORM = {
   metodo_pago: 'efectivo',
@@ -85,6 +94,16 @@ const normalizePedidoItems = (value) => {
     .filter((item) => item.id_detalle_pedido);
 };
 
+// HOTFIX (ronda 2, correccion #2): el campo `items` del backend cambia de
+// forma segun el endpoint lo haya cargado con detalle real (arreglo) o
+// solo como conteo (numero) -- se conserva el conteo por separado en
+// items_count para no perderlo cuando `items` no es un arreglo.
+const resolveItemsCount = (row) => {
+  if (Array.isArray(row?.items)) return row.items.length;
+  const numeric = Number(row?.items);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
+};
+
 const normalizePendingOrder = (row) => ({
   id_pedido: Number(row?.id_pedido ?? 0) || null,
   codigo_venta_operativo: String(row?.codigo_venta_operativo || row?.codigo_venta || '').trim(),
@@ -102,8 +121,17 @@ const normalizePendingOrder = (row) => ({
   canal: String(row?.canal || 'LOCAL').trim().toUpperCase(),
   modalidad: String(row?.modalidad || 'CONSUMO_LOCAL').trim().toUpperCase(),
   id_sucursal: toPositiveId(row?.id_sucursal),
+  estado_pedido: String(row?.estado_pedido || '').trim().toUpperCase(),
   estado_pago: String(row?.estado_pago || row?.estado_pago_control || '').trim().toUpperCase(),
+  monto_total: Number(row?.monto_total ?? row?.total ?? 0) || 0,
+  monto_pagado: Number(row?.monto_pagado ?? 0) || 0,
   monto_pendiente: Number(row?.monto_pendiente ?? row?.total ?? 0) || 0,
+  puede_cobrar: row?.puede_cobrar === undefined ? undefined : Boolean(row.puede_cobrar),
+  items_count: resolveItemsCount(row),
+  items_asignados: Number(row?.items_asignados ?? 0) || 0,
+  items_sin_asignar: Number(
+    row?.items_sin_asignar ?? Math.max(resolveItemsCount(row) - Number(row?.items_asignados ?? 0), 0)
+  ) || 0,
   cuenta_dividida: normalizeCuentaDividida(row?.cuenta_dividida),
   items: normalizePedidoItems(row?.items)
 });
@@ -142,6 +170,24 @@ const findNextPendingDivision = (pedido) => {
     ? pedido.cuenta_dividida.divisiones
     : [];
   return divisiones.find((division) => division.estado === 'PENDIENTE') || null;
+};
+
+// HOTFIX (ronda 2, correccion #4): decide si el modo "agregar persona"
+// debe activarse solo, sin que el cajero tenga que descubrir el boton
+// "Agregar otra persona" -- cubre exactamente el pedido 2265 (Persona 1
+// pagada, 2 lineas huerfanas, saldo>0, ninguna division PENDIENTE).
+const resolveAutoActivateSplitDraft = (detailed) => {
+  const divisiones = Array.isArray(detailed?.cuenta_dividida?.divisiones) ? detailed.cuenta_dividida.divisiones : [];
+  const hasCuentaDivididaDetailed = Boolean(detailed?.cuenta_dividida?.activa || divisiones.length > 0);
+  const assignedIds = resolveActiveDivisionAssignedItemIds(divisiones);
+  const items = Array.isArray(detailed?.items) ? detailed.items : [];
+  const unassignedCount = items.filter((item) => !assignedIds.has(item.id_detalle_pedido)).length;
+  return shouldAutoActivateOrphanRecovery({
+    hasCuentaDividida: hasCuentaDivididaDetailed,
+    divisiones,
+    unassignedLineCount: unassignedCount,
+    montoPendiente: Number(detailed?.monto_pendiente || 0)
+  });
 };
 
 export default function VentaRegistrarPagoPedidoModal({
@@ -217,7 +263,9 @@ export default function VentaRegistrarPagoPedidoModal({
       const nextPendingDivision = findNextPendingDivision(normalized);
       setSelectedPedido(normalized);
       setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
-      setSplitDraftEnabled(false);
+      // HOTFIX (ronda 2, correccion #4): auto-activa "agregar persona" si
+      // ya se cargaron items y no hay division PENDIENTE (pedido 2265).
+      setSplitDraftEnabled(!nextPendingDivision && resolveAutoActivateSplitDraft(normalized));
       setSplitDraftDivisions(buildInitialSplitDivisions());
       setSelectedDraftDivisionId('persona-1');
       setForm((current) => ({
@@ -261,7 +309,9 @@ export default function VentaRegistrarPagoPedidoModal({
             const nextPendingDivision = findNextPendingDivision(matched);
             setSelectedPedido(matched);
             setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
-            setSplitDraftEnabled(false);
+            // HOTFIX (ronda 2, correccion #4): idem -- este request si
+            // incluye items reales (include_items=1 cuando hay initialPedidoId).
+            setSplitDraftEnabled(!nextPendingDivision && resolveAutoActivateSplitDraft(matched));
             setSplitDraftDivisions(buildInitialSplitDivisions());
             setSelectedDraftDivisionId('persona-1');
             setForm((current) => ({
@@ -315,12 +365,11 @@ export default function VentaRegistrarPagoPedidoModal({
     : [];
   const hasCuentaDividida = Boolean(selectedPedido?.cuenta_dividida?.activa || cuentaDivisiones.length > 0);
   const pedidoItems = Array.isArray(selectedPedido?.items) ? selectedPedido.items : [];
-  const cuentaDivisionAssignedItemIds = cuentaDivisiones.flatMap((division) => (
-    Array.isArray(division.items)
-      ? division.items.map((item) => item.id_detalle_pedido).filter(Boolean)
-      : []
-  ));
-  const cuentaDivisionAssignedItemIdSet = new Set(cuentaDivisionAssignedItemIds);
+  // HOTFIX (ronda 2, correccion #6): una division ANULADA no reserva sus
+  // lineas -- vuelven a estar disponibles para asignarlas a una persona
+  // nueva. resolveActiveDivisionAssignedItemIds excluye ANULADA.
+  const cuentaDivisionAssignedItemIdSet = resolveActiveDivisionAssignedItemIds(cuentaDivisiones);
+  const cuentaDivisionAssignedItemIds = [...cuentaDivisionAssignedItemIdSet];
   const splitDraftItems = hasCuentaDividida
     ? pedidoItems.filter((item) => !cuentaDivisionAssignedItemIdSet.has(item.id_detalle_pedido))
     : pedidoItems;
@@ -346,6 +395,21 @@ export default function VentaRegistrarPagoPedidoModal({
     : hasCuentaDividida
       ? Number(selectedDivisionPendiente?.monto_pendiente ?? selectedDivisionPendiente?.total ?? 0) || 0
     : Number(selectedPedido?.monto_pendiente ?? 0) || 0;
+  // HOTFIX (ronda 2, correccion #2): valor puramente informativo para el
+  // rotulo "Total pendiente ..." -- nunca "L 0.00" cuando hay cuenta
+  // dividida sin persona seleccionada o un borrador sin lineas todavia.
+  // No sustituye a montoPendiente (que sigue siendo el monto REAL que se
+  // va a cobrar y valida el monto recibido/cambio).
+  const pendingBalanceDisplay = resolvePendingBalanceDisplay({
+    hasSplitDraft,
+    hasCuentaDividida,
+    selectedDivisionPendiente,
+    selectedDraftDivisionTotal,
+    selectedDraftDivisionHasItems: Boolean(selectedDraftDivision?.itemIds?.length),
+    montoPendienteGlobal: selectedPedido?.monto_pendiente ?? 0
+  });
+  const financialSummary = selectedPedido ? computeFinancialSummary(selectedPedido) : null;
+  const estadoBadges = selectedPedido ? resolveEstadoBadges(selectedPedido) : { operational: null, financial: null };
   const montoRecibidoValue = Number(form.monto_recibido);
   const cambioEstimado = isCash && Number.isFinite(montoRecibidoValue)
     ? Math.max(montoRecibidoValue - montoPendiente, 0)
@@ -447,6 +511,9 @@ export default function VentaRegistrarPagoPedidoModal({
         current?.id_pedido === pedido.id_pedido ? { ...current, ...detailed } : current
       ));
       setSelectedDivisionId(detailedNextPendingDivision ? String(detailedNextPendingDivision.id_cuenta_division) : '');
+      if (!detailedNextPendingDivision && resolveAutoActivateSplitDraft(detailed)) {
+        setSplitDraftEnabled(true);
+      }
     }
   };
 
@@ -586,7 +653,10 @@ export default function VentaRegistrarPagoPedidoModal({
       .find((division) => division.estado === 'PENDIENTE');
     setSelectedPedido(detailed);
     setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
-    setSplitDraftEnabled(false);
+    // HOTFIX (ronda 2, correccion #4): tras cobrar una persona, si quedan
+    // lineas huerfanas sin division PENDIENTE, reactiva "agregar persona"
+    // en vez de dejar el saldo restante oculto de nuevo.
+    setSplitDraftEnabled(!nextPendingDivision && resolveAutoActivateSplitDraft(detailed));
     setSplitDraftDivisions(buildInitialSplitDivisions());
     setSelectedDraftDivisionId('persona-1');
     setForm((current) => ({
@@ -635,15 +705,25 @@ export default function VentaRegistrarPagoPedidoModal({
       if (items.some((item) => !item)) return null;
       return {
         etiqueta: `Persona ${splitDraftLabelOffset + index + 1}`,
-        orden: index + 1,
+        // HOTFIX (ronda 2, correccion #1): orden es solo informativo -- el
+        // backend NUNCA lo confia, siempre lo recalcula desde el maximo
+        // orden existente (resolveNextOrdenSequence). Se envia consistente
+        // con la etiqueta visual para no confundir a un consumidor legacy.
+        orden: resolveSplitDraftDivisionOrden({ splitDraftLabelOffset, index }),
         items
       };
     });
     if (cuentaDividida.some((division) => !division)) return null;
     const selectedIndex = divisionsWithItems.findIndex((division) => division.id === selectedDraftDivisionId);
+    // HOTFIX (ronda 2, correccion #1): cobrar_division_orden es la
+    // POSICION (1-based) de la division seleccionada DENTRO de este envio
+    // -- el backend la resuelve por posicion (selectNewDivisionToCharge),
+    // nunca por el valor de orden. Jamas debe llevar splitDraftLabelOffset
+    // sumado (ver resolveCobrarDivisionOrden).
+    const cobrarDivisionOrden = resolveCobrarDivisionOrden({ selectedIndex });
     return {
       cuenta_dividida: cuentaDividida,
-      cobrar_division_orden: selectedIndex + 1
+      cobrar_division_orden: cobrarDivisionOrden
     };
   };
 
@@ -864,9 +944,41 @@ export default function VentaRegistrarPagoPedidoModal({
                   <span>Modalidad / canal</span>
                   <strong>{selectedPedido.modalidad} / {selectedPedido.canal}</strong>
                 </div>
+                {/* HOTFIX (ronda 2, correccion #3): estado operativo y
+                    estado financiero SIEMPRE se muestran por separado --
+                    un pedido COMPLETADO con pago pendiente jamas oculta
+                    el saldo. */}
+                {(estadoBadges.operational || estadoBadges.financial) ? (
+                  <div className="ventas-registrar-pago-modal__pedido-badges">
+                    {estadoBadges.operational ? (
+                      <span className="ventas-registrar-pago-modal__badge">{estadoBadges.operational.label}</span>
+                    ) : null}
+                    {estadoBadges.financial ? (
+                      <span className="ventas-registrar-pago-modal__badge is-split">{estadoBadges.financial.label}</span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {/* HOTFIX (ronda 2, correccion #2): resumen financiero
+                    completo (total/pagado/pendiente), siempre visible. */}
+                {financialSummary ? (
+                  <div className="ventas-registrar-pago-modal__financial-summary d-grid gap-1">
+                    <div className="d-flex justify-content-between">
+                      <span>Total</span>
+                      <strong>{formatCurrency(financialSummary.montoTotal)}</strong>
+                    </div>
+                    <div className="d-flex justify-content-between">
+                      <span>Pagado</span>
+                      <strong>{formatCurrency(financialSummary.montoPagado)}</strong>
+                    </div>
+                    <div className="d-flex justify-content-between">
+                      <span>Pendiente</span>
+                      <strong>{formatCurrency(financialSummary.montoPendiente)}</strong>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="ventas-registrar-pago-modal__selected-total">
-                  <span>{hasCuentaDividida || hasSplitDraft ? 'Total pendiente persona' : 'Total pendiente'}</span>
-                  <strong>{formatCurrency(montoPendiente)}</strong>
+                  <span>{pendingBalanceDisplay.label}</span>
+                  <strong>{formatCurrency(pendingBalanceDisplay.amount)}</strong>
                 </div>
                 {hasCuentaDividida ? (
                   <>
