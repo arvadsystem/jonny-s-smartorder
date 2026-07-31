@@ -942,8 +942,8 @@ const buildInitialConfirmModal = () => ({
   open: false,
   actionType: '',
   title: 'CONFIRMAR ACCION',
-  subtitle: 'Esta accion puede afectar la planilla',
-  question: 'Deseas continuar con esta accion?',
+  subtitle: 'Esta acción puede afectar la planilla',
+  question: '¿Deseas continuar con esta acción?',
   description: '',
   detail: '',
   detailIconClass: 'bi bi-wallet2',
@@ -3190,22 +3190,22 @@ export default function Planillas({
       calculada: 'calcular',
     };
     const estadoDescriptionMap = {
-      cerrada: 'La planilla quedara cerrada para evitar cambios operativos y continuar con el flujo de pago.',
-      pagada: 'La planilla quedara marcada como pagada y se cerrara el ciclo de pago del periodo.',
-      anulada: 'La planilla se marcara como anulada y no podra seguir el flujo normal.',
+      cerrada: 'La planilla quedará cerrada para evitar cambios operativos y continuar con el flujo de pago.',
+      pagada: 'La planilla quedará marcada como pagada y se cerrará el ciclo de pago del período.',
+      anulada: 'La planilla se marcará como anulada y no podrá seguir el flujo normal.',
       borrador: 'La planilla regresara a borrador para permitir ajustes en el flujo operativo.',
-      calculada: 'La planilla se dejara en estado calculada para revisar resultados antes del cierre.'
+      calculada: 'La planilla se dejará en estado calculada para revisar resultados antes del cierre.'
     };
     const normalizedEstado = estadoMap[String(estado || '').toLowerCase()] || estado;
     const actionLabel = estadoLabelMap[String(estado || '').toLowerCase()] || 'actualizar estado';
     const actionDescription =
       estadoDescriptionMap[String(estado || '').toLowerCase()] ||
-      'El estado de la planilla se actualizara segun la accion seleccionada.';
+      'El estado de la planilla se actualizará según la acción seleccionada.';
     openConfirmModal({
       actionType: 'estado_planilla',
       title: 'CONFIRMAR CAMBIO DE ESTADO',
-      subtitle: 'Esta accion se registrara en planilla',
-      question: `Confirma que deseas ${actionLabel} la planilla seleccionada?`,
+      subtitle: 'Esta acción se registrará en planilla',
+      question: `¿Confirma que deseas ${actionLabel} la planilla seleccionada?`,
       description: actionDescription,
       detail: `Planilla #${selectedPlanilla.id_planilla}`,
       detailIconClass: 'bi bi-check2-square',
@@ -3225,10 +3225,10 @@ export default function Planillas({
     openConfirmModal({
       actionType: 'anular_planilla',
       title: 'CONFIRMAR ANULACION',
-      subtitle: 'Esta accion es permanente',
-      question: 'Esta accion anulara la planilla completa y revertira adelantos aplicados. Deseas continuar?',
+      subtitle: 'Esta acción es permanente',
+      question: 'Esta acción anulará la planilla completa y revertirá adelantos aplicados. ¿Deseas continuar?',
       description:
-        'Al anular, la planilla deja de ser operativa y la accion quedara registrada en auditoria.',
+        'Al anular, la planilla deja de ser operativa y la acción quedará registrada en auditoría.',
       detail: `Planilla #${selectedPlanilla.id_planilla}`,
       detailIconClass: 'bi bi-exclamation-triangle-fill',
       confirmText: 'Anular',
@@ -3337,13 +3337,13 @@ export default function Planillas({
         return;
       }
 
-      const tipoLabel = row?.tipo === MOVIMIENTO_TIPO.bono ? 'Bono' : 'DeducciÃ³n';
+      const tipoLabel = row?.tipo === MOVIMIENTO_TIPO.bono ? 'Bono' : 'Deducción';
       openConfirmModal({
         actionType: 'anular_movimiento_bono_deduccion',
-        title: 'CONFIRMAR ANULACION',
-        subtitle: 'Esta accion afectara el calculo de planilla',
-        question: `Deseas anular este ${tipoLabel.toLowerCase()}?`,
-        description: 'El movimiento quedara registrado como anulado en el historial.',
+        title: 'CONFIRMAR ANULACIÓN',
+        subtitle: 'Esta acción afectará el cálculo de planilla',
+        question: `¿Deseas anular este ${tipoLabel.toLowerCase()}?`,
+        description: 'El movimiento quedará registrado como anulado en el historial.',
         detail: `${tipoLabel} - ${toText(row?.empleado_nombre, 'Empleado')}`,
         detailIconClass: 'bi bi-trash3',
         confirmText: 'Anular movimiento',
@@ -3688,10 +3688,10 @@ export default function Planillas({
       openConfirmModal({
         actionType: 'anular_hora_extra',
         title: 'CONFIRMAR ELIMINACION',
-        subtitle: 'Esta accion quitara la hora extra del registro',
+        subtitle: 'Esta acción quitará la hora extra del registro',
         question: 'Deseas eliminar este registro de hora extra?',
         description:
-          'Utiliza esta accion cuando el registro se cargo por error. La accion quedara reflejada en planilla.',
+          'Utiliza esta acción cuando el registro se cargó por error. La acción quedará reflejada en planilla.',
         detail: `${formatFriendlyDate(horaExtraItem?.fecha)} - ${formatHoursLabel(horaExtraItem?.horas)}`,
         detailIconClass: 'bi bi-clock-history',
         confirmText: 'Eliminar',
@@ -3816,7 +3816,7 @@ export default function Planillas({
         0
       );
       if (!(idAdelanto > 0)) {
-        safeToast('ERROR', 'No se encontro un adelanto valido para aplicar.', 'danger');
+        safeToast('ERROR', 'No se encontró un adelanto válido para aplicar.', 'danger');
         return;
       }
 
@@ -3921,7 +3921,7 @@ export default function Planillas({
       const idSucursal = context.idSucursal || undefined;
 
       if (!Number.isFinite(montoAplicar) || montoAplicar <= 0) {
-        throw new Error('Ingresa un monto valido mayor que 0.');
+        throw new Error('Ingresa un monto válido mayor que 0.');
       }
 
       setAdelantosHistorialModal((previous) => ({ ...previous, updatingId: rowTrackingId }));
@@ -4110,7 +4110,7 @@ export default function Planillas({
         title: 'CONFIRMAR ELIMINACION',
         subtitle: isPendiente
           ? 'El adelanto pendiente sera eliminado del listado actual'
-          : 'El adelanto aplicado sera anulado del calculo',
+          : 'El adelanto aplicado será anulado del cálculo',
         question: isPendiente
           ? 'Deseas eliminar este adelanto pendiente?'
           : 'Deseas eliminar este adelanto aplicado?',

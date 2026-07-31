@@ -79,7 +79,7 @@ export default function PlanillaAdelantosModal({
     ? !selectedAdelanto
       ? 'Seleccione un adelanto para aplicar.'
       : !montoAplicar
-        ? 'Ingrese un monto valido.'
+        ? 'Ingrese un monto válido.'
         : montoAplicar > selectedSaldo
           ? 'El monto a aplicar no puede superar el saldo disponible.'
           : hasNetoConstraint && montoAplicar > netoDisponible
@@ -89,7 +89,7 @@ export default function PlanillaAdelantosModal({
 
   const registerError = submittedRegister
     ? !registerMontoValue
-      ? 'Ingrese un monto valido mayor que 0.'
+      ? 'Ingrese un monto válido mayor que 0.'
       : hasNetoConstraint && registerMontoValue > netoDisponible
         ? 'El adelanto no puede superar el neto a pagar disponible.'
         : ''

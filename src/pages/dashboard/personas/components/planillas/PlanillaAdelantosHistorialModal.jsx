@@ -474,7 +474,7 @@ export default function PlanillaAdelantosHistorialModal({
                               {toText(
                                 row?.observacion,
                                 isRemoved
-                                  ? 'Registro eliminado del calculo de planilla.'
+                                  ? 'Registro eliminado del cálculo de planilla.'
                                   : isApplied
                                     ? 'Aplicado automaticamente al detalle de planilla.'
                                   : 'Disponible para aplicar en esta planilla.'

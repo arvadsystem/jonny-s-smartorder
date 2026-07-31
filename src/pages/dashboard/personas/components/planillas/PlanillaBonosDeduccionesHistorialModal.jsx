@@ -291,7 +291,7 @@ export default function PlanillaBonosDeduccionesHistorialModal({
                               }`}
                             >
                               <i className={`bi ${isBono ? 'bi-plus-circle' : 'bi-dash-circle'} me-1`} />
-                              {isBono ? 'Bono' : 'Deduccion'}
+                              {isBono ? 'Bono' : 'Deducción'}
                             </span>
                             {isAnulada ? (
                               <span className="planillas-he-modal__badge planillas-bd-modal__status-badge is-removed">

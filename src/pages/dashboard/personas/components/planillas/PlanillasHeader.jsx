@@ -81,7 +81,7 @@ export default function PlanillasHeader({
     <div className="planillas-header">
       <div className="planillas-header__top">
         <div className="planillas-header__identity">
-          <span className="planillas-header__eyebrow">Gestion de planilla</span>
+          <span className="planillas-header__eyebrow">Gestión de planilla</span>
           <h3 className="planillas-header__title">{planillaCode}</h3>
           <p className="planillas-header__sub">
             {selectedPlanilla?.nombre_sucursal ||
