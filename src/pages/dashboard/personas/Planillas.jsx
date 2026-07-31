@@ -3176,7 +3176,7 @@ export default function Planillas({
   const handleChangeEstado = (estado) => {
     if (!selectedPlanilla?.id_planilla) return;
     const estadoMap = {
-      cerrada: 'CALCULADA',
+      cerrada: 'CERRADA',
       pagada: 'PAGADA',
       anulada: 'ANULADA',
       borrador: 'BORRADOR',
@@ -4636,6 +4636,7 @@ export default function Planillas({
                   <option value="">Todos</option>
                   <option value="BORRADOR">Borrador</option>
                   <option value="CALCULADA">Calculada</option>
+                  <option value="CERRADA">Cerrada</option>
                   <option value="PAGADA">Pagada</option>
                   <option value="ANULADA">Anulada</option>
                 </select>
@@ -4721,7 +4722,7 @@ export default function Planillas({
             <span>
               {loadingPlanillas
                 ? 'Cargando planillas...'
-                : `Planillas: ${planillas.length} (total: ${planillasTotal}) Â· ${periodoOperativoLabel}`}
+                : `Planillas: ${planillas.length} (total: ${planillasTotal}) · ${periodoOperativoLabel}`}
             </span>
             <span>
               {loadingDetalle
