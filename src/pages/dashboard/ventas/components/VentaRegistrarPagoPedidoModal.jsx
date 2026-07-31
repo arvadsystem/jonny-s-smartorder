@@ -11,7 +11,14 @@ import {
   resolvePendingBalanceDisplay,
   shouldAutoActivateOrphanRecovery,
   resolveSplitDraftDivisionOrden,
-  resolveCobrarDivisionOrden
+  resolveCobrarDivisionOrden,
+  classifyDivisiones,
+  shouldCloseModalAfterPayment,
+  buildPaymentContinuationMessage,
+  buildPaymentCompletionMessage,
+  resolveStaleDraftItemIds,
+  isStaleCuentaDivididaError,
+  resolveSingleLeftoverAutoAssignment
 } from '../utils/splitPaymentModalHelpers.mjs';
 
 const INITIAL_FORM = {
@@ -159,17 +166,23 @@ const formatDateTime = (value) => {
   }).format(date);
 };
 
-const isPagoPedidoStillPending = (response) => {
-  const pending = Number(response?.monto_pendiente ?? 0) || 0;
-  const estadoPago = String(response?.estado_pago || response?.estado_pago_control || '').trim().toUpperCase();
-  return pending > 0.009 || estadoPago === 'PENDIENTE_PAGO' || estadoPago === 'PENDIENTE_DE_PAGO';
-};
-
 const findNextPendingDivision = (pedido) => {
   const divisiones = Array.isArray(pedido?.cuenta_dividida?.divisiones)
     ? pedido.cuenta_dividida.divisiones
     : [];
   return divisiones.find((division) => division.estado === 'PENDIENTE') || null;
+};
+
+// HOTFIX (ronda 3): lineas activas del pedido que ninguna division
+// PAGADA/PENDIENTE reserva todavia (ANULADA nunca reserva). Base comun
+// para la auto-activacion del modo "agregar persona" y para la
+// asignacion automatica sin ambiguedad de una sola linea sobrante
+// (seccion 12 del ticket).
+const resolveUnassignedItemsForPedido = (detailed) => {
+  const divisiones = Array.isArray(detailed?.cuenta_dividida?.divisiones) ? detailed.cuenta_dividida.divisiones : [];
+  const assignedIds = resolveActiveDivisionAssignedItemIds(divisiones);
+  const items = Array.isArray(detailed?.items) ? detailed.items : [];
+  return items.filter((item) => !assignedIds.has(item.id_detalle_pedido));
 };
 
 // HOTFIX (ronda 2, correccion #4): decide si el modo "agregar persona"
@@ -179,15 +192,41 @@ const findNextPendingDivision = (pedido) => {
 const resolveAutoActivateSplitDraft = (detailed) => {
   const divisiones = Array.isArray(detailed?.cuenta_dividida?.divisiones) ? detailed.cuenta_dividida.divisiones : [];
   const hasCuentaDivididaDetailed = Boolean(detailed?.cuenta_dividida?.activa || divisiones.length > 0);
-  const assignedIds = resolveActiveDivisionAssignedItemIds(divisiones);
-  const items = Array.isArray(detailed?.items) ? detailed.items : [];
-  const unassignedCount = items.filter((item) => !assignedIds.has(item.id_detalle_pedido)).length;
+  const unassignedCount = resolveUnassignedItemsForPedido(detailed).length;
   return shouldAutoActivateOrphanRecovery({
     hasCuentaDividida: hasCuentaDivididaDetailed,
     divisiones,
     unassignedLineCount: unassignedCount,
     montoPendiente: Number(detailed?.monto_pendiente || 0)
   });
+};
+
+// HOTFIX (ronda 3, seccion 12): cuando la activacion automatica detecta
+// EXACTAMENTE una linea sobrante, la asigna directamente a la primera
+// persona del borrador -- no tiene sentido obligar al cajero a
+// presionar "Agregar persona" para un caso sin ambiguedad. Con 2+
+// lineas sobrantes se deja el borrador vacio (seccion 13: requiere
+// confirmacion explicita del cajero antes de repartir automaticamente).
+const buildAutoActivatedSplitDraftDivisions = (detailed) => {
+  const initial = buildInitialSplitDivisions();
+  const single = resolveSingleLeftoverAutoAssignment(resolveUnassignedItemsForPedido(detailed));
+  if (single?.id_detalle_pedido) {
+    initial[0] = { ...initial[0], itemIds: [single.id_detalle_pedido] };
+  }
+  return initial;
+};
+
+// Punto unico usado por los 4 lugares que reconstruyen el borrador local
+// tras recibir un pedido fresco del backend (seleccion inicial, busqueda
+// con initialPedidoId, activar manualmente el toggle, y refresco
+// despues de un pago). Mantiene la regla en un solo sitio: si ya existe
+// una division PENDIENTE, nunca se auto-activa (el cajero ya tiene a
+// quien cobrar).
+const resolveSplitDraftAutoActivationState = (detailed, nextPendingDivision) => {
+  if (nextPendingDivision || !resolveAutoActivateSplitDraft(detailed)) {
+    return { enabled: false, divisions: buildInitialSplitDivisions() };
+  }
+  return { enabled: true, divisions: buildAutoActivatedSplitDraftDivisions(detailed) };
 };
 
 export default function VentaRegistrarPagoPedidoModal({
@@ -219,7 +258,33 @@ export default function VentaRegistrarPagoPedidoModal({
   // omite en silencio (esas lineas nunca quedaban representadas en ninguna
   // division, y el saldo restante desaparecia del cobro).
   const [pendingAutoAssignConfirm, setPendingAutoAssignConfirm] = useState(false);
+  // HOTFIX (ronda 3, seccion 5.2): "Ver detalle" por persona pagada --
+  // la seccion PAGADAS permanece colapsada por defecto.
+  const [expandedPaidDivisionIds, setExpandedPaidDivisionIds] = useState(() => new Set());
+  const togglePaidDivisionDetail = (idCuentaDivision) => {
+    setExpandedPaidDivisionIds((current) => {
+      const next = new Set(current);
+      if (next.has(idCuentaDivision)) next.delete(idCuentaDivision);
+      else next.add(idCuentaDivision);
+      return next;
+    });
+  };
   const submitRef = useRef(false);
+  const closeAfterCompletionTimerRef = useRef(null);
+  // HOTFIX (ronda 3): secuencia monotonica para descartar respuestas de
+  // red fuera de orden. Cada flujo que puede terminar reemplazando
+  // selectedPedido (seleccionar pedido, activar el borrador, refrescar
+  // tras un pago, la busqueda con initialPedidoId) captura su propio
+  // token al iniciar; si al resolver ya no es el token mas reciente,
+  // descarta el resultado en vez de aplicarlo -- nunca se fusiona un
+  // pedido viejo con uno nuevo (causa raiz de "Persona 1 vuelve a
+  // aparecer como persona activa" tras cobrar).
+  const pedidoStateSeqRef = useRef(0);
+  const beginPedidoStateUpdate = () => {
+    pedidoStateSeqRef.current += 1;
+    return pedidoStateSeqRef.current;
+  };
+  const isLatestPedidoStateUpdate = (token) => token === pedidoStateSeqRef.current;
   const initialPedidoId = toPositiveId(initialPedido?.id_pedido);
   const effectiveSucursalId = toPositiveId(selectedSucursalId) || toPositiveId(initialPedido?.id_sucursal);
   const isSubmitting = saving || localSaving;
@@ -237,6 +302,10 @@ export default function VentaRegistrarPagoPedidoModal({
 
   useEffect(() => {
     if (!open) {
+      if (closeAfterCompletionTimerRef.current) {
+        window.clearTimeout(closeAfterCompletionTimerRef.current);
+        closeAfterCompletionTimerRef.current = null;
+      }
       setSearch('');
       setPedidos([]);
       setSelectedPedido(null);
@@ -254,9 +323,16 @@ export default function VentaRegistrarPagoPedidoModal({
     }
   }, [open]);
 
+  useEffect(() => () => {
+    if (closeAfterCompletionTimerRef.current) {
+      window.clearTimeout(closeAfterCompletionTimerRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     if (!open || !initialPedidoId) return;
 
+    beginPedidoStateUpdate();
     const normalized = normalizePendingOrder(initialPedido);
     setSearch(normalized.codigo_pedido || String(initialPedidoId));
     if (normalized.id_pedido) {
@@ -265,8 +341,9 @@ export default function VentaRegistrarPagoPedidoModal({
       setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
       // HOTFIX (ronda 2, correccion #4): auto-activa "agregar persona" si
       // ya se cargaron items y no hay division PENDIENTE (pedido 2265).
-      setSplitDraftEnabled(!nextPendingDivision && resolveAutoActivateSplitDraft(normalized));
-      setSplitDraftDivisions(buildInitialSplitDivisions());
+      const autoState = resolveSplitDraftAutoActivationState(normalized, nextPendingDivision);
+      setSplitDraftEnabled(autoState.enabled);
+      setSplitDraftDivisions(autoState.divisions);
       setSelectedDraftDivisionId('persona-1');
       setForm((current) => ({
         ...current,
@@ -290,6 +367,7 @@ export default function VentaRegistrarPagoPedidoModal({
     const timer = window.setTimeout(async () => {
       setLoadingPedidos(true);
       setPedidosError('');
+      const token = beginPedidoStateUpdate();
       try {
         const response = await ventasService.listPedidosPendientesPago({
           search,
@@ -303,7 +381,7 @@ export default function VentaRegistrarPagoPedidoModal({
           .map(normalizePendingOrder)
           .filter((row) => row.id_pedido);
         setPedidos(rows);
-        if (initialPedidoId) {
+        if (initialPedidoId && isLatestPedidoStateUpdate(token)) {
           const matched = rows.find((row) => row.id_pedido === initialPedidoId);
           if (matched) {
             const nextPendingDivision = findNextPendingDivision(matched);
@@ -311,8 +389,9 @@ export default function VentaRegistrarPagoPedidoModal({
             setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
             // HOTFIX (ronda 2, correccion #4): idem -- este request si
             // incluye items reales (include_items=1 cuando hay initialPedidoId).
-            setSplitDraftEnabled(!nextPendingDivision && resolveAutoActivateSplitDraft(matched));
-            setSplitDraftDivisions(buildInitialSplitDivisions());
+            const autoState = resolveSplitDraftAutoActivationState(matched, nextPendingDivision);
+            setSplitDraftEnabled(autoState.enabled);
+            setSplitDraftDivisions(autoState.divisions);
             setSelectedDraftDivisionId('persona-1');
             setForm((current) => ({
               ...current,
@@ -410,6 +489,13 @@ export default function VentaRegistrarPagoPedidoModal({
   });
   const financialSummary = selectedPedido ? computeFinancialSummary(selectedPedido) : null;
   const estadoBadges = selectedPedido ? resolveEstadoBadges(selectedPedido) : { operational: null, financial: null };
+  // HOTFIX (ronda 3, seccion 10-11): PAGADA/PENDIENTE/ANULADA se muestran
+  // en secciones separadas -- una division PAGADA nunca vuelve a ser
+  // seleccionable ni comparte area con las pendientes.
+  const divisionGroups = hasCuentaDividida ? classifyDivisiones(cuentaDivisiones) : { paid: [], pending: [], cancelled: [] };
+  const paidProgressPercent = financialSummary && financialSummary.montoTotal > 0
+    ? Math.min(100, Math.max(0, Math.round((financialSummary.montoPagado / financialSummary.montoTotal) * 100)))
+    : 0;
   const montoRecibidoValue = Number(form.monto_recibido);
   const cambioEstimado = isCash && Number.isFinite(montoRecibidoValue)
     ? Math.max(montoRecibidoValue - montoPendiente, 0)
@@ -477,16 +563,21 @@ export default function VentaRegistrarPagoPedidoModal({
       const detailed = (Array.isArray(response?.items) ? response.items : [])
         .map(normalizePendingOrder)
         .find((row) => row.id_pedido === pedido.id_pedido);
-      return detailed || pedido;
+      if (!detailed) {
+        setLocalError('El pedido ya no esta disponible para cobro. Actualiza la busqueda e intenta nuevamente.');
+        return null;
+      }
+      return detailed;
     } catch (error) {
       setLocalError(error?.message || 'No se pudieron cargar las lineas del pedido.');
-      return pedido;
+      return null;
     } finally {
       setLoadingPedidoItems(false);
     }
   };
 
   const selectPedido = async (pedido) => {
+    const token = beginPedidoStateUpdate();
     setSelectedPedido(pedido);
     const isDividido = Boolean(pedido.cuenta_dividida?.activa || (pedido.cuenta_dividida?.divisiones || []).length > 0);
     const nextPendingDivision = findNextPendingDivision(pedido);
@@ -506,14 +597,25 @@ export default function VentaRegistrarPagoPedidoModal({
     }));
     if (!pedido.items?.length || isDividido) {
       const detailed = await loadPedidoItems(pedido, { force: isDividido });
-      const detailedNextPendingDivision = findNextPendingDivision(detailed);
-      setSelectedPedido((current) => (
-        current?.id_pedido === pedido.id_pedido ? { ...current, ...detailed } : current
-      ));
-      setSelectedDivisionId(detailedNextPendingDivision ? String(detailedNextPendingDivision.id_cuenta_division) : '');
-      if (!detailedNextPendingDivision && resolveAutoActivateSplitDraft(detailed)) {
-        setSplitDraftEnabled(true);
+      // HOTFIX (ronda 3): descarta esta respuesta si una seleccion o un
+      // refresco mas reciente ya tomo el control -- nunca fusiona el
+      // pedido actual con datos parciales de esta peticion (podia
+      // mezclar un selectedPedido nuevo con cuenta_dividida vieja).
+      if (!isLatestPedidoStateUpdate(token)) return;
+      if (!detailed) {
+        setSelectedPedido(null);
+        setSelectedDivisionId('');
+        setSplitDraftEnabled(false);
+        setSplitDraftDivisions(buildInitialSplitDivisions());
+        setSelectedDraftDivisionId('persona-1');
+        return;
       }
+      const detailedNextPendingDivision = findNextPendingDivision(detailed);
+      setSelectedPedido(detailed);
+      setSelectedDivisionId(detailedNextPendingDivision ? String(detailedNextPendingDivision.id_cuenta_division) : '');
+      const autoState = resolveSplitDraftAutoActivationState(detailed, detailedNextPendingDivision);
+      setSplitDraftEnabled(autoState.enabled);
+      setSplitDraftDivisions(autoState.divisions);
     }
   };
 
@@ -526,10 +628,16 @@ export default function VentaRegistrarPagoPedidoModal({
     setLocalNotice('');
     const needsSplitContext = !selectedPedido?.items?.length || (hasCuentaDividida && cuentaDivisionAssignedItemIds.length === 0);
     if (enabled && selectedPedido && needsSplitContext) {
+      const token = beginPedidoStateUpdate();
       const detailed = await loadPedidoItems(selectedPedido, { force: hasCuentaDividida });
-      setSelectedPedido((current) => (
-        current?.id_pedido === selectedPedido.id_pedido ? { ...current, ...detailed } : current
-      ));
+      if (!isLatestPedidoStateUpdate(token)) return;
+      if (!detailed) {
+        setSplitDraftEnabled(false);
+        setSplitDraftDivisions(buildInitialSplitDivisions());
+        setSelectedDraftDivisionId('persona-1');
+        return;
+      }
+      setSelectedPedido(detailed);
     }
   };
 
@@ -629,7 +737,15 @@ export default function VentaRegistrarPagoPedidoModal({
     setLocalNotice('');
   };
 
+  // HOTFIX (ronda 3): reconstruccion COMPLETA del pedido despues de un
+  // pago (seccion 7 del ticket). Fuente unica de verdad: la respuesta
+  // fresca del backend, con include_items=1. Nunca fusiona con el
+  // borrador anterior -- limpia por completo splitDraftDivisions,
+  // selectedDraftDivisionId y monto_recibido, y solo conserva
+  // selectedDivisionId si la division todavia existe (y sigue PENDIENTE)
+  // en la respuesta actual.
   const refreshSelectedPedidoAfterPayment = async (pedidoId) => {
+    const token = beginPedidoStateUpdate();
     const response = await ventasService.listPedidosPendientesPago({
       search: String(pedidoId || ''),
       id_sucursal: effectiveSucursalId || undefined,
@@ -641,24 +757,42 @@ export default function VentaRegistrarPagoPedidoModal({
       .map(normalizePendingOrder)
       .filter((row) => row.id_pedido);
     const detailed = rows.find((row) => Number(row.id_pedido) === Number(pedidoId));
+    if (!isLatestPedidoStateUpdate(token)) return detailed || null;
     setPedidos((current) => {
       const mergedRows = rows.length ? rows : current;
       if (!detailed) return mergedRows;
       const withoutDetailed = mergedRows.filter((row) => Number(row.id_pedido) !== Number(detailed.id_pedido));
       return [detailed, ...withoutDetailed];
     });
-    if (!detailed) return null;
+    if (!detailed) {
+      setSelectedPedido(null);
+      setSelectedDivisionId('');
+      setSplitDraftEnabled(false);
+      setSplitDraftDivisions(buildInitialSplitDivisions());
+      setSelectedDraftDivisionId('persona-1');
+      setPendingAutoAssignConfirm(false);
+      setForm((current) => ({
+        ...current,
+        monto_recibido: '',
+        referencia_pago: '',
+        observacion_pago: ''
+      }));
+      return null;
+    }
 
     const nextPendingDivision = (detailed.cuenta_dividida?.divisiones || [])
       .find((division) => division.estado === 'PENDIENTE');
     setSelectedPedido(detailed);
     setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
-    // HOTFIX (ronda 2, correccion #4): tras cobrar una persona, si quedan
-    // lineas huerfanas sin division PENDIENTE, reactiva "agregar persona"
-    // en vez de dejar el saldo restante oculto de nuevo.
-    setSplitDraftEnabled(!nextPendingDivision && resolveAutoActivateSplitDraft(detailed));
-    setSplitDraftDivisions(buildInitialSplitDivisions());
+    // HOTFIX (ronda 2/3, correccion #4): tras cobrar una persona, si
+    // quedan lineas huerfanas sin division PENDIENTE, reactiva "agregar
+    // persona" (o la asigna directamente si es una sola linea, seccion
+    // 12) en vez de dejar el saldo restante oculto de nuevo.
+    const autoState = resolveSplitDraftAutoActivationState(detailed, nextPendingDivision);
+    setSplitDraftEnabled(autoState.enabled);
+    setSplitDraftDivisions(autoState.divisions);
     setSelectedDraftDivisionId('persona-1');
+    setPendingAutoAssignConfirm(false);
     setForm((current) => ({
       ...current,
       monto_recibido: isCash && nextPendingDivision
@@ -752,6 +886,25 @@ export default function VentaRegistrarPagoPedidoModal({
       return;
     }
 
+    // HOTFIX (ronda 3, seccion 8): valida el borrador local CONTRA las
+    // lineas realmente disponibles segun el ultimo estado conocido antes
+    // de construir el payload. payload enviado ⊆ lineas activas y
+    // disponibles actuales -- si el pedido cambio mientras el modal
+    // seguia abierto (otra pestaña, otro cajero, un pago previo que no
+    // se reflejo), nunca se envia; se refresca y se avisa.
+    if (hasSplitDraft) {
+      const draftItemIds = splitDraftDivisions.flatMap((division) => division.itemIds || []);
+      const availableIds = new Set(splitDraftItems.map((item) => item.id_detalle_pedido));
+      const staleIds = resolveStaleDraftItemIds({ draftItemIds, availableItemIds: availableIds });
+      if (staleIds.length > 0) {
+        await refreshSelectedPedidoAfterPayment(selectedPedido.id_pedido).catch(() => null);
+        setLocalError('El pedido cambió mientras lo estabas cobrando. Se actualizó la información para evitar un cobro duplicado.');
+        submitRef.current = false;
+        setLocalSaving(false);
+        return;
+      }
+    }
+
     const splitDraftPayload = hasSplitDraft ? buildSplitDraftPayload() : null;
     if (hasSplitDraft && !splitDraftPayload) {
       submitRef.current = false;
@@ -786,11 +939,18 @@ export default function VentaRegistrarPagoPedidoModal({
       return;
     }
 
+    // HOTFIX (ronda 3, seccion 7, paso 1): captura el identificador y la
+    // etiqueta de la division que se esta a punto de cobrar ANTES de la
+    // peticion -- despues de refrescar, esa informacion ya no se puede
+    // reconstruir desde el estado local (el borrador se limpia por
+    // completo).
+    const chargingLabel = hasSplitDraft
+      ? (selectedDraftDivision ? getSplitDraftDivisionLabel(selectedDraftDivision.id) : null)
+      : hasCuentaDividida
+        ? (selectedDivisionPendiente ? selectedDivisionPendiente.etiqueta : null)
+        : null;
+
     try {
-      const pendingDivisionsBeforeSubmit = cuentaDivisiones.filter((division) => division.estado === 'PENDIENTE').length;
-      const shouldExpectMoreSplitPayments =
-        (hasCuentaDividida && pendingDivisionsBeforeSubmit > 1) ||
-        (hasSplitDraft && ((splitDraftPayload?.cuenta_dividida?.length || 0) > 1 || pendingDraftItemCount > 0));
       const response = await onRegistrarPago(selectedPedido.id_pedido, {
         metodo_pago: form.metodo_pago.toUpperCase(),
         monto_recibido: isCash ? montoRecibido : undefined,
@@ -801,13 +961,33 @@ export default function VentaRegistrarPagoPedidoModal({
         ...(splitDraftPayload || {})
       });
 
-      if (isPagoPedidoStillPending(response) || shouldExpectMoreSplitPayments) {
-        try {
-          const refreshed = await refreshSelectedPedidoAfterPayment(selectedPedido.id_pedido);
-          if (refreshed) {
-            setLocalNotice('Pago registrado. Quedan personas pendientes en este pedido.');
-            return;
-          }
+      // HOTFIX (ronda 3, seccion 7): SIEMPRE se refresca desde el backend
+      // tras un pago exitoso -- la fuente principal para decidir si
+      // continuar o cerrar es la respuesta actualizada del backend,
+      // nunca una heuristica local calculada antes de la peticion.
+      try {
+        const refreshed = await refreshSelectedPedidoAfterPayment(selectedPedido.id_pedido);
+        const montoPendienteFinal = refreshed
+          ? Number(refreshed.monto_pendiente || 0)
+          : Number(response?.monto_pendiente ?? 0) || 0;
+        const estadoPagoFinal = refreshed ? refreshed.estado_pago : String(response?.estado_pago || '');
+        const closed = shouldCloseModalAfterPayment({ estadoPago: estadoPagoFinal, montoPendiente: montoPendienteFinal });
+
+        if (closed) {
+          const montoTotalFinal = refreshed?.monto_total || Number(response?.monto_pagado ?? 0) || selectedPedido.monto_total || 0;
+          resetPaymentModal();
+          setLocalNotice(buildPaymentCompletionMessage({ montoTotal: montoTotalFinal }));
+          closeAfterCompletionTimerRef.current = window.setTimeout(() => {
+            closeAfterCompletionTimerRef.current = null;
+            onClose();
+          }, 1200);
+          return;
+        }
+
+        if (!refreshed) {
+          // El pedido sigue con saldo (segun la respuesta del pago) pero
+          // ya no aparece en pendientes (posible desincronizacion de
+          // sucursal/filtro): no inventamos una persona siguiente.
           setSelectedPedido(null);
           setSelectedDivisionId('');
           setSplitDraftEnabled(false);
@@ -815,24 +995,48 @@ export default function VentaRegistrarPagoPedidoModal({
           setSelectedDraftDivisionId('persona-1');
           setLocalNotice('Pago registrado. Busca el pedido para continuar con el saldo restante.');
           return;
-        } catch (refreshError) {
-          setSelectedPedido(null);
-          setSelectedDivisionId('');
-          setSplitDraftEnabled(false);
-          setSplitDraftDivisions(buildInitialSplitDivisions());
-          setSelectedDraftDivisionId('persona-1');
-          setLocalError(refreshError?.message || 'Pago registrado, pero no se pudo refrescar el saldo restante automaticamente.');
-          if (Number(refreshError?.status || 0) >= 500) {
-            console.error('[Ventas] Error refrescando pedido pendiente despues del pago', refreshError);
+        }
+
+        // HOTFIX (ronda 3, seccion 6): nombre real de la division cobrada
+        // + saldo real devuelto por el backend, nunca solo "Pago
+        // registrado correctamente."
+        const nextPendingDivision = (refreshed.cuenta_dividida?.divisiones || [])
+          .find((division) => division.estado === 'PENDIENTE');
+        let nextLabel = nextPendingDivision ? nextPendingDivision.etiqueta : null;
+        if (!nextLabel) {
+          const unassigned = resolveUnassignedItemsForPedido(refreshed);
+          if (unassigned.length === 1) {
+            const offset = Array.isArray(refreshed.cuenta_dividida?.divisiones) ? refreshed.cuenta_dividida.divisiones.length : 0;
+            nextLabel = `Persona ${offset + 1}`;
           }
-          return;
+        }
+        setLocalNotice(buildPaymentContinuationMessage({
+          paidLabel: chargingLabel,
+          montoPendiente: montoPendienteFinal,
+          nextLabel
+        }));
+      } catch (refreshError) {
+        setSelectedPedido(null);
+        setSelectedDivisionId('');
+        setSplitDraftEnabled(false);
+        setSplitDraftDivisions(buildInitialSplitDivisions());
+        setSelectedDraftDivisionId('persona-1');
+        setLocalError(refreshError?.message || 'Pago registrado, pero no se pudo refrescar el saldo restante automaticamente.');
+        if (Number(refreshError?.status || 0) >= 500) {
+          console.error('[Ventas] Error refrescando pedido pendiente despues del pago', refreshError);
         }
       }
-
-      resetPaymentModal();
-      onClose();
     } catch (error) {
-      setLocalError(error?.message || 'No se pudo registrar el pago del pedido.');
+      // HOTFIX (ronda 3, seccion 8): un rechazo del backend por linea
+      // inexistente/duplicada/subcuenta ya facturada/pedido ya pagado
+      // significa que el pedido cambio mientras se cobraba -- nunca se
+      // muestra el error tecnico crudo, se refresca y se explica.
+      if (isStaleCuentaDivididaError(error)) {
+        await refreshSelectedPedidoAfterPayment(selectedPedido.id_pedido).catch(() => null);
+        setLocalError('El pedido cambió mientras lo estabas cobrando. Se actualizó la información para evitar un cobro duplicado.');
+      } else {
+        setLocalError(error?.message || 'No se pudo registrar el pago del pedido.');
+      }
     } finally {
       submitRef.current = false;
       setLocalSaving(false);
@@ -958,8 +1162,10 @@ export default function VentaRegistrarPagoPedidoModal({
                     ) : null}
                   </div>
                 ) : null}
-                {/* HOTFIX (ronda 2, correccion #2): resumen financiero
-                    completo (total/pagado/pendiente), siempre visible. */}
+                {/* HOTFIX (ronda 2/3, correccion #2): resumen financiero
+                    completo (total/pagado/pendiente) + barra de progreso
+                    informativa, siempre visible. La barra NUNCA sustituye
+                    los valores numericos. */}
                 {financialSummary ? (
                   <div className="ventas-registrar-pago-modal__financial-summary d-grid gap-1">
                     <div className="d-flex justify-content-between">
@@ -974,6 +1180,18 @@ export default function VentaRegistrarPagoPedidoModal({
                       <span>Pendiente</span>
                       <strong>{formatCurrency(financialSummary.montoPendiente)}</strong>
                     </div>
+                    <div
+                      className="progress"
+                      role="progressbar"
+                      aria-label="Progreso de pago"
+                      aria-valuenow={paidProgressPercent}
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      style={{ height: '6px' }}
+                    >
+                      <div className="progress-bar bg-success" style={{ width: `${paidProgressPercent}%` }} />
+                    </div>
+                    <small className="text-muted">Pagado {paidProgressPercent}%</small>
                   </div>
                 ) : null}
                 <div className="ventas-registrar-pago-modal__selected-total">
@@ -982,22 +1200,66 @@ export default function VentaRegistrarPagoPedidoModal({
                 </div>
                 {hasCuentaDividida ? (
                   <>
+                    {/* HOTFIX (ronda 3, seccion 5.2/10-11): PAGADAS en su
+                        propia seccion, colapsada, bloqueada -- nunca
+                        comparten area con las pendientes ni pueden
+                        volver a seleccionarse. */}
+                    {divisionGroups.paid.length > 0 ? (
+                      <div className="ventas-registrar-pago-modal__division-list ventas-registrar-pago-modal__division-list--paid d-grid gap-2">
+                        <span>Pagadas ({divisionGroups.paid.length})</span>
+                        {divisionGroups.paid.map((division) => {
+                          const isExpanded = expandedPaidDivisionIds.has(division.id_cuenta_division);
+                          return (
+                            <div
+                              key={division.id_cuenta_division}
+                              className="ventas-registrar-pago-modal__division ventas-registrar-pago-modal__division--paid d-grid gap-1"
+                            >
+                              <div className="d-flex align-items-center justify-content-between gap-2">
+                                <span className="d-grid gap-1">
+                                  <strong><i className="bi bi-check-circle-fill text-success" aria-hidden="true" /> {division.etiqueta}</strong>
+                                  <small className="text-success">PAGADA · {formatCurrency(division.total)}</small>
+                                </span>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-secondary"
+                                  onClick={() => togglePaidDivisionDetail(division.id_cuenta_division)}
+                                  aria-expanded={isExpanded}
+                                >
+                                  Ver detalle
+                                </button>
+                              </div>
+                              {isExpanded ? (
+                                <ul className="ventas-registrar-pago-modal__division-items d-grid gap-1">
+                                  {(division.items || []).map((item) => (
+                                    <li key={item.id_cuenta_division_item || item.id_detalle_pedido}>
+                                      {item.nombre_item} — {formatCurrency(item.total_linea)}
+                                    </li>
+                                  ))}
+                                  {division.id_factura ? <li>Factura #{division.id_factura}</li> : null}
+                                </ul>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {/* HOTFIX (ronda 3, seccion 5.3-5.4): PENDIENTES en su
+                        propia seccion; la seleccionada es la "persona
+                        activa". */}
                     <div>
                       <span>Persona/subcuenta seleccionada</span>
                       <strong>{selectedDivisionPendiente ? selectedDivisionPendiente.etiqueta : 'Sin seleccionar'}</strong>
                     </div>
                     <div className="ventas-registrar-pago-modal__division-list d-grid gap-2">
-                      <span>Cuenta dividida</span>
-                      {cuentaDivisiones.map((division) => {
-                        const isPending = division.estado === 'PENDIENTE';
+                      <span>Pendientes ({divisionGroups.pending.length})</span>
+                      {divisionGroups.pending.map((division) => {
                         const isSelected = String(selectedDivisionId) === String(division.id_cuenta_division);
                         return (
                           <button
                             key={division.id_cuenta_division}
                             type="button"
-                            className={`btn ${isSelected ? 'btn-primary' : 'btn-outline-secondary'} ventas-registrar-pago-modal__division d-flex align-items-center justify-content-between gap-2 text-start ${!isPending ? 'opacity-75' : ''}`}
+                            className={`btn ${isSelected ? 'btn-primary' : 'btn-outline-secondary'} ventas-registrar-pago-modal__division d-flex align-items-center justify-content-between gap-2 text-start`}
                             onClick={() => {
-                              if (!isPending) return;
                               setSelectedDivisionId(String(division.id_cuenta_division));
                               setSplitDraftEnabled(false);
                               setSplitDraftDivisions(buildInitialSplitDivisions());
@@ -1010,12 +1272,12 @@ export default function VentaRegistrarPagoPedidoModal({
                               }
                               setLocalError('');
                             }}
-                            disabled={!isPending || isSubmitting}
+                            disabled={isSubmitting}
                             aria-pressed={isSelected}
                           >
                             <span className="d-grid gap-1">
                               <strong>{division.etiqueta}</strong>
-                              <small>{division.estado}</small>
+                              <small>{isSelected ? 'PERSONA ACTIVA' : division.estado}</small>
                             </span>
                             <span className="d-grid gap-1 text-end">
                               <small>Total {formatCurrency(division.total)}</small>
@@ -1024,6 +1286,9 @@ export default function VentaRegistrarPagoPedidoModal({
                           </button>
                         );
                       })}
+                      {divisionGroups.pending.length === 0 ? (
+                        <small className="text-muted">Ninguna persona pendiente todavia -- agrega una abajo.</small>
+                      ) : null}
                     </div>
                     <CuentaDivididaDraftBuilder
                       enabled={splitDraftEnabled}

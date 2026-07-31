@@ -1125,7 +1125,6 @@ export default function CajaView({
             'warning'
           );
         }
-        setRegistrarPagoOpen(false);
       }
       void loadPendientesSummary().catch(() => undefined);
       return response;

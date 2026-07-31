@@ -1,8 +1,9 @@
-// HOTFIX (saldo dividido oculto, ronda 2): logica PURA extraida de
+// HOTFIX (saldo dividido oculto, ronda 2 y 3): logica PURA extraida de
 // VentaRegistrarPagoPedidoModal.jsx. Usada realmente por el componente
 // (no duplicada solo para pruebas) -- ver
 // routers/ventas/services/cuentaDivididaSplitService.js en el backend
 // para el equivalente del lado servidor.
+import { formatCurrency } from '../../../../modules/ventas/utils/ventasMoneyUtils.js';
 
 const normalizeEstadoDivision = (division) => String(division?.estado || '').trim().toUpperCase();
 
@@ -150,3 +151,94 @@ export const resolveSplitDraftDivisionOrden = ({ splitDraftLabelOffset = 0, inde
 export const resolveCobrarDivisionOrden = ({ selectedIndex = -1 } = {}) => (
   Number.isInteger(selectedIndex) && selectedIndex >= 0 ? selectedIndex + 1 : null
 );
+
+// ---------------------------------------------------------------------
+// Ronda 3: reconstruccion dinamica del modal despues de cada pago.
+// ---------------------------------------------------------------------
+
+// Clasifica las divisiones del pedido en PAGADA/PENDIENTE/ANULADA
+// (seccion 10 del ticket). Las PAGADA se muestran como historial
+// bloqueado; las PENDIENTE son seleccionables; las ANULADA solo en una
+// seccion secundaria si acaso.
+export const classifyDivisiones = (divisiones = []) => {
+  const list = Array.isArray(divisiones) ? divisiones : [];
+  return {
+    paid: list.filter((division) => normalizeEstadoDivision(division) === 'PAGADA'),
+    pending: list.filter((division) => normalizeEstadoDivision(division) === 'PENDIENTE'),
+    cancelled: list.filter((division) => normalizeEstadoDivision(division) === 'ANULADA')
+  };
+};
+
+const PAGADO_CONFIRMADO_CODES = new Set(['PAGADO_CONFIRMADO']);
+
+// Fuente PRINCIPAL para decidir si el modal debe cerrarse tras un pago
+// (seccion 7, paso 12): solo cuando el backend confirma monto_pendiente
+// <= 0.05 -- nunca por una heuristica local como
+// shouldExpectMoreSplitPayments, que solo sirve para armar el mensaje
+// contextual, no para decidir el cierre.
+export const shouldCloseModalAfterPayment = ({ estadoPago, montoPendiente } = {}) => {
+  const pendiente = Number(montoPendiente ?? 0) || 0;
+  if (pendiente > 0.05) return false;
+  const estado = String(estadoPago || '').trim().toUpperCase();
+  return PAGADO_CONFIRMADO_CODES.has(estado);
+};
+
+// Mensaje contextual cuando el pedido AUN tiene saldo pendiente tras un
+// pago (seccion 6): usa el nombre real de la division cobrada y el saldo
+// real devuelto por el backend -- nunca solo "Pago registrado
+// correctamente."
+export const buildPaymentContinuationMessage = ({ paidLabel, montoPendiente, nextLabel } = {}) => {
+  const parts = [];
+  parts.push(paidLabel ? `${paidLabel} pagada correctamente.` : 'Pago registrado correctamente.');
+  parts.push(`Quedan ${formatCurrency(montoPendiente)} pendientes.`);
+  if (nextLabel) parts.push(`Continúa con ${nextLabel}.`);
+  return parts.join(' ');
+};
+
+// Mensaje final cuando el saldo llega a cero (seccion 6): solo en este
+// momento se puede cerrar el modal automaticamente.
+export const buildPaymentCompletionMessage = ({ montoTotal } = {}) => (
+  `Cuenta pagada completamente. Total cobrado: ${formatCurrency(montoTotal)}.`
+);
+
+// Detecta lineas del borrador local que YA NO existen en el conjunto de
+// lineas realmente disponibles segun la ultima respuesta del backend
+// (seccion 8): el payload enviado siempre debe ser un subconjunto de las
+// lineas activas y disponibles actuales -- nunca reenviar una linea que
+// paso a pertenecer a una division PAGADA u otra PENDIENTE mientras el
+// modal seguia abierto.
+export const resolveStaleDraftItemIds = ({ draftItemIds = [], availableItemIds = [] } = {}) => {
+  const available = availableItemIds instanceof Set ? availableItemIds : new Set(availableItemIds || []);
+  return (Array.isArray(draftItemIds) ? draftItemIds : []).filter((id) => !available.has(id));
+};
+
+// Codigos de error del backend que indican que el pedido cambio mientras
+// el cajero lo tenia abierto (linea ya facturada/asignada a otra
+// subcuenta, o division duplicada dentro del mismo envio). Nunca se
+// deben mostrar tal cual -- disparan un refresco y un mensaje claro en
+// vez de un error tecnico (seccion 8).
+const STALE_CUENTA_DIVIDIDA_ERROR_CODES = new Set([
+  'CUENTA_DIVIDIDA_ITEM_NO_ENCONTRADO',
+  'CUENTA_DIVIDIDA_ITEM_DUPLICADO',
+  'CUENTA_DIVISION_NO_ENCONTRADA',
+  'CUENTA_DIVISION_NO_PENDIENTE',
+  'CUENTA_DIVISION_YA_FACTURADA',
+  'CUENTA_DIVISION_YA_COBRADA',
+  'PEDIDO_NO_PENDIENTE_PAGO',
+  'PEDIDO_YA_PAGADO'
+]);
+
+export const isStaleCuentaDivididaError = (error) => (
+  STALE_CUENTA_DIVIDIDA_ERROR_CODES.has(String(error?.code || '').trim().toUpperCase())
+);
+
+// Seccion 12: cuando queda EXACTAMENTE una linea sin asignar, no tiene
+// sentido obligar al cajero a presionar "Agregar persona" y asignarla a
+// mano -- se resuelve automaticamente sin ambiguedad. Con 2+ lineas
+// (seccion 13) la asignacion debe requerir confirmacion explicita
+// (pendingAutoAssignConfirm), porque existe mas de una distribucion
+// posible.
+export const resolveSingleLeftoverAutoAssignment = (unassignedItems = []) => {
+  const items = Array.isArray(unassignedItems) ? unassignedItems : [];
+  return items.length === 1 ? items[0] : null;
+};

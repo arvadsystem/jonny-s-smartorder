@@ -1,5 +1,5 @@
-// HOTFIX (saldo dividido oculto, ronda 2): pruebas ejecutables sobre las
-// funciones puras realmente usadas por VentaRegistrarPagoPedidoModal.jsx.
+// HOTFIX (saldo dividido oculto, ronda 2 y 3): pruebas ejecutables sobre
+// las funciones puras realmente usadas por VentaRegistrarPagoPedidoModal.jsx.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
@@ -9,7 +9,14 @@ import {
   resolvePendingBalanceDisplay,
   shouldAutoActivateOrphanRecovery,
   resolveSplitDraftDivisionOrden,
-  resolveCobrarDivisionOrden
+  resolveCobrarDivisionOrden,
+  classifyDivisiones,
+  shouldCloseModalAfterPayment,
+  buildPaymentContinuationMessage,
+  buildPaymentCompletionMessage,
+  resolveStaleDraftItemIds,
+  isStaleCuentaDivididaError,
+  resolveSingleLeftoverAutoAssignment
 } from './splitPaymentModalHelpers.mjs';
 import { canCobrarPedido } from './pedidosPendientesHelpers.mjs';
 
@@ -228,5 +235,179 @@ describe('10) NO_ENTREGADO segun la decision confirmada (Caso A: no bloquea el c
       id_factura: 2277
     };
     assert.equal(canCobrarPedido(pedido), true);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Ronda 3: reconstruccion dinamica del modal tras cada pago (los 20
+// escenarios pedidos en el ticket, numerados igual que la seccion 14).
+// ---------------------------------------------------------------------
+const persona2Pendiente = {
+  id_cuenta_division: 502,
+  etiqueta: 'Persona 2',
+  estado: 'PENDIENTE',
+  total: 170,
+  monto_pagado: 0,
+  monto_pendiente: 170,
+  items: [{ id_detalle_pedido: 3834 }]
+};
+
+const persona3PendienteOtra = {
+  id_cuenta_division: 503,
+  etiqueta: 'Persona 3',
+  estado: 'PENDIENTE',
+  total: 380,
+  monto_pagado: 0,
+  monto_pendiente: 380,
+  items: [{ id_detalle_pedido: 3835 }]
+};
+
+describe('1) Persona pagada nunca vuelve a ser persona activa', () => {
+  it('classifyDivisiones nunca coloca una division PAGADA en pending', () => {
+    const { pending } = classifyDivisiones([persona1Pagada, persona2Pendiente]);
+    assert.ok(!pending.some((d) => d.id_cuenta_division === persona1Pagada.id_cuenta_division));
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].id_cuenta_division, persona2Pendiente.id_cuenta_division);
+  });
+});
+
+describe('2/9) Linea PAGADA no aparece en disponibles ni puede reasignarse', () => {
+  it('resolveActiveDivisionAssignedItemIds reserva la linea de una division PAGADA de forma permanente', () => {
+    const ids = resolveActiveDivisionAssignedItemIds([persona1Pagada]);
+    assert.ok(ids.has(3833));
+  });
+});
+
+describe('10) Linea PENDIENTE de otra persona no puede reasignarse', () => {
+  it('resolveActiveDivisionAssignedItemIds reserva tambien las lineas de divisiones PENDIENTE', () => {
+    const ids = resolveActiveDivisionAssignedItemIds([persona2Pendiente, persona3PendienteOtra]);
+    assert.ok(ids.has(3834));
+    assert.ok(ids.has(3835));
+  });
+});
+
+describe('11) Linea ANULADA vuelve a estar disponible unicamente cuando corresponde', () => {
+  it('una division ANULADA no reserva su linea (vuelve a estar disponible)', () => {
+    const anulada = { id_cuenta_division: 999, estado: 'ANULADA', items: [{ id_detalle_pedido: 4001 }] };
+    const ids = resolveActiveDivisionAssignedItemIds([anulada]);
+    assert.ok(!ids.has(4001));
+  });
+
+  it('una division PAGADA (nunca ANULADA) jamas libera su linea, aunque el pedido tenga otras ANULADA', () => {
+    const anulada = { id_cuenta_division: 999, estado: 'ANULADA', items: [{ id_detalle_pedido: 4001 }] };
+    const ids = resolveActiveDivisionAssignedItemIds([persona1Pagada, anulada]);
+    assert.ok(ids.has(3833));
+    assert.ok(!ids.has(4001));
+  });
+});
+
+describe('5/6) Cierre del modal SOLO cuando el backend confirma saldo cero (shouldCloseModalAfterPayment)', () => {
+  it('5) PAGADO_CONFIRMADO + monto_pendiente=0 -> cierra', () => {
+    assert.equal(shouldCloseModalAfterPayment({ estadoPago: 'PAGADO_CONFIRMADO', montoPendiente: 0 }), true);
+  });
+
+  it('6) PENDIENTE_PAGO + saldo>0 -> permanece abierto', () => {
+    assert.equal(shouldCloseModalAfterPayment({ estadoPago: 'PENDIENTE_PAGO', montoPendiente: 380 }), false);
+  });
+
+  it('nunca cierra por una heuristica local -- solo por el saldo real devuelto por el backend (redondeo <= 0.05)', () => {
+    assert.equal(shouldCloseModalAfterPayment({ estadoPago: 'PAGADO_CONFIRMADO', montoPendiente: 0.04 }), true);
+    assert.equal(shouldCloseModalAfterPayment({ estadoPago: 'PENDIENTE_PAGO', montoPendiente: 0.5 }), false);
+  });
+
+  it('saldo cero sin PAGADO_CONFIRMADO no cierra el modal', () => {
+    assert.equal(shouldCloseModalAfterPayment({ estadoPago: 'PENDIENTE_PAGO', montoPendiente: 0 }), false);
+    assert.equal(shouldCloseModalAfterPayment({ estadoPago: '', montoPendiente: 0 }), false);
+  });
+});
+
+describe('12) El mensaje de continuidad usa el nombre real de la persona pagada y el saldo real', () => {
+  it('incluye la etiqueta pagada, el saldo formateado y la siguiente persona', () => {
+    const message = buildPaymentContinuationMessage({ paidLabel: 'Persona 1', montoPendiente: 550, nextLabel: 'Persona 2' });
+    assert.match(message, /Persona 1 pagada correctamente\./);
+    assert.match(message, /Quedan L 550\.00 pendientes\./);
+    assert.match(message, /Continúa con Persona 2\./);
+  });
+
+  it('sin siguiente persona conocida, omite la frase "Continúa con" (no inventa un nombre)', () => {
+    const message = buildPaymentContinuationMessage({ paidLabel: 'Persona 1', montoPendiente: 550, nextLabel: null });
+    assert.doesNotMatch(message, /Continúa con/);
+  });
+
+  it('mensaje final cuando el saldo llega a cero usa el total real cobrado', () => {
+    const message = buildPaymentCompletionMessage({ montoTotal: 690 });
+    assert.equal(message, 'Cuenta pagada completamente. Total cobrado: L 690.00.');
+  });
+});
+
+describe('13/14) Pagadas conserva historial completo; Pendientes solo contiene PENDIENTE', () => {
+  it('13) classifyDivisiones.paid conserva TODAS las divisiones pagadas, no solo la ultima', () => {
+    const otraPagada = { id_cuenta_division: 504, estado: 'PAGADA', items: [] };
+    const { paid } = classifyDivisiones([persona1Pagada, otraPagada, persona2Pendiente]);
+    assert.equal(paid.length, 2);
+  });
+
+  it('14) classifyDivisiones.pending nunca incluye PAGADA ni ANULADA', () => {
+    const anulada = { id_cuenta_division: 999, estado: 'ANULADA', items: [] };
+    const { pending } = classifyDivisiones([persona1Pagada, persona2Pendiente, anulada]);
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].id_cuenta_division, persona2Pendiente.id_cuenta_division);
+  });
+});
+
+describe('8/16) itemIds obsoletos nunca se envian (resolveStaleDraftItemIds)', () => {
+  it('8) detecta un id del borrador que ya no esta en las lineas disponibles actuales', () => {
+    const stale = resolveStaleDraftItemIds({ draftItemIds: [3833, 3834], availableItemIds: [3834, 3835] });
+    assert.deepEqual(stale, [3833]);
+  });
+
+  it('16) sin ids obsoletos, el arreglo resultante esta vacio (se puede enviar el pago)', () => {
+    const stale = resolveStaleDraftItemIds({ draftItemIds: [3834], availableItemIds: [3834, 3835] });
+    assert.deepEqual(stale, []);
+  });
+
+  it('acepta un Set para availableItemIds sin duplicar logica de conversion', () => {
+    const stale = resolveStaleDraftItemIds({ draftItemIds: [3833], availableItemIds: new Set([3834]) });
+    assert.deepEqual(stale, [3833]);
+  });
+});
+
+describe('17) Error de linea inexistente/duplicada provoca reconstruccion segura (isStaleCuentaDivididaError)', () => {
+  it('reconoce los codigos de conflicto que indican que el pedido cambio mientras se cobraba', () => {
+    const staleCodes = [
+      'CUENTA_DIVIDIDA_ITEM_NO_ENCONTRADO',
+      'CUENTA_DIVIDIDA_ITEM_DUPLICADO',
+      'CUENTA_DIVISION_NO_ENCONTRADA',
+      'CUENTA_DIVISION_NO_PENDIENTE',
+      'CUENTA_DIVISION_YA_FACTURADA',
+      'CUENTA_DIVISION_YA_COBRADA',
+      'PEDIDO_NO_PENDIENTE_PAGO',
+      'PEDIDO_YA_PAGADO'
+    ];
+    staleCodes.forEach((code) => assert.equal(isStaleCuentaDivididaError({ code }), true, code));
+  });
+
+  it('un error no relacionado (ej. de red) nunca dispara la reconstruccion silenciosa', () => {
+    assert.equal(isStaleCuentaDivididaError({ code: 'HTTP_ERROR' }), false);
+    assert.equal(isStaleCuentaDivididaError({}), false);
+  });
+});
+
+describe('19/20) Una sola persona restante se asigna sola; varias requieren confirmacion', () => {
+  it('19) exactamente una linea sobrante -> se resuelve automaticamente sin ambiguedad', () => {
+    const item = { id_detalle_pedido: 3835, nombre_item: '18 ALITAS', total_linea: 380 };
+    assert.deepEqual(resolveSingleLeftoverAutoAssignment([item]), item);
+  });
+
+  it('20) varias lineas sobrantes -> no hay asignacion automatica sin ambiguedad (requiere confirmacion explicita)', () => {
+    const items = [
+      { id_detalle_pedido: 3834, total_linea: 170 },
+      { id_detalle_pedido: 3835, total_linea: 380 }
+    ];
+    assert.equal(resolveSingleLeftoverAutoAssignment(items), null);
+  });
+
+  it('sin lineas sobrantes, no hay nada que asignar', () => {
+    assert.equal(resolveSingleLeftoverAutoAssignment([]), null);
   });
 });
