@@ -665,14 +665,22 @@ const isMovimientoAdelanto = (row = {}) => {
 };
 
 const isMovimientoAnulado = (row = {}) => {
-  const estado = toText(row?.estado || row?.estado_movimiento || row?.estado_descripcion, '').toLowerCase();
+  const estadoRaw = row?.estado ?? row?.estado_movimiento ?? row?.estado_descripcion;
+  const estado = toText(estadoRaw, '').toLowerCase();
   const note = normalizeStatusNote(row?.observacion || row?.motivo || '');
 
   return (
+    row?.estado === false ||
+    row?.estado_movimiento === false ||
+    row?.estado_descripcion === false ||
     row?.anulado === true ||
     row?.es_anulado === true ||
     row?.activo === false ||
     estado.includes('anulad') ||
+    estado === 'false' ||
+    estado === '0' ||
+    estado === 'inactivo' ||
+    estado === 'inactiva' ||
     note.includes('[eliminado_ad]') ||
     note.includes('eliminado') ||
     note.includes('anulado')

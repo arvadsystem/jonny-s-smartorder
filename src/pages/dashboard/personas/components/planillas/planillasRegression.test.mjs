@@ -43,6 +43,19 @@ test('anular bonos o deducciones espera la recarga completa', async () => {
   assert.doesNotMatch(actionBlock, /void refreshPlanillaData\(\)/);
 });
 
+test('movimientos con estado false se tratan como anulados', async () => {
+  const source = await readFile(planillasPagePath, 'utf8');
+  const helperBlock = source.slice(
+    source.indexOf('const isMovimientoAnulado'),
+    source.indexOf('const sortByDateDesc')
+  );
+
+  assert.match(helperBlock, /row\?\.estado === false/);
+  assert.match(helperBlock, /row\?\.estado_movimiento === false/);
+  assert.match(helperBlock, /row\?\.estado_descripcion === false/);
+  assert.doesNotMatch(helperBlock, /row\?\.estado\s*\|\|/);
+});
+
 test('fuentes de planillas no contienen mojibake', async () => {
   const files = [
     planillasPagePath,
