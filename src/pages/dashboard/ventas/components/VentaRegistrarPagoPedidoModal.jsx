@@ -167,6 +167,12 @@ export default function VentaRegistrarPagoPedidoModal({
   const [selectedDraftDivisionId, setSelectedDraftDivisionId] = useState('persona-1');
   const [loadingPedidoItems, setLoadingPedidoItems] = useState(false);
   const [localSaving, setLocalSaving] = useState(false);
+  // HOTFIX (saldo dividido oculto): antes de cobrar, si quedan lineas del
+  // pedido sin asignar a ninguna persona del borrador, se pide confirmar
+  // una asignacion automatica en vez de enviar un cuenta_dividida que las
+  // omite en silencio (esas lineas nunca quedaban representadas en ninguna
+  // division, y el saldo restante desaparecia del cobro).
+  const [pendingAutoAssignConfirm, setPendingAutoAssignConfirm] = useState(false);
   const submitRef = useRef(false);
   const initialPedidoId = toPositiveId(initialPedido?.id_pedido);
   const effectiveSucursalId = toPositiveId(selectedSucursalId) || toPositiveId(initialPedido?.id_sucursal);
@@ -376,6 +382,15 @@ export default function VentaRegistrarPagoPedidoModal({
     }));
   }, [hasCuentaDividida, hasSplitDraft, isCash, open, selectedDivisionId, selectedDivisionPendiente, selectedDraftDivision, selectedDraftDivisionTotal, selectedPedido]);
 
+  // HOTFIX (saldo dividido oculto): cualquier cambio de pedido, division
+  // seleccionada o asignacion de lineas invalida una confirmacion de
+  // auto-asignacion pendiente -- nunca se debe "arrastrar" un
+  // pendingAutoAssignConfirm=true hacia un estado distinto al que el
+  // usuario vio cuando se le pidio confirmar.
+  useEffect(() => {
+    setPendingAutoAssignConfirm(false);
+  }, [selectedPedido?.id_pedido, splitDraftEnabled, splitDraftDivisions]);
+
   if (!open) return null;
 
   const setField = (field, value) => {
@@ -508,6 +523,35 @@ export default function VentaRegistrarPagoPedidoModal({
     setLocalNotice('');
   };
 
+  // HOTFIX (saldo dividido oculto): reparte las lineas todavia sin asignar
+  // entre las personas pendientes existentes (round-robin, para no
+  // acumular todo en una sola persona); si no hay ninguna persona
+  // pendiente todavia, crea una nueva. Nunca inventa un total: cada linea
+  // conserva su id_detalle_pedido real, el monto lo sigue calculando el
+  // backend a partir de detalle_pedido.
+  const autoAssignRemainingDraftItems = () => {
+    const assignedIds = new Set(splitDraftDivisions.flatMap((division) => division.itemIds || []));
+    const remaining = splitDraftItems
+      .map((item) => item.id_detalle_pedido)
+      .filter((id) => id && !assignedIds.has(id));
+    if (!remaining.length) return;
+    setSplitDraftDivisions((current) => {
+      const next = current.map((division) => ({ ...division, itemIds: [...(division.itemIds || [])] }));
+      let cursor = 0;
+      remaining.forEach((idDetallePedido) => {
+        if (!next.length) {
+          next.push({ id: `persona-${next.length + 1}`, etiqueta: `Persona ${next.length + 1}`, itemIds: [] });
+        }
+        next[cursor % next.length].itemIds.push(idDetallePedido);
+        cursor += 1;
+      });
+      return next;
+    });
+    setPendingAutoAssignConfirm(false);
+    setLocalError('');
+    setLocalNotice('');
+  };
+
   const resetPaymentModal = () => {
     setForm(INITIAL_FORM);
     setSelectedPedido(null);
@@ -616,6 +660,18 @@ export default function VentaRegistrarPagoPedidoModal({
       setLocalSaving(false);
       return;
     }
+
+    // HOTFIX (saldo dividido oculto): nunca enviar un cuenta_dividida que
+    // omite en silencio lineas del pedido sin asignar a nadie. Se pide
+    // confirmar la asignacion automatica de esas lineas ANTES de cobrar,
+    // en vez de dejar que buildSplitDraftPayload() las excluya.
+    if (hasSplitDraft && pendingDraftItemCount > 0 && !pendingAutoAssignConfirm) {
+      setPendingAutoAssignConfirm(true);
+      submitRef.current = false;
+      setLocalSaving(false);
+      return;
+    }
+
     const splitDraftPayload = hasSplitDraft ? buildSplitDraftPayload() : null;
     if (hasSplitDraft && !splitDraftPayload) {
       submitRef.current = false;
@@ -951,6 +1007,32 @@ export default function VentaRegistrarPagoPedidoModal({
               ) : null}
             </div>
 
+            {pendingAutoAssignConfirm ? (
+              <div className="ventas-create-modal__notice ventas-registrar-pago-modal__auto-assign-confirm">
+                <p>
+                  Quedan {pendingDraftItemCount} producto{pendingDraftItemCount === 1 ? '' : 's'} sin asignar.
+                  <br />
+                  Se asignarán automáticamente a las personas pendientes para evitar que el saldo quede oculto.
+                </p>
+                <div className="ventas-registrar-pago-modal__auto-assign-confirm-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={() => setPendingAutoAssignConfirm(false)}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={autoAssignRemainingDraftItems}
+                  >
+                    Asignar y continuar
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             {localNotice ? <div className="ventas-create-modal__notice">{localNotice}</div> : null}
             {localError ? <div className="ventas-create-modal__error">{localError}</div> : null}
           </section>
@@ -961,7 +1043,7 @@ export default function VentaRegistrarPagoPedidoModal({
             Cancelar
           </button>
           <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting || !selectedPedido}>
-            {submitLabel}
+            {pendingAutoAssignConfirm ? 'Cobrar' : submitLabel}
           </button>
         </footer>
       </section>

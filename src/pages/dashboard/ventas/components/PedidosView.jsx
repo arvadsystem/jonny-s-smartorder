@@ -4,6 +4,7 @@ import { supabase } from '../../../../lib/supabaseClient';
 import ventasService from '../../../../services/ventasService';
 import { createCocinaAudioManager } from '../../cocina/utils/cocinaAudio';
 import { formatCurrency, normalizeVentaDetail } from '../utils/ventasHelpers';
+import { canCobrarPedido, isPedidoPendientePago, normalizePaymentCode } from '../utils/pedidosPendientesHelpers.mjs';
 import {
   commitRecoveredFacturaToLiveBoard,
   createDetailOperationController,
@@ -59,14 +60,6 @@ const initialConfirmDialog = {
 const PEDIDOS_ACTIVE_LANE_STORAGE_KEY = 'ventas.pedidos.activeLane';
 const PEDIDOS_LANE_KEYS = ['pending', 'kitchen', 'ready'];
 
-const normalizePaymentCode = (value) =>
-  String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, '_');
-
 const buildPedidoVisibleCode = (pedido) => {
   const operativeCode = String(pedido?.codigo_venta_operativo || '').trim();
   if (operativeCode) return operativeCode;
@@ -87,21 +80,6 @@ const isPedidoKdsVencido = (pedido) => {
   if (pedido?.kds_vencido === true) return true;
   if (String(pedido?.kds_vencido || '').toLowerCase() === 'true') return true;
   return false;
-};
-
-const isPedidoPendientePago = (pedido) => {
-  const code = normalizePaymentCode(pedido?.estado_pago_control || pedido?.estado_pago);
-  return code === 'PENDIENTE_PAGO' || code === 'PENDIENTE_DE_PAGO';
-};
-
-const canCobrarPedido = (pedido) => {
-  if (pedido?.puede_cobrar === true) return true;
-  if (pedido?.puede_cobrar === false) return false;
-  return (
-    isPedidoPendientePago(pedido) &&
-    (Number(pedido?.monto_pendiente ?? 0) || 0) > 0 &&
-    !toPositiveId(pedido?.id_factura)
-  );
 };
 
 const isPagoPedidoStillPending = (response) => {
