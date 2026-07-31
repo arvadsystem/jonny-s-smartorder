@@ -335,6 +335,33 @@ describe('acciones independientes de impresion en ventas', () => {
     assert.doesNotMatch(withoutPermission, /aria-label="Imprimir comanda"/);
   });
 
+  it('mantiene compacta la accion de reversión y la oculta cuando la venta ya fue reversada totalmente', () => {
+    const partialHtml = renderToStaticMarkup(React.createElement(VentaDetalleModal, {
+      open: true,
+      venta: { ...paidVenta, total: 100, monto_reversado_total: 20, estado_reversion: 'PARCIAL' },
+      loading: false,
+      canPrint: false,
+      canExport: false,
+      canReversion: true,
+      onClose() {},
+      onOpenReversion() {}
+    }));
+    assert.match(partialHtml, /ventas-detail-modal__reversion-trigger/);
+    assert.match(partialHtml, /Registrar reversión/);
+
+    const totalHtml = renderToStaticMarkup(React.createElement(VentaDetalleModal, {
+      open: true,
+      venta: { ...paidVenta, total: 100, monto_reversado_total: 100, estado_reversion: 'TOTAL' },
+      loading: false,
+      canPrint: false,
+      canExport: false,
+      canReversion: true,
+      onClose() {},
+      onOpenReversion() {}
+    }));
+    assert.doesNotMatch(totalHtml, /Registrar reversión/);
+  });
+
   it('renderiza reimpresion de comanda pendiente sin exigir factura', () => {
     const html = renderToStaticMarkup(React.createElement(VentaDetalleModal, {
       open: true,
