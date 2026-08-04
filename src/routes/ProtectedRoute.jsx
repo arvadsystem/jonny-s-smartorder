@@ -64,10 +64,6 @@ const ProtectedRoute = () => {
     return <Navigate to={MUST_CHANGE_ROUTE} replace />;
   }
 
-  if (!mustChangePassword && isMustChangeRoute) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
   return (
     <>
       <GlobalInactivityGuard />
