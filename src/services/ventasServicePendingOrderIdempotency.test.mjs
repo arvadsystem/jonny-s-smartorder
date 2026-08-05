@@ -280,6 +280,11 @@ describe('maquina de estados e idempotencia de pedidos pendientes', () => {
     await assert.rejects(() => createOrder(payload, operation), (error) => error.code === 'CAJA_CERRADA');
     assert.equal(keys.length, 1);
     assert.equal(ventasService.getPedidoPendienteOperation().status, ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.REJECTED);
+
+    const nextConfirmation = beginOperation(payload, operation.operationId);
+    assert.notEqual(nextConfirmation.operationId, operation.operationId);
+    assert.notEqual(nextConfirmation.idempotencyKey, operation.idempotencyKey);
+    assert.equal(nextConfirmation.status, ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.NEW);
   });
 
   it('un cambio material antes del POST puede reemplazar la clave', () => {

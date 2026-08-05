@@ -110,22 +110,34 @@ export const createPedidoPendienteContextError = (state) => {
 export const prepareAndSubmitPedidoPendiente = async ({
   payload,
   operationId = null,
+  localContext = null,
   revalidateContext,
   prepareOperation,
   submitOperation,
   onPrepared
 }) => {
-  const operationScope = await revalidateContext(payload);
+  const localState = resolvePedidoPendienteContextState({
+    userId: localContext?.userId,
+    sucursalId: localContext?.sucursalId,
+    cashSessionId: localContext?.cashSessionId
+  });
+  const operationScope = localState.ready ? localState.context : await revalidateContext(payload);
+  const operationState = resolvePedidoPendienteContextState({
+    userId: operationScope?.userId,
+    sucursalId: operationScope?.sucursalId,
+    cashSessionId: operationScope?.cashSessionId
+  });
+  if (!operationState.ready) throw createPedidoPendienteContextError(operationState);
   const refreshedPayload = {
     ...payload,
-    id_sucursal: operationScope.sucursalId,
-    id_sesion_caja: operationScope.cashSessionId
+    id_sucursal: operationState.context.sucursalId,
+    id_sesion_caja: operationState.context.cashSessionId
   };
-  const operation = prepareOperation(refreshedPayload, { operationId, operationScope });
-  onPrepared?.(operation, operationScope);
+  const operation = prepareOperation(refreshedPayload, { operationId, operationScope: operationState.context });
+  onPrepared?.(operation, operationState.context);
   const response = await submitOperation(refreshedPayload, {
     operationId: operation.operationId,
-    operationScope
+    operationScope: operationState.context
   });
-  return { operation, operationScope, payload: refreshedPayload, response };
+  return { operation, operationScope: operationState.context, payload: refreshedPayload, response };
 };

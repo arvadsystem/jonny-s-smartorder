@@ -77,11 +77,12 @@ test('cambios de usuario, sucursal y sesión reconstruyen el contexto explícita
   assert.deepEqual(nextSession.context, { userId: 30, sucursalId: 2, cashSessionId: 28, origin: 'SMARTORDER_POS' });
 });
 
-test('caso root revalida, prepara y envía una sola operación lógica', async () => {
+test('caso root usa ruta rápida local y envía una sola operación lógica', async () => {
   const calls = { revalidate: 0, prepare: 0, submit: 0 };
   const expectedScope = buildPedidoPendienteOperationContext({ userId: 30, sucursalId: 1, cashSessionId: 19 });
   const result = await prepareAndSubmitPedidoPendiente({
     payload: { id_sucursal: 1, id_sesion_caja: 19, items: [{ id_receta: 7 }] },
+    localContext: expectedScope,
     revalidateContext: async () => {
       calls.revalidate += 1;
       return expectedScope;
@@ -99,8 +100,26 @@ test('caso root revalida, prepara y envía una sola operación lógica', async (
     }
   });
 
-  assert.deepEqual(calls, { revalidate: 1, prepare: 1, submit: 1 });
+  assert.deepEqual(calls, { revalidate: 0, prepare: 1, submit: 1 });
   assert.equal(result.response.id_pedido, 101);
+});
+
+test('una falla auxiliar no bloquea la ruta rápida con contexto local completo', async () => {
+  let revalidated = 0;
+  const scope = buildPedidoPendienteOperationContext({ userId: 30, sucursalId: 1, cashSessionId: 19 });
+  const result = await prepareAndSubmitPedidoPendiente({
+    payload: { id_sucursal: 1, id_sesion_caja: 19, items: [{ id_receta: 7 }] },
+    localContext: scope,
+    revalidateContext: async () => {
+      revalidated += 1;
+      throw Object.assign(new Error('bootstrap caído'), { status: 500 });
+    },
+    prepareOperation: () => ({ operationId: 'op-fast-path' }),
+    submitOperation: async () => ({ id_pedido: 103 })
+  });
+
+  assert.equal(revalidated, 0);
+  assert.equal(result.response.id_pedido, 103);
 });
 
 test('una sesion revalidada reemplaza solo el contexto obsoleto y conserva el carrito completo', async () => {
@@ -147,18 +166,42 @@ test('una sesion revalidada reemplaza solo el contexto obsoleto y conserva el ca
   assert.deepEqual(result.payload, preparedPayload);
 });
 
-test('Caja fuerza un solo bootstrap antes de consultar la sesion activa al confirmar', async () => {
+test('Caja no fuerza bootstrap y limita la revalidación dirigida a la consulta pequeña de sesión', async () => {
   const source = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
   const handlerStart = source.indexOf('const revalidatePedidoPendienteContext = async (payload = {}) =>');
   const handlerEnd = source.indexOf('const finalizePedidoPendienteCreation = async', handlerStart);
   const handler = source.slice(handlerStart, handlerEnd);
-  const bootstrapCall = "await onCatalogSucursalChange?.({ id_sucursal: selectedSucursalId, force: true });";
-  const bootstrapIndex = handler.indexOf(bootstrapCall);
-  const sessionIndex = handler.indexOf('await cajasService.getMiSesionActiva');
-
   assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
-  assert.equal(handler.split(bootstrapCall).length - 1, 1);
-  assert.ok(bootstrapIndex >= 0 && sessionIndex > bootstrapIndex);
+  assert.equal(handler.includes('onCatalogSucursalChange'), false);
+  assert.equal(handler.includes('PEDIDO_CONTEXT_REVALIDATION_TIMEOUT_MS'), true);
+  assert.equal(handler.includes('activeRequest.key === requestKey'), true);
+  assert.equal(handler.includes('controller.signal'), true);
+  assert.equal(handler.includes('isCurrentRequest()'), true);
+  assert.equal(handler.includes('await cajasService.getMiSesionActiva'), true);
+});
+
+test('venta pagada directa conserva su ruta sin bootstrap ni lectura obligatoria de sesión', async () => {
+  const source = await readFile(new URL('../hooks/useVentaComposer.js', import.meta.url), 'utf8');
+  const handlerStart = source.indexOf('const submitPaidSale = async');
+  const handlerEnd = source.indexOf('const handleSubmit = async', handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  assert.equal(handler.includes('onCatalogSucursalChange'), false);
+  assert.equal(handler.includes('getMiSesionActiva'), false);
+  assert.equal(handler.includes('getMiAsignacionActiva'), false);
+  assert.equal(handler.includes('await onSubmit('), true);
+});
+
+test('rechazo definitivo solo revalida para el siguiente intento y nunca reenvía', async () => {
+  const source = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
+  const handlerStart = source.indexOf('const handleCreatePedidoPendiente = async (payload) =>');
+  const handlerEnd = source.indexOf('const handleRecoverPedidoPendiente = async', handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+  const submissionCount = handler.split('prepareAndSubmitPedidoPendiente({').length - 1;
+  assert.equal(submissionCount, 1);
+  assert.equal(handler.includes('isDefinitiveCajaSessionError(error)'), true);
+  assert.equal(handler.includes('if (!didRevalidateContext)'), true);
+  assert.equal(handler.includes('await revalidatePedidoPendienteContext(payload)'), true);
 });
 
 test('un contexto inválido no prepara ni envía una operación', async () => {

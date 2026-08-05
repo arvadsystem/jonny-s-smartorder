@@ -771,7 +771,10 @@ const preparePedidoPendienteOperation = (payload, {
   if (stored && stored.scopeKey !== scopeKey) stored = null;
 
   if (stored) {
-    if (stored.fingerprint === fingerprint) {
+    if (
+      stored.fingerprint === fingerprint
+      && stored.status !== PEDIDO_PENDIENTE_OPERATION_STATUS.REJECTED
+    ) {
       return writePedidoPendienteOperation(stored, { publish: isPedidoPendienteOperationLocked(stored) });
     }
     if (isPedidoPendienteOperationLocked(stored)) {

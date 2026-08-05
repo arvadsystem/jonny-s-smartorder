@@ -39,6 +39,15 @@ const resolvePendientesErrorMessage = (error) => {
 const CAJA_APERTURA_DISMISS_PREFIX = 'jonny:ventas:caja-apertura-decision-dismissed';
 const CAJA_ASIGNACION_CACHE_MS = 30000;
 const CAJA_SESIONES_ABIERTAS_CACHE_MS = 15000;
+const PEDIDO_CONTEXT_REVALIDATION_TIMEOUT_MS = 5000;
+const DEFINITIVE_CAJA_SESSION_ERROR_CODES = new Set([
+  'NO_ACTIVE_SESSION',
+  'SESSION_NOT_OPEN',
+  'SESSION_SCOPE_MISMATCH',
+  'SESSION_PARTICIPATION_REQUIRED',
+  'SESSION_AUTHORIZATION_REQUIRED',
+  'CAJA_NOT_ACTIVE'
+]);
 
 const toPositiveId = (value) => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -292,6 +301,7 @@ export default function CajaView({
   const [abrirSesionError, setAbrirSesionError] = useState('');
   const [creatingPedidoPendiente, setCreatingPedidoPendiente] = useState(false);
   const [revalidatingPedidoContext, setRevalidatingPedidoContext] = useState(false);
+  const [pedidoContextStale, setPedidoContextStale] = useState(false);
   const [pedidoPendienteOperation, setPedidoPendienteOperation] = useState(null);
   const [sharedPedidoPendienteOperations, setSharedPedidoPendienteOperations] = useState([]);
   const [pedidoPendienteStorageContext, setPedidoPendienteStorageContext] = useState({
@@ -312,6 +322,7 @@ export default function CajaView({
   const sesionesAbiertasRequestIdRef = useRef(0);
   const cajaUserKeyRef = useRef(cajaUserKey);
   const creatingPedidoPendienteRef = useRef(false);
+  const pedidoContextRevalidationRef = useRef({ key: '', promise: null, controller: null, requestId: 0 });
   const pedidoPendienteOperationRef = useRef(null);
   const registrandoPagoPedidoRef = useRef(false);
   const lastDetectionSessionRef = useRef('');
@@ -340,6 +351,13 @@ export default function CajaView({
     pendientesSummaryRequestRef.current = { key: '', promise: null, requestId: pendientesSummaryRequestRef.current.requestId + 1, controller: null };
     catalogSucursalRequestRef.current = '';
     catalogSucursalRequestIdRef.current += 1;
+    pedidoContextRevalidationRef.current.controller?.abort();
+    pedidoContextRevalidationRef.current = {
+      key: '',
+      promise: null,
+      controller: null,
+      requestId: pedidoContextRevalidationRef.current.requestId + 1
+    };
     pedidoPendienteOperationRef.current = null;
     setPedidoPendienteOperation(null);
     setSharedPedidoPendienteOperations([]);
@@ -349,6 +367,10 @@ export default function CajaView({
     setCajaSesionActiva(null);
     setCajaStatus({ loading: false, error: '', assignmentMissing: false });
   }, [cajaUserKey]);
+
+  useEffect(() => () => {
+    pedidoContextRevalidationRef.current.controller?.abort();
+  }, []);
 
   const openAutoAuxiliarForSucursal = async ({ idSucursal, force = false }) => {
     if (!isSuperAdmin) return;
@@ -1016,13 +1038,9 @@ export default function CajaView({
     return () => mediaQuery.removeListener(closeOnDesktop);
   }, [cartSheetOpen]);
 
-  const isCajaSessionError = (error) => {
+  const isDefinitiveCajaSessionError = (error) => {
     const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
-    const message = String(error?.message || '').toLowerCase();
-    return ['NO_ACTIVE_SESSION', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'SESSION_NOT_OPEN', 'SESSION_SCOPE_MISMATCH', 'CAJA_NOT_ACTIVE'].includes(code)
-      || message.includes('sesion de caja activa')
-      || message.includes('sesión de caja activa')
-      || message.includes('caja activa');
+    return DEFINITIVE_CAJA_SESSION_ERROR_CODES.has(code);
   };
 
   const loadPendientesSummary = useCallback(async () => {
@@ -1130,25 +1148,43 @@ export default function CajaView({
     cajaStatus.loading
   ]);
 
-  const pendingOrderContextState = resolvePedidoPendienteContextState({
+  const localPedidoSession = cajaSesionActiva || bootstrapSesionCaja;
+  const localPedidoSessionSucursalId = parsePositiveIntegerId(localPedidoSession?.id_sucursal);
+  const selectedPedidoSucursalId = parsePositiveIntegerId(pedidoOperationSucursalId);
+  const localPedidoSessionIsCoherent = Boolean(
+    parsePositiveIntegerId(localPedidoSession?.id_sesion_caja)
+    && String(localPedidoSession?.estado_codigo || 'ABIERTA').trim().toUpperCase() === 'ABIERTA'
+    && localPedidoSessionSucursalId
+    && localPedidoSessionSucursalId === selectedPedidoSucursalId
+    && !pedidoContextStale
+  );
+  const localPedidoContextState = resolvePedidoPendienteContextState({
     userId: authenticatedUserId,
     sucursalId: pedidoOperationSucursalId,
-    cashSessionId: pedidoOperationSessionId,
-    loading: Boolean(
-      authLoading
-      || catalogLoadingStates.bootstrapLoading
-      || cajaStatus.loading
-      || revalidatingPedidoContext
-    ),
+    cashSessionId: localPedidoSessionIsCoherent ? localPedidoSession?.id_sesion_caja : null,
+    loading: Boolean(authLoading),
     userIdentityStatus
   });
+  const pendingOrderContextState = localPedidoContextState.ready
+    ? localPedidoContextState
+    : resolvePedidoPendienteContextState({
+        userId: authenticatedUserId,
+        sucursalId: pedidoOperationSucursalId,
+        cashSessionId: pedidoOperationSessionId,
+        loading: Boolean(
+          authLoading
+          || cajaStatus.loading
+          || revalidatingPedidoContext
+        ),
+        userIdentityStatus
+      });
 
   const revalidatePedidoPendienteContext = async (payload = {}) => {
     const initialState = resolvePedidoPendienteContextState({
       userId: authenticatedUserId,
       sucursalId: payload?.id_sucursal || pedidoOperationSucursalId,
       cashSessionId: payload?.id_sesion_caja || pedidoOperationSessionId,
-      loading: Boolean(authLoading || catalogLoadingStates.bootstrapLoading || cajaStatus.loading),
+      loading: Boolean(authLoading),
       userIdentityStatus
     });
     if (initialState.loading || !authenticatedUserId || !parsePositiveIntegerId(payload?.id_sucursal || pedidoOperationSucursalId)) {
@@ -1156,71 +1192,107 @@ export default function CajaView({
     }
 
     const selectedSucursalId = parsePositiveIntegerId(payload?.id_sucursal || pedidoOperationSucursalId);
-    setRevalidatingPedidoContext(true);
-    try {
-      await onCatalogSucursalChange?.({ id_sucursal: selectedSucursalId, force: true });
-      const response = isSuperAdmin
-        ? await cajasService.getMiSesionActiva({ id_sucursal: selectedSucursalId })
-        : await cajasService.getMiAsignacionActiva();
-      const session = normalizeCajaSession(isSuperAdmin ? response?.session : response);
-      const sessionSucursalId = parsePositiveIntegerId(session?.id_sucursal);
-      const sessionMatchesSucursal = Boolean(
-        session?.id_sesion_caja
-        && sessionSucursalId
-        && sessionSucursalId === selectedSucursalId
-      );
-      const activeSession = sessionMatchesSucursal ? session : null;
-      const assignment = activeSession
-        ? buildCajaAssignmentFromSession(activeSession)
-        : normalizeCajaAssignment(isSuperAdmin ? null : response);
-
-      setCajaAsignacion(assignment);
-      setCajaSesionActiva(activeSession);
-      syncComposerSession(activeSession);
-      setCajaStatus({
-        loading: false,
-        error: session && !sessionMatchesSucursal
-          ? 'La sesión de caja activa pertenece a otra sucursal.'
-          : '',
-        assignmentMissing: !assignment
-      });
-
-      if (session && !sessionMatchesSucursal) {
-        const mismatchError = new Error('La sesión de caja activa no corresponde a la sucursal seleccionada. Actualiza Caja e inténtalo de nuevo.');
-        mismatchError.code = 'PEDIDO_PENDIENTE_SUCURSAL_SESION_INCOMPATIBLE';
-        throw mismatchError;
-      }
-
-      const refreshedState = resolvePedidoPendienteContextState({
-        userId: authenticatedUserId,
-        sucursalId: selectedSucursalId,
-        cashSessionId: activeSession?.id_sesion_caja,
-        userIdentityStatus
-      });
-      if (!refreshedState.ready) throw createPedidoPendienteContextError(refreshedState);
-      return buildPedidoPendienteOperationContext(refreshedState.context);
-    } catch (error) {
-      if (
-        error?.code === 'PEDIDO_PENDIENTE_SUCURSAL_SESION_INCOMPATIBLE'
-        || String(error?.code || '').startsWith('PEDIDO_PENDIENTE_')
-      ) {
-        throw error;
-      }
-
-      const contextError = isCajaAssignmentNotFound(error)
-        ? createPedidoPendienteContextError(resolvePedidoPendienteContextState({
-            userId: authenticatedUserId,
-            sucursalId: selectedSucursalId,
-            cashSessionId: null,
-            userIdentityStatus
-          }))
-        : new Error('No se pudo validar la sesión de caja. El carrito se conserva; revisa la conexión y vuelve a intentar.');
-      if (!contextError.code) contextError.code = 'PEDIDO_PENDIENTE_CONTEXT_REVALIDATION_FAILED';
-      contextError.cause = error;
-      throw contextError;
-    } finally {
-      setRevalidatingPedidoContext(false);
+    const requestKey = `usuario:${cajaUserKey}:sucursal:${selectedSucursalId}`;
+    const activeRequest = pedidoContextRevalidationRef.current;
+    if (activeRequest.key === requestKey && activeRequest.promise && !activeRequest.controller?.signal.aborted) {
+      return activeRequest.promise;
     }
+    activeRequest.controller?.abort();
+    const controller = new AbortController();
+    const requestId = activeRequest.requestId + 1;
+    const requestUserKey = cajaUserKey;
+    const isCurrentRequest = () => {
+      const current = pedidoContextRevalidationRef.current;
+      const currentSucursalId = parsePositiveIntegerId(
+        composerRef.current?.selectedSucursalId || composerRef.current?.selectedSucursal
+      );
+      return current.key === requestKey
+        && current.requestId === requestId
+        && current.controller === controller
+        && cajaUserKeyRef.current === requestUserKey
+        && currentSucursalId === selectedSucursalId
+        && !controller.signal.aborted;
+    };
+
+    setRevalidatingPedidoContext(true);
+    const requestPromise = (async () => {
+      try {
+        const requestConfig = { signal: controller.signal, timeoutMs: PEDIDO_CONTEXT_REVALIDATION_TIMEOUT_MS };
+        const response = isSuperAdmin
+          ? await cajasService.getMiSesionActiva({ id_sucursal: selectedSucursalId }, requestConfig)
+          : await cajasService.getMiAsignacionActiva(requestConfig);
+        if (!isCurrentRequest()) {
+          const staleError = new Error('La sucursal o el usuario cambió durante la validación de caja.');
+          staleError.code = 'PEDIDO_PENDIENTE_CONTEXT_REVALIDATION_STALE';
+          throw staleError;
+        }
+        const session = normalizeCajaSession(isSuperAdmin ? response?.session : response);
+        const sessionSucursalId = parsePositiveIntegerId(session?.id_sucursal);
+        const sessionMatchesSucursal = Boolean(
+          session?.id_sesion_caja
+          && sessionSucursalId
+          && sessionSucursalId === selectedSucursalId
+        );
+        const activeSession = sessionMatchesSucursal ? session : null;
+        const assignment = activeSession
+          ? buildCajaAssignmentFromSession(activeSession)
+          : normalizeCajaAssignment(isSuperAdmin ? null : response);
+
+        setCajaAsignacion(assignment);
+        setCajaSesionActiva(activeSession);
+        syncComposerSession(activeSession);
+        setCajaStatus({
+          loading: false,
+          error: session && !sessionMatchesSucursal
+            ? 'La sesión de caja activa pertenece a otra sucursal.'
+            : '',
+          assignmentMissing: !assignment
+        });
+        setPedidoContextStale(!activeSession);
+
+        if (session && !sessionMatchesSucursal) {
+          const mismatchError = new Error('La sesión de caja activa no corresponde a la sucursal seleccionada. Actualiza Caja e inténtalo de nuevo.');
+          mismatchError.code = 'PEDIDO_PENDIENTE_SUCURSAL_SESION_INCOMPATIBLE';
+          throw mismatchError;
+        }
+
+        const refreshedState = resolvePedidoPendienteContextState({
+          userId: authenticatedUserId,
+          sucursalId: selectedSucursalId,
+          cashSessionId: activeSession?.id_sesion_caja,
+          userIdentityStatus
+        });
+        if (!refreshedState.ready) throw createPedidoPendienteContextError(refreshedState);
+        return buildPedidoPendienteOperationContext(refreshedState.context);
+      } catch (error) {
+        if (
+          error?.code === 'PEDIDO_PENDIENTE_SUCURSAL_SESION_INCOMPATIBLE'
+          || String(error?.code || '').startsWith('PEDIDO_PENDIENTE_')
+        ) {
+          throw error;
+        }
+
+        const contextError = isCajaAssignmentNotFound(error)
+          ? createPedidoPendienteContextError(resolvePedidoPendienteContextState({
+              userId: authenticatedUserId,
+              sucursalId: selectedSucursalId,
+              cashSessionId: null,
+              userIdentityStatus
+            }))
+          : new Error('No se pudo validar la sesión de caja. El carrito se conserva; revisa la conexión y vuelve a intentar.');
+        if (!contextError.code) contextError.code = 'PEDIDO_PENDIENTE_CONTEXT_REVALIDATION_FAILED';
+        contextError.cause = error;
+        throw contextError;
+      } finally {
+        const current = pedidoContextRevalidationRef.current;
+        if (current.key === requestKey && current.requestId === requestId && current.controller === controller) {
+          pedidoContextRevalidationRef.current = { key: '', promise: null, controller: null, requestId };
+          setRevalidatingPedidoContext(false);
+        }
+      }
+    })();
+    pedidoContextRevalidationRef.current = { key: requestKey, promise: requestPromise, controller, requestId };
+    return requestPromise;
   };
 
   const finalizePedidoPendienteCreation = async (response) => {
@@ -1280,11 +1352,16 @@ export default function CajaView({
     }
     creatingPedidoPendienteRef.current = true;
     setCreatingPedidoPendiente(true);
+    let didRevalidateContext = false;
     try {
       const { response } = await prepareAndSubmitPedidoPendiente({
         payload,
         operationId: pedidoPendienteOperationRef.current?.operationId || null,
-        revalidateContext: revalidatePedidoPendienteContext,
+        localContext: localPedidoContextState.ready ? localPedidoContextState.context : null,
+        revalidateContext: async (currentPayload) => {
+          didRevalidateContext = true;
+          return revalidatePedidoPendienteContext(currentPayload);
+        },
         prepareOperation: ventasService.preparePedidoPendienteOperation,
         submitOperation: onCreatePedidoPendiente,
         onPrepared: (operation) => {
@@ -1311,8 +1388,15 @@ export default function CajaView({
           setFinalizarOpen(false);
         }
       }
-      if (isSuperAdmin && composer.selectedSucursalId && isCajaSessionError(error)) {
-        await openAutoAuxiliarForSucursal({ idSucursal: composer.selectedSucursalId });
+      if (isDefinitiveCajaSessionError(error)) {
+        setPedidoContextStale(true);
+        if (!didRevalidateContext) {
+          try {
+            await revalidatePedidoPendienteContext(payload);
+          } catch {
+            // El rechazo definitivo se conserva; no se reenvía automáticamente la operación.
+          }
+        }
       }
       throw error;
     } finally {
