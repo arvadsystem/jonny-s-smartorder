@@ -121,6 +121,23 @@ const toPositiveId = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+// HOTFIX (sesion de caja en Pedidos): solo se acepta una sesion de
+// /ventas/caja/bootstrap si es positiva, corresponde a la sucursal
+// efectiva, esta abierta, y pertenece o autoriza al usuario autenticado
+// segun la respuesta del backend (responsable o con rol de participacion).
+export const resolveActivePaymentSessionId = (sesionCaja, { idSucursal, idUsuario } = {}) => {
+  const idSesion = toPositiveId(sesionCaja?.id_sesion_caja);
+  if (!idSesion) return null;
+  const idSucursalSesion = toPositiveId(sesionCaja?.id_sucursal);
+  if (idSucursal && idSucursalSesion && idSucursalSesion !== idSucursal) return null;
+  const estado = String(sesionCaja?.estado_codigo || 'ABIERTA').trim().toUpperCase();
+  if (estado !== 'ABIERTA') return null;
+  const idResponsable = toPositiveId(sesionCaja?.id_usuario_responsable);
+  const rolParticipacion = String(sesionCaja?.rol_participacion || sesionCaja?.rol_codigo || '').trim();
+  if (idResponsable && idUsuario && idResponsable !== idUsuario && !rolParticipacion) return null;
+  return idSesion;
+};
+
 const normalizePedidoForPagoModal = (pedido) => ({
   id_pedido: Number(pedido?.id_pedido ?? 0) || null,
   codigo_venta_operativo: buildPedidoVisibleCode(pedido),
@@ -212,7 +229,6 @@ export default function PedidosView({
   sucursales = [],
   defaultSucursalId = null,
   scopeInfo = null,
-  selectedSessionId = null,
   canPrintVenta = false,
   onPrintFactura,
   onPrintComanda,
@@ -297,6 +313,94 @@ export default function PedidosView({
     selectedSucursalId,
     selectedSucursalIsValid
   ]);
+
+  // HOTFIX (sesion de caja en Pedidos): al entrar directo a tab=pedidos,
+  // useVentas solo carga el bootstrap de caja cuando activeTab==='caja', asi
+  // que esta vista nunca recibia una sesion. Se resuelve aqui mismo, contra
+  // /ventas/caja/bootstrap (via ventasService.getCajaBootstrap, que ya trae
+  // su propio cache/coalescing), aislado por usuario+sucursal y sin tocar
+  // useVentas/CajaView.
+  const [paymentSessionId, setPaymentSessionId] = useState(null);
+  const [paymentSessionLoading, setPaymentSessionLoading] = useState(false);
+  const [paymentSessionError, setPaymentSessionError] = useState('');
+  const paymentSessionAbortRef = useRef(null);
+  const paymentSessionRequestIdRef = useRef(0);
+  const paymentSessionScopeRef = useRef('');
+
+  const resolvePaymentSession = useCallback(async ({ force = false } = {}) => {
+    const idSucursal = toPositiveId(effectiveSucursalId);
+    const idUsuario = toPositiveId(userId);
+    const scopeKey = `${idUsuario || 'anon'}:${idSucursal || 'none'}`;
+    paymentSessionScopeRef.current = scopeKey;
+
+    if (!idSucursal) {
+      paymentSessionAbortRef.current?.abort();
+      paymentSessionAbortRef.current = null;
+      setPaymentSessionId(null);
+      setPaymentSessionLoading(false);
+      setPaymentSessionError('No tienes una sesión de caja activa para esta sucursal.');
+      return null;
+    }
+
+    paymentSessionAbortRef.current?.abort();
+    const controller = new AbortController();
+    paymentSessionAbortRef.current = controller;
+    const requestId = paymentSessionRequestIdRef.current + 1;
+    paymentSessionRequestIdRef.current = requestId;
+    const isCurrentRequest = () =>
+      paymentSessionRequestIdRef.current === requestId &&
+      paymentSessionScopeRef.current === scopeKey &&
+      !controller.signal.aborted;
+
+    setPaymentSessionLoading(true);
+    setPaymentSessionError('');
+    try {
+      const response = await ventasService.getCajaBootstrap(
+        { id_sucursal: idSucursal },
+        { signal: controller.signal, coalesceUserKey: idUsuario, force }
+      );
+      if (!isCurrentRequest()) return null;
+      const sessionId = resolveActivePaymentSessionId(response?.data?.sesion_caja, {
+        idSucursal,
+        idUsuario
+      });
+      setPaymentSessionId(sessionId);
+      setPaymentSessionError(sessionId ? '' : 'No tienes una sesión de caja activa para esta sucursal.');
+      return sessionId;
+    } catch (error) {
+      if (controller.signal.aborted || !isCurrentRequest()) return null;
+      setPaymentSessionId(null);
+      setPaymentSessionError(extractUiMessage(error, 'No se pudo validar la sesión de caja.'));
+      return null;
+    } finally {
+      if (paymentSessionAbortRef.current === controller && paymentSessionRequestIdRef.current === requestId) {
+        paymentSessionAbortRef.current = null;
+        setPaymentSessionLoading(false);
+      }
+    }
+  }, [effectiveSucursalId, userId]);
+
+  useEffect(() => {
+    // Cambio de usuario o sucursal: invalida de inmediato la sesion previa
+    // para que nunca se reutilice la de otra sucursal mientras se resuelve
+    // la nueva.
+    setPaymentSessionId(null);
+    setPaymentSessionError('');
+    void resolvePaymentSession();
+    return () => {
+      paymentSessionAbortRef.current?.abort();
+    };
+  }, [resolvePaymentSession]);
+
+  const invalidatePaymentSession = useCallback(() => {
+    setPaymentSessionId(null);
+    return resolvePaymentSession({ force: true });
+  }, [resolvePaymentSession]);
+
+  const revalidatePaymentSession = useCallback(
+    () => resolvePaymentSession({ force: true }),
+    [resolvePaymentSession]
+  );
 
   useEffect(() => {
     if (!isSuperAdmin) {
@@ -799,7 +903,7 @@ export default function PedidosView({
           operationScope: {
             userId,
             sucursalId: payload?.id_sucursal || effectiveSucursalId,
-            cashSessionId: payload?.id_sesion_caja || selectedSessionId,
+            cashSessionId: payload?.id_sesion_caja || paymentSessionId,
             origin: 'PEDIDOS'
           }
         });
@@ -830,7 +934,7 @@ export default function PedidosView({
         setPagoPedidoSaving(false);
       }
     },
-    [effectiveSucursalId, loadPedidos, onSuccessfulPendingOrderPaymentPrint, openToast, selectedSessionId, userId]
+    [effectiveSucursalId, loadPedidos, onSuccessfulPendingOrderPaymentPrint, openToast, paymentSessionId, userId]
   );
 
   const closeConfirmDialog = useCallback(() => {
@@ -1084,7 +1188,11 @@ export default function PedidosView({
         onRegistrarPago={handleRegistrarPagoPedido}
         initialPedido={pagoPedidoModal.pedido}
         selectedSucursalId={effectivePagoSucursalId}
-        selectedSessionId={selectedSessionId}
+        selectedSessionId={paymentSessionId}
+        sessionLoading={paymentSessionLoading}
+        sessionError={paymentSessionError}
+        onRevalidateSession={revalidatePaymentSession}
+        onSessionInvalidated={invalidatePaymentSession}
       />
 
       <VentaDetalleModal

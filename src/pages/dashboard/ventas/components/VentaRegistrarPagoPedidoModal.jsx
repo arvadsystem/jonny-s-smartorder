@@ -41,6 +41,21 @@ const toPositiveId = (value) => {
 const normalizeDivisionEstado = (value) => String(value || 'PENDIENTE').trim().toUpperCase();
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
+// HOTFIX (sesion de caja en Pedidos): codigos que indican que la sesion de
+// caja usada para el cobro ya no es valida (cerrada, de otra sucursal, sin
+// participacion/autorizacion). Ante cualquiera de estos, se limpia la
+// sesion local y se refresca el bootstrap en vez de reintentar el cobro
+// automaticamente (evita un segundo cargo ante una respuesta ambigua).
+const SESSION_INVALIDATING_CODES = new Set([
+  'SESSION_NOT_FOUND',
+  'SESSION_NOT_OPEN',
+  'NO_ACTIVE_SESSION',
+  'SESSION_SCOPE_MISMATCH',
+  'SESSION_PARTICIPATION_REQUIRED',
+  'SESSION_AUTHORIZATION_REQUIRED',
+  'CAJA_NOT_ACTIVE'
+]);
+
 const buildInitialSplitDivisions = () => ([
   { id: 'persona-1', etiqueta: 'Persona 1', itemIds: [] },
   { id: 'persona-2', etiqueta: 'Persona 2', itemIds: [] }
@@ -236,6 +251,10 @@ export default function VentaRegistrarPagoPedidoModal({
   onRegistrarPago,
   selectedSucursalId,
   selectedSessionId,
+  sessionLoading = false,
+  sessionError = '',
+  onRevalidateSession = null,
+  onSessionInvalidated = null,
   initialPedido
 }) {
   const [form, setForm] = useState(INITIAL_FORM);
@@ -868,6 +887,32 @@ export default function VentaRegistrarPagoPedidoModal({
     setLocalError('');
     setLocalNotice('');
 
+    // HOTFIX (sesion de caja en Pedidos): la sesion de caja es prerequisito
+    // de scope para financialOperationManager. Se valida aqui, con mensajes
+    // especificos, para no depender del mensaje generico de scope
+    // incompleto como primera senal del problema.
+    if (sessionLoading) {
+      setLocalError('Validando sesión de caja…');
+      submitRef.current = false;
+      setLocalSaving(false);
+      return;
+    }
+    let effectiveSessionId = toPositiveId(selectedSessionId);
+    if (!effectiveSessionId) {
+      // Revalidacion unica antes del cobro: la sesion local puede estar
+      // desactualizada (p. ej. se abrio recien). Se reconsulta el
+      // bootstrap una sola vez y se continua con la sesion activa
+      // devuelta; nunca se dispara el pago dos veces por esto.
+      const revalidated = await onRevalidateSession?.();
+      effectiveSessionId = toPositiveId(revalidated);
+      if (!effectiveSessionId) {
+        setLocalError(sessionError || 'No tienes una sesión de caja activa para esta sucursal.');
+        submitRef.current = false;
+        setLocalSaving(false);
+        return;
+      }
+    }
+
     if (!selectedPedido?.id_pedido) {
       setLocalError('Selecciona un pedido pendiente para cobrar.');
       submitRef.current = false;
@@ -956,7 +1001,7 @@ export default function VentaRegistrarPagoPedidoModal({
         monto_recibido: isCash ? montoRecibido : undefined,
         referencia_pago: isCash ? null : normalizeOptionalText(form.referencia_pago),
         observacion_pago: normalizeOptionalText(form.observacion_pago),
-        id_sesion_caja: toPositiveId(selectedSessionId),
+        id_sesion_caja: effectiveSessionId,
         id_cuenta_division: !hasSplitDraft && selectedDivisionPendiente ? Number(selectedDivisionPendiente.id_cuenta_division) : undefined,
         ...(splitDraftPayload || {})
       });
@@ -1027,11 +1072,20 @@ export default function VentaRegistrarPagoPedidoModal({
         }
       }
     } catch (error) {
-      // HOTFIX (ronda 3, seccion 8): un rechazo del backend por linea
-      // inexistente/duplicada/subcuenta ya facturada/pedido ya pagado
-      // significa que el pedido cambio mientras se cobraba -- nunca se
-      // muestra el error tecnico crudo, se refresca y se explica.
-      if (isStaleCuentaDivididaError(error)) {
+      const backendSessionCode = String(error?.data?.code || error?.code || '').trim().toUpperCase();
+      // HOTFIX (sesion de caja en Pedidos): la sesion pudo cerrarse o
+      // cambiar de scope mientras el modal estaba abierto. Se limpia y se
+      // refresca el bootstrap, pero NUNCA se reintenta el cobro
+      // automaticamente -- la respuesta original pudo haber llegado al
+      // backend y reintentar sin certeza duplicaria el cargo.
+      if (SESSION_INVALIDATING_CODES.has(backendSessionCode)) {
+        void onSessionInvalidated?.();
+        setLocalError('Tu sesión de caja cambió o se cerró. Se actualizó; vuelve a presionar Confirmar pago para continuar.');
+      } else if (isStaleCuentaDivididaError(error)) {
+        // HOTFIX (ronda 3, seccion 8): un rechazo del backend por linea
+        // inexistente/duplicada/subcuenta ya facturada/pedido ya pagado
+        // significa que el pedido cambio mientras se cobraba -- nunca se
+        // muestra el error tecnico crudo, se refresca y se explica.
         await refreshSelectedPedidoAfterPayment(selectedPedido.id_pedido).catch(() => null);
         setLocalError('El pedido cambió mientras lo estabas cobrando. Se actualizó la información para evitar un cobro duplicado.');
       } else {
@@ -1410,6 +1464,14 @@ export default function VentaRegistrarPagoPedidoModal({
               </div>
             ) : null}
 
+            {!localError && !localNotice && sessionLoading ? (
+              <div className="ventas-create-modal__notice">
+                <span className="spinner-border spinner-border-sm" aria-hidden="true" /> Validando sesión de caja…
+              </div>
+            ) : null}
+            {!localError && !localNotice && !sessionLoading && !toPositiveId(selectedSessionId) && sessionError ? (
+              <div className="ventas-create-modal__error">{sessionError}</div>
+            ) : null}
             {localNotice ? <div className="ventas-create-modal__notice">{localNotice}</div> : null}
             {localError ? <div className="ventas-create-modal__error">{localError}</div> : null}
           </section>
@@ -1419,7 +1481,12 @@ export default function VentaRegistrarPagoPedidoModal({
           <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={isSubmitting}>
             Cancelar
           </button>
-          <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting || !selectedPedido}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleSubmit}
+            disabled={isSubmitting || !selectedPedido || sessionLoading || (!toPositiveId(selectedSessionId) && Boolean(sessionError))}
+          >
             {pendingAutoAssignConfirm ? 'Cobrar' : submitLabel}
           </button>
         </footer>
