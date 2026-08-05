@@ -28,9 +28,11 @@ import { validateComandaForPrint } from './utils/buildComandaCocinaHtml';
 import {
   createClosedComandaPrompt,
   createComandaPrompt,
+  createDocumentPrintGuard,
   enqueueAgentPrintAction,
   getSafePrintErrorContext,
-  prepareComandaPrintWindow
+  prepareComandaPrintWindow,
+  resolvePendingOrderComandaPrompt
 } from './utils/ventasPrintActions';
 import { loadKitchenComandaPrintSource } from './utils/ventasKitchenRouting';
 import { resolveAuthenticatedUserId } from './utils/authenticatedUserScope';
@@ -134,6 +136,10 @@ export default function VentasPage() {
   const [comandaPrompt, setComandaPrompt] = useState(createClosedComandaPrompt);
   const detailRequestRef = useRef(0);
   const printerConfigCacheRef = useRef(new Map());
+  const comandaPrintGuardRef = useRef(null);
+  if (!comandaPrintGuardRef.current) {
+    comandaPrintGuardRef.current = createDocumentPrintGuard();
+  }
 
   const isCajeroOnly = useMemo(() => {
     const roles = normalizeRoles(user?.roles);
@@ -623,24 +629,13 @@ export default function VentasPage() {
   };
 
   const handlePendingOrderCreatedPrintPrompt = (comanda) => {
-    if (comanda?.requiere_revision === true) {
+    const resolution = resolvePendingOrderComandaPrompt(comanda);
+    if (resolution.status === 'review') {
       openToast('PEDIDO REQUIERE REVISION', 'El pedido contiene lineas invalidas y no fue enviado a cocina.', 'warning');
       return;
     }
-    if (comanda?.requiere_cocina !== true) return;
-    const printContext = createComandaPrompt({
-      venta: comanda,
-      sourceType: 'pedido',
-      action: 'initial',
-      origin: 'pending-order'
-    });
-    if (AGENT_PRINT_MODE) {
-      return executeComandaPrint(printContext, {
-        usePromptState: false,
-        closePromptOnSuccess: false
-      });
-    }
-    setComandaPrompt(printContext);
+    if (!resolution.prompt) return;
+    setComandaPrompt(resolution.prompt);
     return undefined;
   };
 
@@ -872,10 +867,10 @@ export default function VentasPage() {
     }
   };
 
-  const executeComandaPrint = async (printContext, {
+  const executeComandaPrint = (printContext, {
     usePromptState = true,
     closePromptOnSuccess = true
-  } = {}) => {
+  } = {}) => comandaPrintGuardRef.current.run('comanda', async () => {
     const venta = printContext.venta;
     const { sourceType, action, origin } = printContext;
     const isPendingOrderComanda = sourceType === 'pedido';
@@ -1138,7 +1133,7 @@ export default function VentasPage() {
       }
       failPrint(isReprint ? 'No se pudo enviar la comanda a impresión.' : printErrorMessage, error);
     }
-  };
+  });
 
   const openComandaReprintFromDetail = async (venta, { sourceType = 'factura' } = {}) => {
     const printContext = createComandaPrompt({

@@ -1440,7 +1440,7 @@ export const useVentaComposer = ({
         && hasSelectedSucursal
         && state.cart.length > 0
         && (
-          ['NO_ACTIVE_SESSION', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'SESSION_NOT_OPEN', 'SESSION_SCOPE_MISMATCH', 'CAJA_NOT_ACTIVE'].includes(errorCode)
+          ['NO_ACTIVE_SESSION', 'SESSION_NOT_FOUND', 'SESSION_NOT_OPEN', 'OPEN_STATE_NOT_FOUND', 'SESSION_SCOPE_MISMATCH', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'CAJA_NOT_ACTIVE'].includes(errorCode)
           || (Number(error?.status || 0) === 403 && sessionMessageMatch)
         )
       ) {

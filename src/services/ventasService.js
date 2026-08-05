@@ -1014,7 +1014,7 @@ const isPedidoPendienteTemporaryError = (error) => {
   const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
   return status === 0
     || status === 408
-    || [425, 429, 502, 503, 504].includes(status)
+    || [425, 429, 500, 502, 503, 504].includes(status)
     || ['FETCH_ERROR', 'REQUEST_TIMEOUT', 'REQUEST_ALREADY_IN_PROGRESS', 'IDEMPOTENCY_IN_PROGRESS', 'POS_RPC_IDEMPOTENCY_IN_PROGRESS'].includes(code);
 };
 

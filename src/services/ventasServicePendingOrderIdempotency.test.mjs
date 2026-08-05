@@ -181,6 +181,52 @@ describe('maquina de estados e idempotencia de pedidos pendientes', () => {
     assert.equal(new Set(keys).size, 1);
   });
 
+  it('HTTP 500 antes de conocer el resultado queda ambiguo y conserva operacion, key, payload y carrito bloqueado', async () => {
+    const keys = [];
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 11, cantidad: 2 }] };
+    const operation = beginOperation(payload);
+    globalThis.fetch = async (url, options) => {
+      keys.push(options.headers['Idempotency-Key']);
+      return jsonResponse({ error: true, message: 'Error interno.' }, 500);
+    };
+
+    await assert.rejects(
+      () => createOrder(payload, operation),
+      (error) => error.code === 'PEDIDO_PENDIENTE_RESULTADO_DESCONOCIDO'
+    );
+
+    const unknown = ventasService.getPedidoPendienteOperation();
+    assert.equal(unknown.status, ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN);
+    assert.equal(unknown.operationId, operation.operationId);
+    assert.equal(unknown.idempotencyKey, operation.idempotencyKey);
+    assert.deepEqual(unknown.payload, payload);
+    assert.equal(ventasService.isPedidoPendienteOperationLocked(unknown), true);
+    assert.equal(new Set(keys).size, 1);
+  });
+
+  it('HTTP 500 posterior a COMMIT recupera por replay el mismo pedido con la misma key y sin POST logico nuevo', async () => {
+    const calls = [];
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 111, cantidad: 1 }] };
+    const operation = beginOperation(payload);
+    globalThis.fetch = async (url, options) => {
+      calls.push({ key: options.headers['Idempotency-Key'], body: JSON.parse(options.body) });
+      if (calls.length === 1) {
+        return jsonResponse({ error: true, message: 'Respuesta perdida despues del COMMIT.' }, 500);
+      }
+      return jsonResponse({ id_pedido: 411, idempotent_replay: true });
+    };
+
+    const response = await createOrder(payload, operation);
+
+    assert.equal(response.id_pedido, 411);
+    assert.equal(response.idempotent_replay, true);
+    assert.equal(calls.length, 2);
+    assert.equal(new Set(calls.map((call) => call.key)).size, 1);
+    assert.equal(calls[0].key, operation.idempotencyKey);
+    assert.deepEqual(calls[0].body, calls[1].body);
+    assert.equal(ventasService.getPedidoPendienteOperation(), null);
+  });
+
   it('reset normal no elimina una operacion ambigua y abandono explicito si lo hace', async () => {
     const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 12 }] };
     const operation = beginOperation(payload);

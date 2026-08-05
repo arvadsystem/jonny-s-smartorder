@@ -42,7 +42,9 @@ const CAJA_SESIONES_ABIERTAS_CACHE_MS = 15000;
 const PEDIDO_CONTEXT_REVALIDATION_TIMEOUT_MS = 5000;
 const DEFINITIVE_CAJA_SESSION_ERROR_CODES = new Set([
   'NO_ACTIVE_SESSION',
+  'SESSION_NOT_FOUND',
   'SESSION_NOT_OPEN',
+  'OPEN_STATE_NOT_FOUND',
   'SESSION_SCOPE_MISMATCH',
   'SESSION_PARTICIPATION_REQUIRED',
   'SESSION_AUTHORIZATION_REQUIRED',
@@ -1316,8 +1318,8 @@ export default function CajaView({
       { name: 'summary', run: () => loadPendientesSummary() }
     ]);
     try {
-      // La API comercial ya hizo COMMIT. En modo agente, este await garantiza
-      // que la comanda idempotente quede en cola antes de devolver exito a Caja.
+      // La API comercial ya hizo COMMIT. Este callback solo abre la confirmacion;
+      // la impresion ocurre despues de una decision explicita del usuario.
       await onPedidoPendienteCreated?.(response);
     } catch {
       onNotify?.(

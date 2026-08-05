@@ -16,8 +16,10 @@ test('PedidosView muestra Mandar a cocina solo con autorizacion explicita del ba
 
 test('VentasPage no abre comanda para producto terminado o pedido en revision', () => {
   const source = fs.readFileSync(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
-  assert.match(source, /if \(comanda\?\.requiere_revision === true\)/);
-  assert.match(source, /if \(comanda\?\.requiere_cocina !== true\) return/);
+  const actionsSource = fs.readFileSync(new URL('./ventasPrintActions.js', import.meta.url), 'utf8');
+  assert.match(actionsSource, /if \(comanda\?\.requiere_revision === true\)/);
+  assert.match(actionsSource, /if \(comanda\?\.requiere_cocina !== true\)/);
+  assert.match(source, /resolvePendingOrderComandaPrompt\(comanda\)/);
   assert.match(source, /else if \(ventaDetail\.requiere_cocina\)/);
 });
 
@@ -111,7 +113,7 @@ test('HTML de navegador separa preparar y entrega conjunta sin secciones vacias'
 
 test('la impresion no ejecuta transicion operativa ni intenta regresar a EN_COCINA', () => {
   const source = fs.readFileSync(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
-  const start = source.indexOf('const executeComandaPrint = async');
+  const start = source.indexOf('const executeComandaPrint = (');
   const end = source.indexOf('const openComandaReprintFromDetail', start);
   const block = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
