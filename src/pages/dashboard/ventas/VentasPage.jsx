@@ -28,11 +28,14 @@ import { validateComandaForPrint } from './utils/buildComandaCocinaHtml';
 import {
   createClosedComandaPrompt,
   createComandaPrompt,
+  createDocumentPrintGuard,
   enqueueAgentPrintAction,
   getSafePrintErrorContext,
-  prepareComandaPrintWindow
+  prepareComandaPrintWindow,
+  resolvePendingOrderComandaPrompt
 } from './utils/ventasPrintActions';
 import { loadKitchenComandaPrintSource } from './utils/ventasKitchenRouting';
+import { resolveAuthenticatedUserId } from './utils/authenticatedUserScope';
 import {
   getAllowedTabs,
   MODULE_PRIMARY_PERMISSION,
@@ -65,7 +68,8 @@ const resolvePrintWidthMm = (...values) =>
 
 export default function VentasPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const authenticatedUserId = resolveAuthenticatedUserId(user);
   const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
   const requestedVentasTab = String(
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') || '' : ''
@@ -121,7 +125,7 @@ export default function VentasPage() {
     activeTab: requestedVentasTab,
     initialSucursalId: user?.id_sucursal,
     isSuperAdmin,
-    userId: user?.id_usuario
+    userId: authenticatedUserId
   });
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -132,6 +136,10 @@ export default function VentasPage() {
   const [comandaPrompt, setComandaPrompt] = useState(createClosedComandaPrompt);
   const detailRequestRef = useRef(0);
   const printerConfigCacheRef = useRef(new Map());
+  const comandaPrintGuardRef = useRef(null);
+  if (!comandaPrintGuardRef.current) {
+    comandaPrintGuardRef.current = createDocumentPrintGuard();
+  }
 
   const isCajeroOnly = useMemo(() => {
     const roles = normalizeRoles(user?.roles);
@@ -299,7 +307,15 @@ export default function VentasPage() {
       } catch {
         // El monitoreo es informativo y nunca altera la venta confirmada.
       }
-      if (attempt < 10) window.setTimeout(() => void poll(attempt + 1), 3000);
+      if (attempt < 10) {
+        window.setTimeout(() => void poll(attempt + 1), 3000);
+        return;
+      }
+      openToast(
+        label,
+        'El documento sigue pendiente en la cola. La operacion comercial ya fue confirmada y no se repetira.',
+        'warning'
+      );
     };
     window.setTimeout(() => void poll(), 1500);
   };
@@ -413,6 +429,7 @@ export default function VentasPage() {
         metadata: {
           origin,
           printMode: canUseQzFactura ? attemptedQzMode : 'BROWSER',
+          outcome: canUseQzFactura ? 'DISPATCHED_TO_PRINTER' : 'PENDING_USER_CONFIRMATION',
           logicalPrinterName: 'FACTURA',
           printerType: 'FACTURA',
           fallbackUsed: false
@@ -434,6 +451,7 @@ export default function VentasPage() {
           metadata: {
             origin,
             printMode: attemptedQzMode,
+            outcome: 'TECHNICAL_FAILURE',
             logicalPrinterName: 'FACTURA',
             printerType: 'FACTURA',
             fallbackPlanned: 'BROWSER'
@@ -453,6 +471,7 @@ export default function VentasPage() {
             metadata: {
               origin,
               printMode: 'BROWSER',
+              outcome: 'PENDING_USER_CONFIRMATION',
               logicalPrinterName: 'FACTURA',
               printerType: 'FACTURA',
               fallbackUsed: true,
@@ -479,6 +498,7 @@ export default function VentasPage() {
             metadata: {
               origin,
               printMode: 'BROWSER',
+              outcome: 'TECHNICAL_FAILURE',
               logicalPrinterName: 'FACTURA',
               printerType: 'FACTURA',
               fallbackAttempted: true,
@@ -507,6 +527,7 @@ export default function VentasPage() {
         metadata: {
           origin,
           printMode: 'BROWSER',
+          outcome: 'TECHNICAL_FAILURE',
           logicalPrinterName: 'FACTURA',
           printerType: 'FACTURA',
           fallbackUsed: false
@@ -608,17 +629,14 @@ export default function VentasPage() {
   };
 
   const handlePendingOrderCreatedPrintPrompt = (comanda) => {
-    if (comanda?.requiere_revision === true) {
+    const resolution = resolvePendingOrderComandaPrompt(comanda);
+    if (resolution.status === 'review') {
       openToast('PEDIDO REQUIERE REVISION', 'El pedido contiene lineas invalidas y no fue enviado a cocina.', 'warning');
       return;
     }
-    if (comanda?.requiere_cocina !== true) return;
-    setComandaPrompt(createComandaPrompt({
-      venta: comanda,
-      sourceType: 'pedido',
-      action: 'initial',
-      origin: 'pending-order'
-    }));
+    if (!resolution.prompt) return;
+    setComandaPrompt(resolution.prompt);
+    return undefined;
   };
 
   const handleSuccessfulPendingOrderPaymentPrint = async (response, options = {}) => {
@@ -648,6 +666,8 @@ export default function VentasPage() {
           promptAction: action,
           promptOrigin: origin,
           printMode: 'BROWSER',
+          outcome: 'USER_CANCELLED',
+          userAction: 'DISMISSED_PRINT_PROMPT',
           logicalPrinterName: 'COCINA'
         }
       }).catch(() => undefined);
@@ -724,6 +744,7 @@ export default function VentasPage() {
         metadata: {
           origin: 'DETAIL_REPRINT',
           printMode: canUseQzFactura ? attemptedQzMode : 'BROWSER',
+          outcome: canUseQzFactura ? 'DISPATCHED_TO_PRINTER' : 'PENDING_USER_CONFIRMATION',
           logicalPrinterName: 'FACTURA',
           printerType: 'FACTURA',
           fallbackUsed: false
@@ -745,6 +766,7 @@ export default function VentasPage() {
           metadata: {
             origin: 'DETAIL_REPRINT',
             printMode: attemptedQzMode,
+            outcome: 'TECHNICAL_FAILURE',
             logicalPrinterName: 'FACTURA',
             printerType: 'FACTURA',
             fallbackPlanned: 'BROWSER'
@@ -768,6 +790,7 @@ export default function VentasPage() {
             metadata: {
               origin: 'DETAIL_REPRINT',
               printMode: 'BROWSER',
+              outcome: 'PENDING_USER_CONFIRMATION',
               logicalPrinterName: 'FACTURA',
               printerType: 'FACTURA',
               fallbackUsed: true,
@@ -799,6 +822,7 @@ export default function VentasPage() {
             metadata: {
               origin: 'DETAIL_REPRINT',
               printMode: 'BROWSER',
+              outcome: 'TECHNICAL_FAILURE',
               logicalPrinterName: 'FACTURA',
               printerType: 'FACTURA',
               fallbackAttempted: true,
@@ -829,6 +853,7 @@ export default function VentasPage() {
           metadata: {
             origin: 'DETAIL_REPRINT',
             printMode: 'BROWSER',
+            outcome: 'TECHNICAL_FAILURE',
             logicalPrinterName: 'FACTURA',
             printerType: 'FACTURA',
             fallbackUsed: false
@@ -842,10 +867,10 @@ export default function VentasPage() {
     }
   };
 
-  const executeComandaPrint = async (printContext, {
+  const executeComandaPrint = (printContext, {
     usePromptState = true,
     closePromptOnSuccess = true
-  } = {}) => {
+  } = {}) => comandaPrintGuardRef.current.run('comanda', async () => {
     const venta = printContext.venta;
     const { sourceType, action, origin } = printContext;
     const isPendingOrderComanda = sourceType === 'pedido';
@@ -878,16 +903,6 @@ export default function VentasPage() {
       }));
     }
 
-    if (!isReprint && venta?.requiere_cocina === true) {
-      try {
-        await ventasService.updatePedidoEstado(venta.id_pedido, 'EN_COCINA');
-      } catch (error) {
-        if (comandaPrintWindow) comandaPrintWindow.close();
-        failPrint('No se pudo enviar el pedido a cocina.', error);
-        return;
-      }
-    }
-
     if (AGENT_PRINT_MODE) {
       try {
         const { response: queued } = await enqueueAgentPrintAction({
@@ -903,8 +918,11 @@ export default function VentasPage() {
         if (closePromptOnSuccess) await closeComandaPrompt({ markAsCancelled: false });
       } catch (error) {
         console.error('[Ventas] Fallo la impresion de comanda con agente.', getSafePrintErrorContext('comanda', error));
-        const message = isPendingOrderComanda && isReprint
-          ? 'No se pudo reimprimir la comanda del pedido.'
+        const pedidoLabel = venta?.numero_pedido || `#${venta?.id_pedido}`;
+        const message = isPendingOrderComanda
+          ? (isReprint
+              ? 'No se pudo reimprimir la comanda del pedido.'
+              : `El pedido ${pedidoLabel} fue creado y enviado a Cocina, pero la comanda no pudo imprimirse.`)
           : 'No se pudo enviar la comanda a impresión.';
         failPrint(message, error);
       }
@@ -972,6 +990,7 @@ export default function VentasPage() {
             promptAction: action,
             promptOrigin: origin,
             printMode: canUseQzComanda ? attemptedQzMode : 'BROWSER',
+            outcome: canUseQzComanda ? 'DISPATCHED_TO_PRINTER' : 'PENDING_USER_CONFIRMATION',
             logicalPrinterName: 'COCINA',
             printerType: 'COCINA',
             fallbackUsed: false
@@ -989,18 +1008,12 @@ export default function VentasPage() {
           '[Ventas] No se pudo imprimir la comanda del pedido pendiente.',
           getSafePrintErrorContext('comanda', error)
         );
+        const pedidoLabel = venta?.numero_pedido || `#${venta?.id_pedido}`;
         const pendingOrderErrorMessage = isReprint
           ? 'No se pudo reimprimir la comanda del pedido.'
-          : comandaForPrint === venta
-            ? 'El pedido fue creado, pero no se pudo cargar la comanda para imprimir'
-            : 'El pedido fue creado, pero la comanda no se imprimio.';
+          : `El pedido ${pedidoLabel} fue creado y enviado a Cocina, pero la comanda no pudo imprimirse.`;
         openToast('COMANDA COCINA', pendingOrderErrorMessage, 'warning');
-        failPrint(
-          isReprint || comandaForPrint === venta
-            ? pendingOrderErrorMessage
-            : `${pendingOrderErrorMessage} ${printErrorMessage}`.trim(),
-          error
-        );
+        failPrint(pendingOrderErrorMessage, error);
         return;
       }
 
@@ -1019,6 +1032,7 @@ export default function VentasPage() {
               promptAction: action,
               promptOrigin: origin,
               printMode: attemptedQzMode,
+              outcome: 'TECHNICAL_FAILURE',
               logicalPrinterName: 'COCINA',
               printerType: 'COCINA',
               fallbackPlanned: 'BROWSER'
@@ -1046,6 +1060,7 @@ export default function VentasPage() {
                 promptAction: action,
                 promptOrigin: origin,
                 printMode: 'BROWSER',
+                outcome: 'PENDING_USER_CONFIRMATION',
                 logicalPrinterName: 'COCINA',
                 printerType: 'COCINA',
                 fallbackUsed: true,
@@ -1076,6 +1091,7 @@ export default function VentasPage() {
                 promptAction: action,
                 promptOrigin: origin,
                 printMode: 'BROWSER',
+                outcome: 'TECHNICAL_FAILURE',
                 logicalPrinterName: 'COCINA',
                 printerType: 'COCINA',
                 fallbackAttempted: true,
@@ -1108,6 +1124,7 @@ export default function VentasPage() {
             promptAction: action,
             promptOrigin: origin,
             printMode: 'BROWSER',
+            outcome: 'TECHNICAL_FAILURE',
             logicalPrinterName: 'COCINA',
             printerType: 'COCINA',
             fallbackUsed: false
@@ -1116,7 +1133,7 @@ export default function VentasPage() {
       }
       failPrint(isReprint ? 'No se pudo enviar la comanda a impresión.' : printErrorMessage, error);
     }
-  };
+  });
 
   const openComandaReprintFromDetail = async (venta, { sourceType = 'factura' } = {}) => {
     const printContext = createComandaPrompt({
@@ -1186,7 +1203,8 @@ export default function VentasPage() {
         <CajaView
           sucursales={sucursales}
           isSuperAdmin={isSuperAdmin}
-          userId={user?.id_usuario}
+          userId={authenticatedUserId}
+          authLoading={authLoading}
           defaultSucursalId={!isSuperAdmin && Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
           productos={productos}
           categorias={categorias}
@@ -1225,6 +1243,7 @@ export default function VentasPage() {
 
       {activeTab === 'pedidos' ? (
         <PedidosView
+          userId={authenticatedUserId}
           isSuperAdmin={isSuperAdmin}
           sucursales={sucursales}
           defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}

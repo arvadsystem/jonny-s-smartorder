@@ -263,21 +263,33 @@ export default function VentaReversionModal({
 
         {confirmOpen ? (
           <div className="ventas-modal-backdrop" role="presentation" onClick={() => !saving && setConfirmOpen(false)}>
-            <section className="ventas-modal ventas-detail-modal" role="alertdialog" aria-modal="true" aria-labelledby="reversion-confirm-title" onClick={(event) => event.stopPropagation()}>
-              <header className="ventas-modal__header"><div><h3 id="reversion-confirm-title">Confirmar reversión</h3><p>Esta acción no debe duplicarse.</p></div></header>
-              <div className="ventas-modal__body">
-                <dl>
+            <section className="ventas-modal ventas-reversion-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="reversion-confirm-title" onClick={(event) => event.stopPropagation()}>
+              <header className="ventas-modal__header">
+                <div className="ventas-modal__title-wrap">
+                  <span className="ventas-modal__icon"><i className="bi bi-shield-exclamation" /></span>
+                  <div><h3 id="reversion-confirm-title">Confirmar reversión</h3><p>Revisa el resumen antes de continuar</p></div>
+                </div>
+                <button type="button" className="ventas-modal__close-btn" onClick={() => setConfirmOpen(false)} disabled={saving} aria-label="Cerrar confirmación"><i className="bi bi-x-lg" /></button>
+              </header>
+              <div className="ventas-modal__body ventas-reversion-confirm-modal__body">
+                <dl className="ventas-reversion-confirm-modal__summary">
                   <div><dt>Venta original</dt><dd>{venta?.codigo_venta}</dd></div>
                   <div><dt>Tipo solicitado</dt><dd>{tipo}</dd></div>
                   <div><dt>Resultado esperado</dt><dd>{preview?.estado_acumulado_resultante}</dd></div>
                   <div><dt>Motivo</dt><dd>{MOTIVOS.find(([value]) => value === motivo)?.[1]}</dd></div>
                   <div><dt>Líneas seleccionadas</dt><dd>{tipo === 'TOTAL' ? 'Todo el saldo pendiente' : payload.lineas?.length}</dd></div>
-                  <div><dt>Monto a reversar</dt><dd>L {Number(preview?.total || 0).toFixed(2)}</dd></div>
+                  <div className="is-amount"><dt>Monto a reversar</dt><dd>L {Number(preview?.total || 0).toFixed(2)}</dd></div>
                   <div><dt>Sesión original</dt><dd>{originalSession?.id_sesion_caja ? `#${originalSession.id_sesion_caja} (${originalSession.estado})` : '--'}</dd></div>
                 </dl>
-                <div className="alert alert-warning">La reversión afectará Caja, Inventario, Cocina y Fidelización.<br />Esta acción no debe duplicarse.</div>
+                <div className="ventas-reversion-confirm-modal__warning" role="note">
+                  <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+                  <span>La reversión afectará Caja, Inventario, Cocina y Fidelización. Esta acción no debe duplicarse.</span>
+                </div>
               </div>
-              <footer className="ventas-reversion-modal__footer"><button type="button" className="btn btn-outline-secondary" onClick={() => setConfirmOpen(false)} disabled={saving}>Volver</button><button type="button" className="btn btn-danger" onClick={submit} disabled={saving}>{saving ? 'Registrando...' : 'Confirmar reversión'}</button></footer>
+              <footer className="ventas-reversion-modal__footer ventas-reversion-confirm-modal__footer">
+                <button type="button" className="btn btn-outline-secondary" onClick={() => setConfirmOpen(false)} disabled={saving}>Volver</button>
+                <button type="button" className="btn btn-danger" onClick={submit} disabled={saving}>{saving ? 'Registrando...' : 'Confirmar reversión'}</button>
+              </footer>
             </section>
           </div>
         ) : null}

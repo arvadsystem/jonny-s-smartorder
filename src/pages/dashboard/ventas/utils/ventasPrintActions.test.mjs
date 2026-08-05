@@ -18,6 +18,7 @@ import {
   reconcilePedidoDetailPrintSource,
   reconcileRecoveredFacturaDetail,
   recoverFacturedPedidoPrintSource,
+  resolvePendingOrderComandaPrompt,
   resolveRecoveredFacturaAgainstCurrentBoard,
   setDocumentPrintError
 } from './ventasPrintActions.js';
@@ -229,6 +230,7 @@ describe('acciones independientes de impresion en ventas', () => {
   let VentaDetalleModal;
   let VentaDetallePrintActions;
   let VentaDetallePrintErrors;
+  let EnviarComandaCocinaModal;
 
   before(async () => {
     viteServer = await createServer({
@@ -243,10 +245,207 @@ describe('acciones independientes de impresion en ventas', () => {
     VentaDetalleModal = module.default;
     VentaDetallePrintActions = module.VentaDetallePrintActions;
     VentaDetallePrintErrors = module.VentaDetallePrintErrors;
+    EnviarComandaCocinaModal = (
+      await viteServer.ssrLoadModule('/src/pages/dashboard/ventas/components/EnviarComandaCocinaModal.jsx')
+    ).default;
   });
 
   after(async () => {
     await viteServer?.close();
+  });
+
+  it('la impresion de comanda no intenta transicionar el pedido a EN_COCINA', async () => {
+    const source = await readFile(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
+    const printStart = source.indexOf('const executeComandaPrint = (');
+    const printEnd = source.indexOf('const openComandaReprintFromDetail', printStart);
+    const printFlow = source.slice(printStart, printEnd);
+    assert.ok(printStart >= 0 && printEnd > printStart);
+    assert.doesNotMatch(printFlow, /updatePedidoEstado|estado_destino|EN_COCINA/);
+    assert.match(printFlow, /loadKitchenComandaPrintSource/);
+    assert.match(printFlow, /comanda no pudo imprimirse/);
+
+    const cajaSource = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
+    const createStart = cajaSource.indexOf('const finalizePedidoPendienteCreation =');
+    const createEnd = cajaSource.indexOf('const handleRegistrarPagoPedido', createStart);
+    const createFlow = cajaSource.slice(createStart, createEnd);
+    assert.match(createFlow, /onPedidoPendienteCreated\?\.\(response\)/);
+    assert.doesNotMatch(createFlow, /getPedidoComanda|executeComandaPrint/);
+    assert.doesNotMatch(printFlow, /createPedidoPendiente/);
+  });
+
+  it('pedido pendiente abre el mismo modal en agent y direct sin imprimir antes de aceptar', async () => {
+    const printCalls = [];
+    for (const printMode of ['agent', 'direct']) {
+      const resolution = resolvePendingOrderComandaPrompt(pendingPedido);
+      assert.equal(resolution.status, 'prompt', printMode);
+      assert.deepEqual(
+        {
+          open: resolution.prompt.open,
+          sourceType: resolution.prompt.sourceType,
+          action: resolution.prompt.action,
+          origin: resolution.prompt.origin
+        },
+        { open: true, sourceType: 'pedido', action: 'initial', origin: 'pending-order' }
+      );
+    }
+    assert.equal(printCalls.length, 0);
+
+    const source = await readFile(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
+    const start = source.indexOf('const handlePendingOrderCreatedPrintPrompt');
+    const end = source.indexOf('const handleSuccessfulPendingOrderPaymentPrint', start);
+    const flow = source.slice(start, end);
+    assert.match(flow, /resolvePendingOrderComandaPrompt/);
+    assert.match(flow, /setComandaPrompt\(resolution\.prompt\)/);
+    assert.doesNotMatch(flow, /AGENT_PRINT_MODE|executeComandaPrint|enqueueAgentPrintAction/);
+  });
+
+  it('aceptar dos veces sincronamente produce una sola impresion inicial y una sola clave', async () => {
+    const deferred = createDeferred();
+    const calls = [];
+    const guard = createDocumentPrintGuard();
+    const accept = () => guard.run('comanda', () => enqueueAgentPrintAction({
+      ventasApi: {
+        async enqueuePedidoPrintJob(...args) {
+          calls.push(args);
+          return deferred.promise;
+        }
+      },
+      documentType: 'comanda',
+      venta: pendingPedido,
+      sourceType: 'pedido',
+      action: 'initial'
+    }));
+
+    const first = accept();
+    const second = accept();
+    await Promise.resolve();
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], [
+      12,
+      { tipo_documento: 'comanda', es_reimpresion: false },
+      'comanda:pedido:12:inicial'
+    ]);
+    assert.equal((await second).skipped, true);
+    deferred.resolve({ job: { id_trabajo: 81 } });
+    assert.equal((await first).skipped, false);
+  });
+
+  it('aceptar en modo directo inicia una sola impresion y nunca abre ventana antes de aceptar', async () => {
+    let directPrintCalls = 0;
+    let openWindowCalls = 0;
+    const guard = createDocumentPrintGuard();
+    const printWindow = prepareComandaPrintWindow({
+      agentPrintMode: false,
+      sourceType: 'pedido',
+      openWindow() { openWindowCalls += 1; return {}; }
+    });
+    assert.equal(printWindow, null);
+    assert.equal(openWindowCalls, 0);
+
+    const accept = () => guard.run('comanda', async () => {
+      directPrintCalls += 1;
+      await Promise.resolve();
+    });
+    await Promise.all([accept(), accept()]);
+    assert.equal(directPrintCalls, 1);
+  });
+
+  it('fallo y reintento de impresion reutilizan la identidad inicial estable', async () => {
+    const keys = [];
+    let attempts = 0;
+    const ventasApi = {
+      async enqueuePedidoPrintJob(idPedido, payload, key) {
+        keys.push(key);
+        attempts += 1;
+        if (attempts === 1) throw new Error('Agente desconectado');
+        return { job: { id_trabajo: 82 }, idPedido, payload };
+      }
+    };
+    const print = () => enqueueAgentPrintAction({
+      ventasApi,
+      documentType: 'comanda',
+      venta: pendingPedido,
+      sourceType: 'pedido',
+      action: 'initial'
+    });
+    await assert.rejects(print, /Agente desconectado/);
+    await print();
+    assert.deepEqual(keys, ['comanda:pedido:12:inicial', 'comanda:pedido:12:inicial']);
+  });
+
+  it('Ahora no y X cierran sin trabajos ni alterar el pedido confirmado', () => {
+    const confirmedPedido = structuredClone(pendingPedido);
+    let cancelCalls = 0;
+    let printCalls = 0;
+    const modal = EnviarComandaCocinaModal({
+      open: true,
+      venta: confirmedPedido,
+      sourceType: 'pedido',
+      action: 'initial',
+      origin: 'pending-order',
+      onAccept() { printCalls += 1; },
+      onCancel() { cancelCalls += 1; }
+    });
+    const buttons = [];
+    const collectButtons = (node) => {
+      if (Array.isArray(node)) return node.forEach(collectButtons);
+      if (!React.isValidElement(node)) return;
+      if (node.type === 'button') buttons.push(node);
+      React.Children.toArray(node.props.children).forEach(collectButtons);
+    };
+    collectButtons(modal);
+    const closeButton = buttons.find((button) => button.props['aria-label'] === 'Cerrar');
+    const nowNotButton = buttons.find((button) => button.props.children === 'Ahora no');
+    closeButton.props.onClick();
+    nowNotButton.props.onClick();
+    assert.equal(cancelCalls, 2);
+    assert.equal(printCalls, 0);
+    assert.deepEqual(confirmedPedido, pendingPedido);
+  });
+
+  it('sin cocina o con revision no abre modal ni produce trabajo', () => {
+    assert.deepEqual(
+      resolvePendingOrderComandaPrompt({ ...pendingPedido, requiere_cocina: false }),
+      { status: 'not-required', prompt: null }
+    );
+    assert.deepEqual(
+      resolvePendingOrderComandaPrompt({ ...pendingPedido, requiere_revision: true }),
+      { status: 'review', prompt: null }
+    );
+    assert.equal(buildComandaIdempotencyKey({
+      sourceType: 'pedido', action: 'initial', idPedido: 12
+    }), 'comanda:pedido:12:inicial');
+  });
+
+  it('los rechazos definitivos incluyen los codigos reales y revalidan sin reenvio automatico', async () => {
+    const cajaSource = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
+    for (const code of [
+      'NO_ACTIVE_SESSION',
+      'SESSION_NOT_FOUND',
+      'SESSION_NOT_OPEN',
+      'OPEN_STATE_NOT_FOUND',
+      'SESSION_SCOPE_MISMATCH',
+      'SESSION_PARTICIPATION_REQUIRED',
+      'SESSION_AUTHORIZATION_REQUIRED',
+      'CAJA_NOT_ACTIVE'
+    ]) {
+      assert.match(cajaSource, new RegExp(`'${code}'`));
+    }
+    const rejectStart = cajaSource.indexOf('if (isDefinitiveCajaSessionError(error))');
+    const rejectEnd = cajaSource.indexOf('throw error;', rejectStart);
+    const rejectFlow = cajaSource.slice(rejectStart, rejectEnd);
+    assert.match(rejectFlow, /setPedidoContextStale\(true\)/);
+    assert.match(rejectFlow, /if \(!didRevalidateContext\)/);
+    assert.match(rejectFlow, /await revalidatePedidoPendienteContext\(payload\)/);
+    assert.doesNotMatch(rejectFlow, /onCreatePedidoPendiente|createPedidoPendiente\(/);
+  });
+
+  it('auditoria distingue cancelacion explicita, fallo tecnico y dialogo aun pendiente', async () => {
+    const source = await readFile(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
+    assert.match(source, /estado: 'CANCELADA'[\s\S]*outcome: 'USER_CANCELLED'/);
+    assert.match(source, /estado: 'ERROR'[\s\S]*outcome: 'TECHNICAL_FAILURE'/);
+    assert.match(source, /printMode: 'BROWSER'[\s\S]*outcome: 'PENDING_USER_CONFIRMATION'/);
+    assert.match(source, /documento sigue pendiente en la cola/);
   });
 
   it('serializa commits y el segundo observa el resultado exacto del primero', () => {
@@ -333,6 +532,33 @@ describe('acciones independientes de impresion en ventas', () => {
     }));
     assert.doesNotMatch(withoutPermission, /aria-label="Imprimir factura"/);
     assert.doesNotMatch(withoutPermission, /aria-label="Imprimir comanda"/);
+  });
+
+  it('mantiene compacta la accion de reversión y la oculta cuando la venta ya fue reversada totalmente', () => {
+    const partialHtml = renderToStaticMarkup(React.createElement(VentaDetalleModal, {
+      open: true,
+      venta: { ...paidVenta, total: 100, monto_reversado_total: 20, estado_reversion: 'PARCIAL' },
+      loading: false,
+      canPrint: false,
+      canExport: false,
+      canReversion: true,
+      onClose() {},
+      onOpenReversion() {}
+    }));
+    assert.match(partialHtml, /ventas-detail-modal__reversion-trigger/);
+    assert.match(partialHtml, /Registrar reversión/);
+
+    const totalHtml = renderToStaticMarkup(React.createElement(VentaDetalleModal, {
+      open: true,
+      venta: { ...paidVenta, total: 100, monto_reversado_total: 100, estado_reversion: 'TOTAL' },
+      loading: false,
+      canPrint: false,
+      canExport: false,
+      canReversion: true,
+      onClose() {},
+      onOpenReversion() {}
+    }));
+    assert.doesNotMatch(totalHtml, /Registrar reversión/);
   });
 
   it('renderiza reimpresion de comanda pendiente sin exigir factura', () => {

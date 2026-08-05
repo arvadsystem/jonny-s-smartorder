@@ -81,7 +81,7 @@ const resolvePeriodoOperativoLabel = ({ periodo, tipoPeriodo, quincena }) => {
   const periodoLabel = String(periodo || '').trim() || 'Sin periodo';
   if (normalizeTipoPeriodo(tipoPeriodo) !== TIPO_PERIODO.quincenal) return `${periodoLabel} (Mensual)`;
   const quincenaLabel = normalizeQuincena(quincena) === '2' ? 'Q2 (16-fin)' : 'Q1 (1-15)';
-  return `${periodoLabel} Â· ${quincenaLabel}`;
+  return `${periodoLabel} · ${quincenaLabel}`;
 };
 
 const buildPlanillasSucursalSelectStyles = () => ({
@@ -665,14 +665,22 @@ const isMovimientoAdelanto = (row = {}) => {
 };
 
 const isMovimientoAnulado = (row = {}) => {
-  const estado = toText(row?.estado || row?.estado_movimiento || row?.estado_descripcion, '').toLowerCase();
+  const estadoRaw = row?.estado ?? row?.estado_movimiento ?? row?.estado_descripcion;
+  const estado = toText(estadoRaw, '').toLowerCase();
   const note = normalizeStatusNote(row?.observacion || row?.motivo || '');
 
   return (
+    row?.estado === false ||
+    row?.estado_movimiento === false ||
+    row?.estado_descripcion === false ||
     row?.anulado === true ||
     row?.es_anulado === true ||
     row?.activo === false ||
     estado.includes('anulad') ||
+    estado === 'false' ||
+    estado === '0' ||
+    estado === 'inactivo' ||
+    estado === 'inactiva' ||
     note.includes('[eliminado_ad]') ||
     note.includes('eliminado') ||
     note.includes('anulado')
@@ -942,8 +950,8 @@ const buildInitialConfirmModal = () => ({
   open: false,
   actionType: '',
   title: 'CONFIRMAR ACCION',
-  subtitle: 'Esta accion puede afectar la planilla',
-  question: 'Deseas continuar con esta accion?',
+  subtitle: 'Esta acción puede afectar la planilla',
+  question: '¿Deseas continuar con esta acción?',
   description: '',
   detail: '',
   detailIconClass: 'bi bi-wallet2',
@@ -2625,7 +2633,7 @@ export default function Planillas({
       }
 
       if (!periodoValue) {
-        safeToast('ERROR', 'Selecciona un periodo valido antes de registrar movimientos.', 'warning');
+        safeToast('ERROR', 'Selecciona un período válido antes de registrar movimientos.', 'warning');
         return null;
       }
 
@@ -2789,16 +2797,16 @@ export default function Planillas({
         if (typeof options.onSuccess === 'function') {
           await options.onSuccess();
         }
-        if (successMessage) safeToast('OK', successMessage, 'success');
         if (!skipReload) {
           await refreshPlanillaData();
         }
+        if (successMessage) safeToast('OK', successMessage, 'success');
         return true;
       } catch (error) {
         if (typeof options.onError === 'function') {
           options.onError(error);
         }
-        safeToast('ERROR', error.message || 'No se pudo ejecutar la accion', 'danger');
+        safeToast('ERROR', error.message || 'No se pudo ejecutar la acción', 'danger');
         return false;
       } finally {
         setLoadingAction(false);
@@ -2816,8 +2824,8 @@ export default function Planillas({
       open: true,
       actionType: config.actionType || '',
       title: config.title || 'CONFIRMAR ACCION',
-      subtitle: config.subtitle || 'Esta accion puede afectar la planilla',
-      question: config.question || 'Deseas continuar con esta accion?',
+      subtitle: config.subtitle || 'Esta acción puede afectar la planilla',
+      question: config.question || '¿Deseas continuar con esta acción?',
       description: config.description || '',
       detail: config.detail || '',
       detailIconClass: config.detailIconClass || 'bi bi-wallet2',
@@ -3176,7 +3184,7 @@ export default function Planillas({
   const handleChangeEstado = (estado) => {
     if (!selectedPlanilla?.id_planilla) return;
     const estadoMap = {
-      cerrada: 'CALCULADA',
+      cerrada: 'CERRADA',
       pagada: 'PAGADA',
       anulada: 'ANULADA',
       borrador: 'BORRADOR',
@@ -3190,22 +3198,22 @@ export default function Planillas({
       calculada: 'calcular',
     };
     const estadoDescriptionMap = {
-      cerrada: 'La planilla quedara cerrada para evitar cambios operativos y continuar con el flujo de pago.',
-      pagada: 'La planilla quedara marcada como pagada y se cerrara el ciclo de pago del periodo.',
-      anulada: 'La planilla se marcara como anulada y no podra seguir el flujo normal.',
+      cerrada: 'La planilla quedará cerrada para evitar cambios operativos y continuar con el flujo de pago.',
+      pagada: 'La planilla quedará marcada como pagada y se cerrará el ciclo de pago del período.',
+      anulada: 'La planilla se marcará como anulada y no podrá seguir el flujo normal.',
       borrador: 'La planilla regresara a borrador para permitir ajustes en el flujo operativo.',
-      calculada: 'La planilla se dejara en estado calculada para revisar resultados antes del cierre.'
+      calculada: 'La planilla se dejará en estado calculada para revisar resultados antes del cierre.'
     };
     const normalizedEstado = estadoMap[String(estado || '').toLowerCase()] || estado;
     const actionLabel = estadoLabelMap[String(estado || '').toLowerCase()] || 'actualizar estado';
     const actionDescription =
       estadoDescriptionMap[String(estado || '').toLowerCase()] ||
-      'El estado de la planilla se actualizara segun la accion seleccionada.';
+      'El estado de la planilla se actualizará según la acción seleccionada.';
     openConfirmModal({
       actionType: 'estado_planilla',
       title: 'CONFIRMAR CAMBIO DE ESTADO',
-      subtitle: 'Esta accion se registrara en planilla',
-      question: `Confirma que deseas ${actionLabel} la planilla seleccionada?`,
+      subtitle: 'Esta acción se registrará en planilla',
+      question: `¿Confirma que deseas ${actionLabel} la planilla seleccionada?`,
       description: actionDescription,
       detail: `Planilla #${selectedPlanilla.id_planilla}`,
       detailIconClass: 'bi bi-check2-square',
@@ -3225,10 +3233,10 @@ export default function Planillas({
     openConfirmModal({
       actionType: 'anular_planilla',
       title: 'CONFIRMAR ANULACION',
-      subtitle: 'Esta accion es permanente',
-      question: 'Esta accion anulara la planilla completa y revertira adelantos aplicados. Deseas continuar?',
+      subtitle: 'Esta acción es permanente',
+      question: 'Esta acción anulará la planilla completa y revertirá adelantos aplicados. ¿Deseas continuar?',
       description:
-        'Al anular, la planilla deja de ser operativa y la accion quedara registrada en auditoria.',
+        'Al anular, la planilla deja de ser operativa y la acción quedará registrada en auditoría.',
       detail: `Planilla #${selectedPlanilla.id_planilla}`,
       detailIconClass: 'bi bi-exclamation-triangle-fill',
       confirmText: 'Anular',
@@ -3337,13 +3345,13 @@ export default function Planillas({
         return;
       }
 
-      const tipoLabel = row?.tipo === MOVIMIENTO_TIPO.bono ? 'Bono' : 'DeducciÃ³n';
+      const tipoLabel = row?.tipo === MOVIMIENTO_TIPO.bono ? 'Bono' : 'Deducción';
       openConfirmModal({
         actionType: 'anular_movimiento_bono_deduccion',
-        title: 'CONFIRMAR ANULACION',
-        subtitle: 'Esta accion afectara el calculo de planilla',
-        question: `Deseas anular este ${tipoLabel.toLowerCase()}?`,
-        description: 'El movimiento quedara registrado como anulado en el historial.',
+        title: 'CONFIRMAR ANULACIÓN',
+        subtitle: 'Esta acción afectará el cálculo de planilla',
+        question: `¿Deseas anular este ${tipoLabel.toLowerCase()}?`,
+        description: 'El movimiento quedará registrado como anulado en el historial.',
         detail: `${tipoLabel} - ${toText(row?.empleado_nombre, 'Empleado')}`,
         detailIconClass: 'bi bi-trash3',
         confirmText: 'Anular movimiento',
@@ -3688,10 +3696,10 @@ export default function Planillas({
       openConfirmModal({
         actionType: 'anular_hora_extra',
         title: 'CONFIRMAR ELIMINACION',
-        subtitle: 'Esta accion quitara la hora extra del registro',
+        subtitle: 'Esta acción quitará la hora extra del registro',
         question: 'Deseas eliminar este registro de hora extra?',
         description:
-          'Utiliza esta accion cuando el registro se cargo por error. La accion quedara reflejada en planilla.',
+          'Utiliza esta acción cuando el registro se cargó por error. La acción quedará reflejada en planilla.',
         detail: `${formatFriendlyDate(horaExtraItem?.fecha)} - ${formatHoursLabel(horaExtraItem?.horas)}`,
         detailIconClass: 'bi bi-clock-history',
         confirmText: 'Eliminar',
@@ -3816,7 +3824,7 @@ export default function Planillas({
         0
       );
       if (!(idAdelanto > 0)) {
-        safeToast('ERROR', 'No se encontro un adelanto valido para aplicar.', 'danger');
+        safeToast('ERROR', 'No se encontró un adelanto válido para aplicar.', 'danger');
         return;
       }
 
@@ -3921,7 +3929,7 @@ export default function Planillas({
       const idSucursal = context.idSucursal || undefined;
 
       if (!Number.isFinite(montoAplicar) || montoAplicar <= 0) {
-        throw new Error('Ingresa un monto valido mayor que 0.');
+        throw new Error('Ingresa un monto válido mayor que 0.');
       }
 
       setAdelantosHistorialModal((previous) => ({ ...previous, updatingId: rowTrackingId }));
@@ -4110,7 +4118,7 @@ export default function Planillas({
         title: 'CONFIRMAR ELIMINACION',
         subtitle: isPendiente
           ? 'El adelanto pendiente sera eliminado del listado actual'
-          : 'El adelanto aplicado sera anulado del calculo',
+          : 'El adelanto aplicado será anulado del cálculo',
         question: isPendiente
           ? 'Deseas eliminar este adelanto pendiente?'
           : 'Deseas eliminar este adelanto aplicado?',
@@ -4211,10 +4219,10 @@ export default function Planillas({
     openConfirmModal({
       actionType: 'anular_movimiento',
       title: 'CONFIRMAR ANULACION',
-      subtitle: 'Esta accion es permanente',
+      subtitle: 'Esta acción es permanente',
       question: 'Deseas anular este movimiento de planilla?',
       description:
-        'El movimiento se anulara del calculo actual y quedara trazabilidad en la bitacora de la planilla.',
+        'El movimiento se anulará del cálculo actual y quedará trazabilidad en la bitácora de la planilla.',
       detail: movimiento.concepto || `Movimiento #${id}`,
       detailIconClass: 'bi bi-journal-x',
       confirmText: 'Anular',
@@ -4442,7 +4450,7 @@ export default function Planillas({
         ...previous,
         deletingId: payload.rowId || payload.idMovimiento
       }));
-      const updated = await withAction(
+      await withAction(
         async () => {
           await planillasService.anularMovimientoPlanilla(payload.idMovimiento, {
             motivo,
@@ -4450,45 +4458,9 @@ export default function Planillas({
             id_sucursal: payload.idSucursal
           });
         },
-        {
-          successMessage: 'Movimiento anulado correctamente',
-          skipReload: true,
-          onSuccess: () => {
-            setBonosDeduccionesHistorial((previous) =>
-              (Array.isArray(previous) ? previous : []).map((row) => {
-                const sameRow =
-                  safeNumber(resolveMovimientoPlanillaId(row), 0) === safeNumber(payload.idMovimiento, 0);
-                if (!sameRow) return row;
-                return {
-                  ...row,
-                  anulado: true,
-                  es_anulado: true,
-                  estado: 'ANULADO',
-                  observacion: motivo || row?.observacion || 'Movimiento anulado.'
-                };
-              })
-            );
-            setBonosDeduccionesHistorialModal((previous) => ({
-              ...previous,
-              items: (Array.isArray(previous.items) ? previous.items : []).map((row) => {
-                const sameRow =
-                  String(row?.id || '') === String(payload.rowId || '') ||
-                  safeNumber(row?.id_movimiento, 0) === safeNumber(payload.idMovimiento, 0);
-                if (!sameRow) return row;
-                return {
-                  ...row,
-                  estado: MOVIMIENTO_ESTADO.anulada,
-                  observacion: motivo || row?.observacion || 'Movimiento anulado.'
-                };
-              })
-            }));
-          }
-        }
+        'Movimiento anulado correctamente'
       );
       setBonosDeduccionesHistorialModal((previous) => ({ ...previous, deletingId: null }));
-      if (updated) {
-        void refreshPlanillaData();
-      }
     }
   }, [
     closeConfirmModal,
@@ -4636,6 +4608,7 @@ export default function Planillas({
                   <option value="">Todos</option>
                   <option value="BORRADOR">Borrador</option>
                   <option value="CALCULADA">Calculada</option>
+                  <option value="CERRADA">Cerrada</option>
                   <option value="PAGADA">Pagada</option>
                   <option value="ANULADA">Anulada</option>
                 </select>
@@ -4721,7 +4694,7 @@ export default function Planillas({
             <span>
               {loadingPlanillas
                 ? 'Cargando planillas...'
-                : `Planillas: ${planillas.length} (total: ${planillasTotal}) Â· ${periodoOperativoLabel}`}
+                : `Planillas: ${planillas.length} (total: ${planillasTotal}) · ${periodoOperativoLabel}`}
             </span>
             <span>
               {loadingDetalle
@@ -5249,7 +5222,7 @@ export default function Planillas({
                     onChange={(event) =>
                       setConfirmModal((prev) => ({ ...prev, reason: event.target.value }))
                     }
-                    placeholder="Escribe un motivo para la bitacora..."
+                    placeholder="Escribe un motivo para la bitácora..."
                   />
                 </div>
               ) : null}

@@ -180,6 +180,10 @@ export default function VentaDetalleModal({
   const reversiones = Array.isArray(venta?.reversiones) ? venta.reversiones : [];
   const hasReversiones = reversiones.length > 0;
   const montoReversadoTotal = Number(venta?.monto_reversado_total || 0);
+  const totalVenta = Number(venta?.total || 0);
+  const estadoReversion = String(venta?.estado_reversion || '').trim().toUpperCase();
+  const ventaTotalmenteReversada = estadoReversion === 'TOTAL'
+    || (totalVenta > 0 && montoReversadoTotal >= totalVenta - 0.05);
   const hasExplicitDiscountSplit = detailItems.some(
     (item) => Number(item?.descuento_linea || 0) > 0 || Number(item?.descuento_global || 0) > 0
   );
@@ -539,10 +543,10 @@ export default function VentaDetalleModal({
                 </div>
 
                 <div className="ventas-detail-modal__footer-actions">
-                  {canReversion ? (
+                  {canReversion && !ventaTotalmenteReversada ? (
                     <button
                       type="button"
-                      className="btn btn-outline-danger"
+                      className="btn btn-outline-danger ventas-detail-modal__reversion-trigger"
                       onClick={() => onOpenReversion?.(venta)}
                       disabled={!venta?.id_factura}
                       title="El servidor verificará si la venta todavía puede reversarse"

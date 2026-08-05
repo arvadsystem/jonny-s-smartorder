@@ -11,7 +11,7 @@ const DEDUCCION_CONCEPTOS = ['IHSS', 'RAP', 'Faltante de caja', 'Prestamo', 'Ade
 
 const MOVIMIENTO_TIPO_OPTIONS = [
   { value: 'bono', label: 'Bono / Ingreso', iconClass: 'bi bi-plus-lg', tone: 'bono' },
-  { value: 'deduccion', label: 'Deduccion', iconClass: 'bi bi-dash-lg', tone: 'deduccion' }
+  { value: 'deduccion', label: 'Deducción', iconClass: 'bi bi-dash-lg', tone: 'deduccion' }
 ];
 
 const toText = (value) => String(value ?? '').trim();

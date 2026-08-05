@@ -179,10 +179,15 @@ describe('estado de impresion', () => {
 describe('integracion declarada del flujo', () => {
   it('usa contexto, preview, proteccion obsoleta y confirmacion propia', async () => {
     const modal = await readFile(new URL('../components/VentaReversionModal.jsx', import.meta.url), 'utf8');
+    const styles = await readFile(new URL('../styles/ventas.css', import.meta.url), 'utf8');
     const previewHook = await readFile(new URL('../hooks/useVentaReversionPreview.js', import.meta.url), 'utf8');
     assert.match(modal, /useVentaReversionContext/);
     assert.match(modal, /useVentaReversionPreview/);
     assert.match(modal, /role="alertdialog"/);
+    assert.match(modal, /ventas-reversion-confirm-modal/);
+    assert.doesNotMatch(modal, /ventas-modal ventas-detail-modal" role="alertdialog"/);
+    assert.match(styles, /\.ventas-reversion-confirm-modal\s*\{[\s\S]*?width:\s*min\(580px, 100%\)/);
+    assert.match(styles, /\.ventas-reversion-confirm-modal__summary/);
     assert.match(modal, /submitInFlightRef\.current/);
     assert.match(modal, /idempotencyKey: intent\.key/);
     assert.doesNotMatch(modal, /window\.confirm|window\.print|venta-reversion-ticket-printing/);
@@ -204,6 +209,12 @@ describe('integracion declarada del flujo', () => {
     const action = await readFile(new URL('../components/VentaReversionReprintAction.jsx', import.meta.url), 'utf8');
     assert.match(action, /reprintReversion/);
     assert.match(action, /usePrintJobStatus/);
+    assert.match(action, /million-ignore/);
+    assert.match(action, /data-action="reprint-reversion"/);
+    assert.match(action, /addEventListener\('click', handleNativeClick\)/);
+    assert.match(action, /removeEventListener\('click', handleNativeClick\)/);
+    assert.match(action, /inFlightRef\.current/);
+    assert.doesNotMatch(action, /onClick=\{reprint\}/);
     assert.doesNotMatch(action, /createReversion/);
   });
 

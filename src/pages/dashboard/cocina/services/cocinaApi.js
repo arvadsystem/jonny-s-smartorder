@@ -1,8 +1,8 @@
 import cocinaService from '../../../../services/cocinaService';
 
 export const cocinaApi = {
-  listPedidos(params = {}) {
-    return cocinaService.listPedidos(params);
+  listPedidos(params = {}, config = {}) {
+    return cocinaService.listPedidos(params, config);
   },
 
   getInventarioAlertas(idPedido) {

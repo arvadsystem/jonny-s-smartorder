@@ -2496,6 +2496,85 @@
   flex-wrap: wrap;
 }
 
+.ventas-reversion-confirm-modal {
+  width: min(580px, 100%);
+  max-height: min(720px, calc(100dvh - 32px));
+  border-radius: 18px;
+}
+
+.ventas-reversion-confirm-modal__body {
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.ventas-reversion-confirm-modal__summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.ventas-reversion-confirm-modal__summary > div {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  border-radius: 12px;
+  background: #fffdf8;
+}
+
+.ventas-reversion-confirm-modal__summary dt {
+  margin: 0 0 3px;
+  color: rgba(82, 44, 34, 0.68);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ventas-reversion-confirm-modal__summary dd {
+  margin: 0;
+  color: #351a0c;
+  font-size: 0.92rem;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.ventas-reversion-confirm-modal__summary .is-amount dd {
+  color: #b12d32;
+  font-size: 1.05rem;
+}
+
+.ventas-reversion-confirm-modal__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(222, 167, 34, 0.42);
+  border-radius: 12px;
+  background: #fff7db;
+  color: #73500a;
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.ventas-reversion-confirm-modal__warning i {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.ventas-reversion-confirm-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.ventas-reversion-confirm-modal__footer .btn {
+  min-width: 112px;
+}
+
 .ventas-caja-card {
   overflow: visible;
 }
@@ -3784,6 +3863,12 @@
     max-width: none !important;
   }
 
+  .ventas-detail-modal__footer-actions .ventas-detail-modal__reversion-trigger {
+    width: auto;
+    max-width: 100% !important;
+    justify-self: end;
+  }
+
   .ventas-detail-modal__print-group {
     display: grid;
     grid-template-columns: 94px minmax(0, 1fr);
@@ -3797,6 +3882,36 @@
   .ventas-reversion-modal__footer-actions .btn,
   .ventas-reversion-modal__footer-actions .form-select {
     flex: 1 1 0;
+  }
+
+  .ventas-reversion-confirm-modal {
+    width: min(520px, 100%);
+    height: auto;
+    max-height: calc(100dvh - 28px);
+    border-radius: 16px;
+  }
+
+  .ventas-reversion-confirm-modal__body {
+    padding: 14px;
+  }
+
+  .ventas-reversion-confirm-modal__summary {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .ventas-reversion-confirm-modal__summary > div {
+    padding: 9px 10px;
+  }
+
+  .ventas-reversion-confirm-modal__footer {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  }
+
+  .ventas-reversion-confirm-modal__footer .btn {
+    width: 100%;
+    min-width: 0;
   }
 
   .ventas-pedidos__meta {

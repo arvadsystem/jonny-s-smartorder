@@ -155,8 +155,8 @@ export default function PlanillaDetallePanel({ open, item, onClose, planillaEsta
           </section>
         ))}
 
-        <section className="planillas-detail-panel__formula" aria-label="Formula de calculo">
-          <h6 className="planillas-detail-panel__section-title">Formula de calculo</h6>
+        <section className="planillas-detail-panel__formula" aria-label="Fórmula de cálculo">
+          <h6 className="planillas-detail-panel__section-title">Fórmula de cálculo</h6>
           <div className="planillas-detail-panel__formula-grid">
             <article className="planillas-detail-panel__formula-item is-positive">
               <span>Salario base</span>

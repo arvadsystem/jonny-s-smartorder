@@ -54,7 +54,7 @@ export default function PlanillaAuditoriaModal({
 
   const normalizedItems = (Array.isArray(items) ? items : [])
     .map((row, idx) => {
-      const action = toText(row.accion, 'Sin accion').toUpperCase();
+      const action = toText(row.accion, 'Sin acción').toUpperCase();
       const tone = resolveActionTone(action);
       const fechaRaw = row.fecha_registro || row.fecha_hora || row.fecha;
       return {
@@ -79,7 +79,7 @@ export default function PlanillaAuditoriaModal({
     <PlanillasModalLayout
       open={open}
       onClose={onClose}
-      title="Auditoria de planilla"
+      title="Auditoría de planilla"
       subtitle="Eventos y cambios registrados"
       size="lg"
       className="planillas-modal-shell--auditoria"

@@ -151,7 +151,7 @@ export default function PlanillaAdelantoRegistroGlobalModal({
   }, [empleadoOptions, form.id_empleado]);
 
   const empleadoError = submitted && !hasEmpleado ? 'Selecciona un empleado.' : '';
-  const montoError = submitted && !montoValue ? 'Ingresa un monto valido mayor que 0.' : '';
+  const montoError = submitted && !montoValue ? 'Ingresa un monto válido mayor que 0.' : '';
   const fechaError = submitted && isFutureFecha ? 'La fecha no puede ser mayor al dia actual.' : '';
   const empleadoSelectStyles = useMemo(
     () => buildAdelantoEmpleadoSelectStyles({ hasError: Boolean(empleadoError) }),

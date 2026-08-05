@@ -5,7 +5,7 @@
 
 const buildPills = ({ search, sucursal, cargo, salarioMin, salarioMax }, sucursalOptions = []) => {
   const pills = [];
-  if (toText(search)) pills.push({ key: 'search', label: `Busqueda: ${search}` });
+  if (toText(search)) pills.push({ key: 'search', label: `Búsqueda: ${search}` });
 
   if (toText(sucursal)) {
     const option = sucursalOptions.find((item) => String(item.value) === String(sucursal));

@@ -109,6 +109,8 @@ export default function VentaFinalizarOperacionModal({
   clientsLoading = false,
   clientsStatus = 'idle',
   clientsError = '',
+  pendingContextLoading = false,
+  pendingContextMessage = '',
   onNotify
 }) {
   const [activeTab, setActiveTab] = useState('pagar');
@@ -961,11 +963,11 @@ export default function VentaFinalizarOperacionModal({
               <strong>{activeTab === 'pagar' && composer.paymentMethod === 'efectivo' ? composer.formatCurrency(composer.change) : '—'}</strong>
             </div>
           </div>
-            <div className={`ventas-finalizar-modal__status ${isReadyToSubmit ? 'is-ready' : 'is-pending'}`}>
+            <div className={`ventas-finalizar-modal__status ${isReadyToSubmit && !pendingContextLoading ? 'is-ready' : 'is-pending'}`}>
               <i className={`bi ${isReadyToSubmit ? 'bi-check-circle-fill' : 'bi-info-circle-fill'}`} />
               <div>
-                <strong>{isReadyToSubmit ? 'Listo para registrar la venta' : activeTab === 'pendiente' ? 'Pedido con pago pendiente' : 'Completa los datos requeridos'}</strong>
-                <span>{isReadyToSubmit ? 'Revisa los datos y confirma para completar.' : 'Verifica la informacion antes de continuar.'}</span>
+                <strong>{activeTab === 'pendiente' && pendingContextLoading ? 'Validando caja y usuario' : isReadyToSubmit ? 'Listo para registrar la venta' : activeTab === 'pendiente' ? 'Pedido con pago pendiente' : 'Completa los datos requeridos'}</strong>
+                <span>{activeTab === 'pendiente' && pendingContextLoading ? (pendingContextMessage || 'La confirmación se habilitará cuando el contexto esté listo.') : isReadyToSubmit ? 'Revisa los datos y confirma para completar.' : 'Verifica la informacion antes de continuar.'}</span>
               </div>
             </div>
           </aside>
@@ -981,8 +983,8 @@ export default function VentaFinalizarOperacionModal({
               {paidSubmitting || saving ? 'Guardando...' : 'Confirmar pago y enviar pedido'}
             </button>
           ) : (
-            <button type="button" className="btn btn-primary" data-testid="ventas-crear-pedido-pendiente" onClick={handlePendingSubmit} disabled={isSubmitting}>
-              {pendingSubmitting || saving ? 'Creando...' : 'Crear pedido pendiente'}
+            <button type="button" className="btn btn-primary" data-testid="ventas-crear-pedido-pendiente" onClick={handlePendingSubmit} disabled={isSubmitting || pendingContextLoading}>
+              {pendingContextLoading ? 'Validando caja y usuario...' : pendingSubmitting || saving ? 'Creando...' : 'Crear pedido pendiente'}
             </button>
           )}
         </footer>

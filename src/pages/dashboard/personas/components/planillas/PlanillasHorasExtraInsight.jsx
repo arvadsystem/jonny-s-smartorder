@@ -59,7 +59,7 @@ export default function PlanillasHorasExtraInsight({
         <i className="bi bi-lightbulb" />
         <span>
           <strong>Importante:</strong> Las horas extra se registran en la columna "H.E. Tiempo" para control interno.
-          No suman ni restan del calculo monetario de la planilla.
+          No suman ni restan del cálculo monetario de la planilla.
         </span>
       </div>
     </section>

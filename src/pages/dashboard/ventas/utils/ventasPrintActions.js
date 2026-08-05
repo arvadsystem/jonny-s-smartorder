@@ -68,6 +68,24 @@ export const createComandaPrompt = ({
   };
 };
 
+export const resolvePendingOrderComandaPrompt = (comanda) => {
+  if (comanda?.requiere_revision === true) {
+    return { status: 'review', prompt: null };
+  }
+  if (comanda?.requiere_cocina !== true) {
+    return { status: 'not-required', prompt: null };
+  }
+  return {
+    status: 'prompt',
+    prompt: createComandaPrompt({
+      venta: comanda,
+      sourceType: 'pedido',
+      action: 'initial',
+      origin: 'pending-order'
+    })
+  };
+};
+
 export const buildComandaIdempotencyKey = ({
   sourceType,
   action,

@@ -326,6 +326,9 @@ export const useVentaComposer = ({
   onSubmit,
   suppressSubmitErrorToast = false,
   onRequireAutoAuxiliar,
+  onReset,
+  mutationBlocked = false,
+  onMutationBlocked,
   resetKey,
   canApplyDiscount = false,
   userId = null
@@ -372,6 +375,11 @@ export const useVentaComposer = ({
   const globalExtrasRequestIdRef = useRef(0);
   const [globalExtrasRetryToken, setGlobalExtrasRetryToken] = useState(0);
   const deferredSearch = useDeferredValue(state.search);
+  const rejectBlockedMutation = () => {
+    if (!mutationBlocked) return false;
+    onMutationBlocked?.();
+    return true;
+  };
 
   useEffect(() => {
     if (cajaSucursalStorageKeyRef.current === cajaSucursalStorageKey) return;
@@ -405,13 +413,14 @@ export const useVentaComposer = ({
 
   useEffect(() => {
     if (resetKey === undefined) return;
+    if (mutationBlocked) return;
     setState(() => {
       const nextState = buildInitialState({ isSuperAdmin, defaultSucursalId });
       if (!isSuperAdmin) return nextState;
       const persisted = readPersistedCajaSucursal(cajaSucursalStorageKey);
       return persisted ? { ...nextState, selectedSucursal: persisted } : nextState;
     });
-  }, [cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin, resetKey]);
+  }, [cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin, mutationBlocked, resetKey]);
 
   const setPartialState = (partial) => {
     setState((current) => ({
@@ -420,7 +429,12 @@ export const useVentaComposer = ({
     }));
   };
 
-  const resetComposer = ({ preserveSucursal = false, preserveSession = false } = {}) => {
+  const resetComposer = ({ preserveSucursal = false, preserveSession = false, force = false } = {}) => {
+    if (!force && (mutationBlocked || onReset?.() === false)) {
+      onMutationBlocked?.();
+      return false;
+    }
+    if (force) onReset?.();
     setState((current) => {
       const nextState = buildInitialState({ isSuperAdmin, defaultSucursalId });
       return {
@@ -448,6 +462,7 @@ export const useVentaComposer = ({
       loading: false,
       error: ''
     });
+    return true;
   };
 
   const selectedClientLabel = useMemo(() => {
@@ -592,6 +607,7 @@ export const useVentaComposer = ({
   }, [globalExtrasCatalog]);
 
   useEffect(() => {
+    if (mutationBlocked) return;
     setState((current) => {
       let changed = false;
       const nextCart = current.cart.map((line) => {
@@ -653,7 +669,7 @@ export const useVentaComposer = ({
       });
       return changed ? { ...current, cart: nextCart } : current;
     });
-  }, [recetas]);
+  }, [mutationBlocked, recetas]);
 
   const descuentoGlobalOptions = useMemo(
     () =>
@@ -673,10 +689,11 @@ export const useVentaComposer = ({
   );
 
   useEffect(() => {
+    if (mutationBlocked) return;
     if (!state.selectedDiscountId) return;
     if (selectedDiscount) return;
     setState((current) => ({ ...current, selectedDiscountId: '' }));
-  }, [selectedDiscount, state.selectedDiscountId]);
+  }, [mutationBlocked, selectedDiscount, state.selectedDiscountId]);
 
   const normalizedSucursales = useMemo(
     () => (Array.isArray(sucursales) ? sucursales : []),
@@ -684,6 +701,7 @@ export const useVentaComposer = ({
   );
 
   useEffect(() => {
+    if (mutationBlocked) return;
     if (!isSuperAdmin) return;
     if (!allowSucursalAutoSelection) return;
     if (!normalizedSucursales.length) return;
@@ -721,9 +739,10 @@ export const useVentaComposer = ({
         search: ''
       };
     });
-  }, [allowSucursalAutoSelection, cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin, normalizedSucursales, tiposDepartamento]);
+  }, [allowSucursalAutoSelection, cajaSucursalStorageKey, defaultSucursalId, isSuperAdmin, mutationBlocked, normalizedSucursales, tiposDepartamento]);
 
   useEffect(() => {
+    if (mutationBlocked) return;
     if (isSuperAdmin) return;
     setState((current) => {
       const nextSucursal = String(defaultSucursalId || '');
@@ -733,7 +752,7 @@ export const useVentaComposer = ({
         selectedSucursal: nextSucursal
       };
     });
-  }, [defaultSucursalId, isSuperAdmin]);
+  }, [defaultSucursalId, isSuperAdmin, mutationBlocked]);
 
   const selectedSucursalLabel = useMemo(() => {
     const selectedId = Number.parseInt(String(state.selectedSucursal || ''), 10);
@@ -930,6 +949,7 @@ export const useVentaComposer = ({
   };
 
   const openComplementModalForCatalogItem = (kind, row, options = {}) => {
+    if (rejectBlockedMutation()) return;
     setComplementModal({
       open: true,
       mode: 'ADD',
@@ -943,6 +963,7 @@ export const useVentaComposer = ({
   };
 
   const addCatalogItem = (kind, row, selectedComplementos = [], options = {}) => {
+    if (rejectBlockedMutation()) return false;
     const allowEmptyComplementos = Boolean(options?.allowEmptyComplementos);
     if (requiresComplementSelection(kind, row) && selectedComplementos.length === 0 && !allowEmptyComplementos) {
       openComplementModalForCatalogItem(kind, row, options);
@@ -1047,6 +1068,7 @@ export const useVentaComposer = ({
   };
 
   const openComplementModalForLine = (cartKey) => {
+    if (rejectBlockedMutation()) return;
     const line = state.cart.find((row) => row.cartKey === cartKey);
     if (!line) return;
     if (line.kind === 'PRODUCTO' || line.kind === 'ITEM') return;
@@ -1079,6 +1101,7 @@ export const useVentaComposer = ({
   };
 
   const confirmComplementModal = (selectedComplementos, complementOptions = {}) => {
+    if (rejectBlockedMutation()) return false;
     const ids = normalizeComplementIds(selectedComplementos);
     const max = Number(complementModal?.row?.maximo_complementos ?? 0) || 0;
 
@@ -1148,6 +1171,7 @@ export const useVentaComposer = ({
   };
 
   const updateLine = (cartKey, updater, options = {}) => {
+    if (rejectBlockedMutation()) return false;
     setState((current) => {
       const nextCart = current.cart
         .map((line) => {
@@ -1202,6 +1226,7 @@ export const useVentaComposer = ({
   };
 
   const removeLine = (cartKey) => {
+    if (rejectBlockedMutation()) return false;
     setState((current) => ({
       ...current,
       cart: current.cart.filter((item) => item.cartKey !== cartKey),
@@ -1211,6 +1236,7 @@ export const useVentaComposer = ({
   };
 
   const openExtrasModalForLine = async (cartKey) => {
+    if (rejectBlockedMutation()) return;
     const line = state.cart.find((row) => row.cartKey === cartKey);
     if (!line || line.kind === 'PRODUCTO' || line.kind === 'ITEM') return;
 
@@ -1230,6 +1256,7 @@ export const useVentaComposer = ({
   };
 
   const confirmExtrasModal = (selectedExtras) => {
+    if (rejectBlockedMutation()) return false;
     const optionsById = new Map(
       extrasModal.options.map((option) => [Number(option.id_extra), option])
     );
@@ -1389,6 +1416,7 @@ export const useVentaComposer = ({
     });
 
   const submitPaidSale = async ({ contacto, contexto, cuentaDividida } = {}) => {
+    if (rejectBlockedMutation()) return null;
     if (!validatePaidSale()) return null;
     if (!validateComplementosForPending()) return null;
 
@@ -1412,7 +1440,7 @@ export const useVentaComposer = ({
         && hasSelectedSucursal
         && state.cart.length > 0
         && (
-          ['NO_ACTIVE_SESSION', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'SESSION_NOT_OPEN', 'SESSION_SCOPE_MISMATCH', 'CAJA_NOT_ACTIVE'].includes(errorCode)
+          ['NO_ACTIVE_SESSION', 'SESSION_NOT_FOUND', 'SESSION_NOT_OPEN', 'OPEN_STATE_NOT_FOUND', 'SESSION_SCOPE_MISMATCH', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'CAJA_NOT_ACTIVE'].includes(errorCode)
           || (Number(error?.status || 0) === 403 && sessionMessageMatch)
         )
       ) {
@@ -1431,6 +1459,7 @@ export const useVentaComposer = ({
   };
 
   const resetPaymentDraft = () => {
+    if (rejectBlockedMutation()) return false;
     setState((current) => ({
       ...current,
       paymentMethod: 'efectivo',
@@ -1438,6 +1467,7 @@ export const useVentaComposer = ({
       referenciaPago: '',
       submitError: ''
     }));
+    return true;
   };
 
   return {
@@ -1492,8 +1522,9 @@ export const useVentaComposer = ({
     total,
     cashValue,
     change,
-    canSubmit,
-    canContinue,
+    canSubmit: canSubmit && !mutationBlocked,
+    canContinue: canContinue && !mutationBlocked,
+    mutationBlocked,
     complementModal,
     extrasModal,
     setPartialState,
@@ -1530,6 +1561,7 @@ export const useVentaComposer = ({
     sucursalPickerOpen: state.sucursalPickerOpen,
     setSucursalPickerOpen: (value) => setPartialState({ sucursalPickerOpen: value }),
     setSelectedSucursal: (value) => {
+      if (rejectBlockedMutation()) return false;
       const nextSucursal = String(value || '');
       persistCajaSucursal(cajaSucursalStorageKey, nextSucursal);
       setState((current) => {
@@ -1567,23 +1599,35 @@ export const useVentaComposer = ({
         loading: false,
         error: ''
       });
+      return true;
     },
     temporarySessionId: state.temporarySessionId,
-    setTemporarySessionId: (value) => setPartialState({ temporarySessionId: String(value || ''), submitError: '' }),
-    setSelectedClient: (value) =>
+    setTemporarySessionId: (value) => {
+      if (rejectBlockedMutation()) return false;
+      setPartialState({ temporarySessionId: String(value || ''), submitError: '' });
+      return true;
+    },
+    setSelectedClient: (value) => {
+      if (rejectBlockedMutation()) return false;
       setPartialState({
         selectedClient: value,
         clientPickerOpen: false
-      }),
-    setPaymentMethod: (value) =>
+      });
+      return true;
+    },
+    setPaymentMethod: (value) => {
+      if (rejectBlockedMutation()) return false;
       setState((current) => ({
         ...current,
         paymentMethod: value,
         cashReceived: value === 'efectivo' ? current.cashReceived : '',
         referenciaPago: value === 'efectivo' ? '' : current.referenciaPago,
         submitError: ''
-      })),
+      }));
+      return true;
+    },
     setSelectedDiscountId: (value) => {
+      if (rejectBlockedMutation()) return false;
       if (!canApplyDiscount) {
         setPartialState({
           selectedDiscountId: '',
@@ -1612,6 +1656,7 @@ export const useVentaComposer = ({
         }
       }),
     setLineDiscount: (cartKey, discountId) => {
+      if (rejectBlockedMutation()) return false;
       if (!canApplyDiscount) {
         setState((current) => {
           const mergedResult = mergeEquivalentVentaLines(current.cart.map((line) =>
@@ -1643,8 +1688,16 @@ export const useVentaComposer = ({
         };
       });
     },
-    setCashReceived: (value) => setPartialState({ cashReceived: value }),
-    setReferenciaPago: (value) => setPartialState({ referenciaPago: value }),
+    setCashReceived: (value) => {
+      if (rejectBlockedMutation()) return false;
+      setPartialState({ cashReceived: value });
+      return true;
+    },
+    setReferenciaPago: (value) => {
+      if (rejectBlockedMutation()) return false;
+      setPartialState({ referenciaPago: value });
+      return true;
+    },
     resetPaymentDraft,
     addCatalogItem,
     openComplementModalForLine,
