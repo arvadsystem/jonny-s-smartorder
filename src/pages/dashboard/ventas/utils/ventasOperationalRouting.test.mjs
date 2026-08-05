@@ -109,13 +109,13 @@ test('HTML de navegador separa preparar y entrega conjunta sin secciones vacias'
   assert.match(withCompanions, />ENTREGAR JUNTO CON EL PEDIDO</);
 });
 
-test('transicion explicita ocurre antes del intento de impresion y no depende del evento impreso', () => {
+test('la impresion no ejecuta transicion operativa ni intenta regresar a EN_COCINA', () => {
   const source = fs.readFileSync(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
   const start = source.indexOf('const executeComandaPrint = async');
   const end = source.indexOf('const openComandaReprintFromDetail', start);
   const block = source.slice(start, end);
-  const transition = block.indexOf("ventasService.updatePedidoEstado(venta.id_pedido, 'EN_COCINA')");
-  const agentPrint = block.indexOf('if (AGENT_PRINT_MODE)');
-  const browserPrint = block.indexOf('printComandaCocinaWithQz');
-  assert.ok(transition >= 0 && transition < agentPrint && transition < browserPrint);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(block, /updatePedidoEstado|estado_destino|EN_COCINA/);
+  assert.match(block, /loadKitchenComandaPrintSource/);
+  assert.match(block, /printComandaCocinaWithQz/);
 });

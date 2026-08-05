@@ -1,6 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import AppSelect from '../../../../components/common/AppSelect';
-import { supabase } from '../../../../lib/supabaseClient';
 import ventasService from '../../../../services/ventasService';
 import { createCocinaAudioManager } from '../../cocina/utils/cocinaAudio';
 import { formatCurrency, normalizeVentaDetail } from '../utils/ventasHelpers';
@@ -18,6 +17,11 @@ import PedidosEmptyState from './PedidosEmptyState';
 import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import VentaDetalleModal from './VentaDetalleModal';
 import VentasToast from './VentasToast';
+import { createPollingRequestCoordinator } from '../../../../utils/pollingRequestCoordinator.mjs';
+
+const PEDIDOS_POLL_DELAY_MS = 8_000;
+const PEDIDOS_POLL_MAX_DELAY_MS = 60_000;
+const PEDIDOS_REQUEST_TIMEOUT_MS = 12_000;
 
 const normalizeTextKey = (value) =>
   String(value || '')
@@ -203,6 +207,7 @@ const normalizePedidoVentaDetail = (pedido) => {
 };
 
 export default function PedidosView({
+  userId = null,
   isSuperAdmin = false,
   sucursales = [],
   defaultSucursalId = null,
@@ -240,11 +245,16 @@ export default function PedidosView({
   });
   const notifiedReadyIdsRef = useRef(new Set());
   const audioManagerRef = useRef(null);
-  const inFlightKeyRef = useRef('');
   const actionBusyRef = useRef(null);
   const lastActionRefreshAtRef = useRef(0);
-  const requestIdRef = useRef(0);
   const forbiddenErrorKeyRef = useRef('');
+  const pollingCoordinatorRef = useRef(null);
+  if (!pollingCoordinatorRef.current) {
+    pollingCoordinatorRef.current = createPollingRequestCoordinator({
+      baseDelayMs: PEDIDOS_POLL_DELAY_MS,
+      maxDelayMs: PEDIDOS_POLL_MAX_DELAY_MS
+    });
+  }
   const detailOperationControllerRef = useRef(null);
   if (!detailOperationControllerRef.current) {
     detailOperationControllerRef.current = createDetailOperationController();
@@ -360,19 +370,20 @@ export default function PedidosView({
       const requestKey = requestSucursalId ? `sucursal:${requestSucursalId}` : 'scope';
       const canRetryForbidden = source === 'manual' || source === 'action' || source === 'initial';
       if (!canRetryForbidden && forbiddenErrorKeyRef.current === requestKey) return;
-      if (inFlightKeyRef.current === requestKey) return;
-
-      const requestId = requestIdRef.current + 1;
-      requestIdRef.current = requestId;
-      inFlightKeyRef.current = requestKey;
+      const requestToken = pollingCoordinatorRef.current.begin(requestKey);
+      if (!requestToken) return;
+      let requestSucceeded = false;
       try {
         if (!silent) setLoading(true);
         setErrorMessage('');
         const params = requestSucursalId
           ? { id_sucursal: requestSucursalId }
           : {};
-        const data = await ventasService.getPedidosMenu(params);
-        if (requestId !== requestIdRef.current) return;
+        const data = await ventasService.getPedidosMenu(params, {
+          signal: requestToken.controller.signal,
+          timeoutMs: PEDIDOS_REQUEST_TIMEOUT_MS
+        });
+        if (!pollingCoordinatorRef.current.isCurrent(requestToken)) return;
         forbiddenErrorKeyRef.current = '';
         const nextPedidos = Array.isArray(data) ? data : [];
 
@@ -411,56 +422,67 @@ export default function PedidosView({
           });
         }
         commitPedidos(nextPedidos);
+        requestSucceeded = true;
       } catch (err) {
-        if (requestId !== requestIdRef.current) return;
+        if (!pollingCoordinatorRef.current.isCurrent(requestToken)) return;
         const status = Number(err?.status || err?.data?.status || 0);
         const message = extractUiMessage(err, 'No se pudo cargar el tablero de pedidos.');
         if (status === 403) {
           forbiddenErrorKeyRef.current = requestKey;
         }
         setErrorMessage((current) => (current === message ? current : message));
-        commitPedidos([]);
       } finally {
-        if (inFlightKeyRef.current === requestKey) {
-          inFlightKeyRef.current = '';
+        if (pollingCoordinatorRef.current.isCurrent(requestToken)) {
+          pollingCoordinatorRef.current.finish(requestToken, { success: requestSucceeded });
+          if (!silent) setLoading(false);
         }
-        if (requestId === requestIdRef.current && !silent) setLoading(false);
       }
     },
     [commitPedidos, effectiveSucursalId, getCurrentPedidos, isSuperAdmin, openToast]
   );
 
   useEffect(() => {
+    pollingCoordinatorRef.current.reset();
     if (isSuperAdmin && !effectiveSucursalId) {
       setLoading(false);
       return;
     }
     void loadPedidos({ source: 'initial' });
+    return () => pollingCoordinatorRef.current.cancel();
   }, [effectiveSucursalId, isSuperAdmin, loadPedidos]);
 
   useEffect(() => {
     if (isSuperAdmin && !effectiveSucursalId) return undefined;
-    const intervalId = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      void loadPedidos({ silent: true, source: 'poll' });
-    }, 8000);
+    let disposed = false;
+    let timerId = null;
 
-    return () => window.clearInterval(intervalId);
-  }, [effectiveSucursalId, isSuperAdmin, loadPedidos]);
+    const schedule = (delayMs) => {
+      if (disposed) return;
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = window.setTimeout(runPoll, delayMs);
+    };
 
-  useEffect(() => {
-    if (isSuperAdmin && !effectiveSucursalId) return undefined;
-    const channel = supabase
-      .channel(`ventas-pedidos-realtime-${effectiveSucursalId || 'scope'}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pedidos' }, () => {
-        if (forbiddenErrorKeyRef.current === (effectiveSucursalId ? `sucursal:${effectiveSucursalId}` : 'scope')) return;
-        if (Date.now() - lastActionRefreshAtRef.current < 1200) return;
-        void loadPedidos({ silent: true, source: 'realtime' });
-      })
-      .subscribe();
+    const runPoll = async () => {
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = null;
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        await loadPedidos({ silent: true, source: 'poll' });
+      }
+      schedule(pollingCoordinatorRef.current.getNextDelay());
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void runPoll();
+    };
+
+    schedule(PEDIDOS_POLL_DELAY_MS);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      supabase.removeChannel(channel);
+      disposed = true;
+      if (timerId !== null) window.clearTimeout(timerId);
+      pollingCoordinatorRef.current.cancel();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [effectiveSucursalId, isSuperAdmin, loadPedidos]);
 
@@ -773,7 +795,14 @@ export default function PedidosView({
       try {
         setPagoPedidoSaving(true);
         setErrorMessage('');
-        const response = await ventasService.registrarPagoPedido(idPedido, payload);
+        const response = await ventasService.registrarPagoPedido(idPedido, payload, {
+          operationScope: {
+            userId,
+            sucursalId: payload?.id_sucursal || effectiveSucursalId,
+            cashSessionId: payload?.id_sesion_caja || selectedSessionId,
+            origin: 'PEDIDOS'
+          }
+        });
         lastActionRefreshAtRef.current = Date.now();
         openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
         if (!isPagoPedidoStillPending(response)) {
@@ -801,7 +830,7 @@ export default function PedidosView({
         setPagoPedidoSaving(false);
       }
     },
-    [loadPedidos, onSuccessfulPendingOrderPaymentPrint, openToast]
+    [effectiveSucursalId, loadPedidos, onSuccessfulPendingOrderPaymentPrint, openToast, selectedSessionId, userId]
   );
 
   const closeConfirmDialog = useCallback(() => {
@@ -962,9 +991,8 @@ export default function PedidosView({
                 options={sucursalOptions}
                 onChange={(value) => {
                   const nextId = toPositiveId(value);
-                  requestIdRef.current += 1;
+                  pollingCoordinatorRef.current.reset();
                   forbiddenErrorKeyRef.current = '';
-                  inFlightKeyRef.current = '';
                   setErrorMessage('');
                   commitPedidos([]);
                   setSelectedSucursalId(nextId);

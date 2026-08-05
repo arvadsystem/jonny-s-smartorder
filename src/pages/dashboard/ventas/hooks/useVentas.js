@@ -1345,6 +1345,12 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         const shouldRefreshAfterCreate = origin !== 'CAJA';
         const requestOptions = { ...serviceOptions };
         delete requestOptions.origin;
+        requestOptions.operationScope = {
+          userId,
+          sucursalId: payload?.id_sucursal,
+          cashSessionId: payload?.id_sesion_caja,
+          origin: origin || 'VENTAS'
+        };
         const response = await ventasService.create(payload, requestOptions);
         openToast(
           'VENTA CREADA',
@@ -1364,33 +1370,45 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         setSaving(false);
       }
     },
-    [openToast, refreshVentas]
+    [openToast, refreshVentas, userId]
   );
 
   const createPedidoPendiente = useCallback(
-    async (payload) => {
+    async (payload, options = {}) => {
       setSaving(true);
       setError('');
 
+      let response;
       try {
-        const response = await ventasService.createPedidoPendiente(payload);
+        response = await ventasService.createPedidoPendiente(payload, {
+          ...options,
+          operationScope: userId ?? options?.operationScope ?? null
+        });
+      } catch (error) {
+        const message = extractApiMessage(error, 'No se pudo crear el pedido pendiente.');
+        setError(message);
+        const isUnknownResult = String(error?.code || '').trim().toUpperCase() === 'PEDIDO_PENDIENTE_RESULTADO_DESCONOCIDO';
+        openToast(isUnknownResult ? 'RESULTADO PENDIENTE' : 'ERROR', message, isUnknownResult ? 'warning' : 'danger');
+        throw error;
+      } finally {
+        setSaving(false);
+      }
+
+      try {
         openToast(
           'PEDIDO PENDIENTE',
           'Pedido pendiente creado correctamente.',
           'success'
         );
-        void refreshVentas({ suppressErrors: true }).catch(() => undefined);
-        return response;
-      } catch (error) {
-        const message = extractApiMessage(error, 'No se pudo crear el pedido pendiente.');
-        setError(message);
-        openToast('ERROR', message, 'danger');
-        throw error;
-      } finally {
-        setSaving(false);
+      } catch {
+        // Una notificacion secundaria nunca revierte un pedido ya confirmado.
       }
+      void Promise.resolve()
+        .then(() => refreshVentas({ suppressErrors: true }))
+        .catch(() => undefined);
+      return response;
     },
-    [openToast, refreshVentas]
+    [openToast, refreshVentas, userId]
   );
 
   const registrarPagoPedido = useCallback(
@@ -1399,7 +1417,14 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       setError('');
 
       try {
-        const response = await ventasService.registrarPagoPedido(idPedido, payload);
+        const response = await ventasService.registrarPagoPedido(idPedido, payload, {
+          operationScope: {
+            userId,
+            sucursalId: payload?.id_sucursal || activeCajaSucursalRef.current,
+            cashSessionId: payload?.id_sesion_caja,
+            origin: 'CAJA'
+          }
+        });
         openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
         void refreshVentas({ suppressErrors: true }).catch(() => undefined);
         return response;
@@ -1412,7 +1437,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
         setSaving(false);
       }
     },
-    [openToast, refreshVentas]
+    [openToast, refreshVentas, userId]
   );
 
   return {

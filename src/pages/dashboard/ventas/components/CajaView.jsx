@@ -15,6 +15,7 @@ import printerDeviceDetectionService from '../../../../services/printerDeviceDet
 import { useAuth } from '../../../../hooks/useAuth';
 import AppSelect from '../../../../components/common/AppSelect';
 import { parseCajaUtcTimestamp } from '../utils/cajasHelpers';
+import { dispatchPedidoPendientePostCreationTasks } from '../utils/pedidoPendienteCreation';
 
 const resolvePendientesErrorMessage = (error) => {
   const status = Number(error?.status || 0);
@@ -275,6 +276,13 @@ export default function CajaView({
   const [abrirSesionSaving, setAbrirSesionSaving] = useState(false);
   const [abrirSesionError, setAbrirSesionError] = useState('');
   const [creatingPedidoPendiente, setCreatingPedidoPendiente] = useState(false);
+  const [pedidoPendienteOperation, setPedidoPendienteOperation] = useState(null);
+  const [sharedPedidoPendienteOperations, setSharedPedidoPendienteOperations] = useState([]);
+  const [pedidoPendienteStorageContext, setPedidoPendienteStorageContext] = useState({
+    persistenceDegraded: false,
+    invalidRecord: false,
+    scopeMismatch: false
+  });
   const [registrandoPagoPedido, setRegistrandoPagoPedido] = useState(false);
   const [statusExpanded, setStatusExpanded] = useState(false);
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
@@ -288,8 +296,11 @@ export default function CajaView({
   const sesionesAbiertasRequestIdRef = useRef(0);
   const cajaUserKeyRef = useRef(cajaUserKey);
   const creatingPedidoPendienteRef = useRef(false);
+  const pedidoPendienteOperationRef = useRef(null);
   const registrandoPagoPedidoRef = useRef(false);
   const lastDetectionSessionRef = useRef('');
+  const pedidoPendienteOperationLocked = ventasService.isPedidoPendienteOperationLocked(pedidoPendienteOperation);
+  const pedidoPendienteComposerGuarded = pedidoPendienteOperationLocked || pedidoPendienteStorageContext.invalidRecord;
 
   const catalogSucursalRequestRef = useRef('');
   const catalogSucursalRequestIdRef = useRef(0);
@@ -313,6 +324,10 @@ export default function CajaView({
     pendientesSummaryRequestRef.current = { key: '', promise: null, requestId: pendientesSummaryRequestRef.current.requestId + 1, controller: null };
     catalogSucursalRequestRef.current = '';
     catalogSucursalRequestIdRef.current += 1;
+    pedidoPendienteOperationRef.current = null;
+    setPedidoPendienteOperation(null);
+    setSharedPedidoPendienteOperations([]);
+    setPedidoPendienteStorageContext({ persistenceDegraded: false, invalidRecord: false, scopeMismatch: false });
     setPendientesSummary({ loading: false, error: '', total: 0, monto: 0 });
     setCajaAsignacion(null);
     setCajaSesionActiva(null);
@@ -437,9 +452,76 @@ export default function CajaView({
     onSubmit,
     suppressSubmitErrorToast: true,
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal,
+    onReset: () => {
+      const operationId = pedidoPendienteOperationRef.current?.operationId || null;
+      if (!operationId) return true;
+      const abandoned = ventasService.abandonPedidoPendienteOperation(operationId);
+      if (!abandoned) return false;
+      pedidoPendienteOperationRef.current = null;
+      setPedidoPendienteOperation(null);
+      return true;
+    },
+    mutationBlocked: pedidoPendienteComposerGuarded,
+    onMutationBlocked: () => onNotify?.(
+      'RESULTADO PENDIENTE',
+      'Recupera o abandona conscientemente la operación anterior antes de modificar el pedido.',
+      'warning'
+    ),
     userId: userId ?? user?.id_usuario
   });
   composerRef.current = composer;
+  const pedidoOperationUserId = String(userId ?? user?.id_usuario ?? '').trim();
+  const pedidoOperationSucursalId = String(
+    toPositiveId(composer.selectedSucursalId || composer.selectedSucursal || cajaBootstrapData?.id_sucursal) || ''
+  );
+  const pedidoOperationSessionId = String(
+    toPositiveId(cajaSesionActiva?.id_sesion_caja || composer.temporarySessionId || bootstrapSesionCaja?.id_sesion_caja) || ''
+  );
+
+  useEffect(() => {
+    const operationScope = {
+      userId: pedidoOperationUserId,
+      sucursalId: pedidoOperationSucursalId,
+      cashSessionId: pedidoOperationSessionId,
+      origin: 'SMARTORDER_POS'
+    };
+    const storageContext = ventasService.getPedidoPendienteOperationContext(operationScope);
+    setPedidoPendienteStorageContext(storageContext);
+    const stored = storageContext.operation;
+    if (stored) {
+      pedidoPendienteOperationRef.current = stored;
+      setPedidoPendienteOperation(stored);
+    } else {
+      pedidoPendienteOperationRef.current = null;
+      setPedidoPendienteOperation(null);
+    }
+    return ventasService.subscribePedidoPendienteOperations(operationScope, (operations, event) => {
+      setSharedPedidoPendienteOperations(operations);
+      setPedidoPendienteStorageContext((current) => ({
+        ...current,
+        ...ventasService.getPedidoPendienteStorageState()
+      }));
+      setPedidoPendienteOperation((current) => {
+        if (!current?.operationId) return current;
+        if (
+          event?.type === 'operation-released'
+          && event.operationId === current.operationId
+          && [
+            ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.CONFIRMED,
+            ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.ABANDONED
+          ].includes(event.status)
+        ) {
+          pedidoPendienteOperationRef.current = null;
+          return null;
+        }
+        const updated = operations.find((operation) => operation.operationId === current.operationId);
+        if (!updated) return current;
+        pedidoPendienteOperationRef.current = updated;
+        return updated;
+      });
+    });
+  }, [pedidoOperationSessionId, pedidoOperationSucursalId, pedidoOperationUserId]);
+
   const resolvedCajaSucursalId = toPositiveId(
     composer.selectedSucursalId || composer.selectedSucursal || cajaBootstrapData?.id_sucursal
   );
@@ -1032,62 +1114,101 @@ export default function CajaView({
     cajaStatus.loading
   ]);
 
+  const buildPedidoPendienteOperationScope = (payload = {}) => ({
+    userId: pedidoOperationUserId,
+    sucursalId: String(toPositiveId(payload?.id_sucursal || pedidoOperationSucursalId) || ''),
+    cashSessionId: String(toPositiveId(payload?.id_sesion_caja || pedidoOperationSessionId) || ''),
+    origin: 'SMARTORDER_POS'
+  });
+
+  const finalizePedidoPendienteCreation = async (response) => {
+    const idPedido = toPositiveId(response?.id_pedido);
+    if (!idPedido) {
+      const invalidResponseError = new Error('El servidor no confirmó el identificador del pedido creado.');
+      invalidResponseError.code = 'PEDIDO_PENDIENTE_RESPUESTA_INVALIDA';
+      throw invalidResponseError;
+    }
+
+    pedidoPendienteOperationRef.current = null;
+    setPedidoPendienteOperation(null);
+    try {
+      composer.resetComposer({ preserveSucursal: true, preserveSession: true, force: true });
+    } catch {
+      // El pedido confirmado no vuelve a error por una limpieza local del formulario.
+    }
+    setFinalizarOpen(false);
+    setDeliveryCostPreview(0);
+    dispatchPedidoPendientePostCreationTasks([
+      { name: 'summary', run: () => loadPendientesSummary() }
+    ]);
+    try {
+      // La API comercial ya hizo COMMIT. En modo agente, este await garantiza
+      // que la comanda idempotente quede en cola antes de devolver exito a Caja.
+      await onPedidoPendienteCreated?.(response);
+    } catch {
+      onNotify?.(
+        'COMANDA COCINA',
+        `El pedido ${response?.numero_pedido || `#${idPedido}`} fue creado, pero no se pudo abrir la impresión de comanda`,
+        'warning'
+      );
+    }
+    return response;
+  };
+
   const handleCreatePedidoPendiente = async (payload) => {
     if (creatingPedidoPendienteRef.current) {
       const error = new Error('El pedido pendiente ya se está creando.');
       error.code = 'VENTA_PENDING_SUBMIT_IN_PROGRESS';
       throw error;
     }
+    if (pedidoPendienteStorageContext.invalidRecord) {
+      const error = new Error(
+        'Se encontró una recuperación de pedido dañada o incompatible. Revisa los pedidos recientes antes de iniciar otro.'
+      );
+      error.code = 'PEDIDO_PENDIENTE_REGISTRO_INVALIDO';
+      throw error;
+    }
+    if (ventasService.isPedidoPendienteOperationLocked(pedidoPendienteOperationRef.current)) {
+      const error = new Error(
+        'No fue posible confirmar el resultado del pedido. El servidor podría haberlo registrado. Recupera el resultado antes de crear otro pedido.'
+      );
+      error.code = 'PEDIDO_PENDIENTE_RESULTADO_DESCONOCIDO';
+      error.operation = pedidoPendienteOperationRef.current;
+      throw error;
+    }
 
+    const operationScope = buildPedidoPendienteOperationScope(payload);
+    const operation = ventasService.preparePedidoPendienteOperation(payload, {
+      operationId: pedidoPendienteOperationRef.current?.operationId || null,
+      operationScope
+    });
+    pedidoPendienteOperationRef.current = operation;
+    setPedidoPendienteOperation(operation);
+    if (operation.persistenceDegraded) {
+      setPedidoPendienteStorageContext((current) => ({ ...current, persistenceDegraded: true }));
+      onNotify?.(
+        'RECUPERACIÓN LIMITADA',
+        'El navegador no permite conservar de forma segura la recuperación del pedido. No cierres ni recargues esta pestaña hasta confirmar el resultado.',
+        'warning'
+      );
+    }
     creatingPedidoPendienteRef.current = true;
     setCreatingPedidoPendiente(true);
+    let response;
     try {
-      const response = await onCreatePedidoPendiente(payload);
-      await loadPendientesSummary();
-      const idPedido = toPositiveId(response?.id_pedido);
-      if (idPedido) {
-        if (response?.requiere_revision === true || response?.requiere_cocina !== true) {
-          onPedidoPendienteCreated?.(response);
-        } else {
-          try {
-            const comanda = await ventasService.getPedidoComanda(idPedido);
-            onPedidoPendienteCreated?.({
-              ...comanda,
-              requiere_cocina: response.requiere_cocina === true,
-              requiere_revision: response.requiere_revision === true,
-              accion_operativa: response.accion_operativa || null,
-              items_sin_clasificar: Array.isArray(response.items_sin_clasificar)
-                ? response.items_sin_clasificar
-                : []
-            });
-          } catch (error) {
-            if (Number(error?.status || 0) >= 500) {
-              console.error('[Ventas] No se pudo cargar la comanda persistida del pedido pendiente', error);
-            } else if (import.meta.env.DEV) {
-              console.warn('[Ventas] No se pudo cargar la comanda persistida del pedido pendiente', {
-                status: error?.status,
-                code: error?.code,
-                message: error?.message
-              });
-            }
-            onNotify?.(
-              'COMANDA COCINA',
-              'El pedido fue creado, pero no se pudo cargar la comanda para imprimir',
-              'warning'
-            );
-          }
-        }
-      } else {
-        onNotify?.(
-          'COMANDA COCINA',
-          'El pedido fue creado, pero no se pudo cargar la comanda para imprimir',
-          'warning'
-        );
-      }
-      setFinalizarOpen(false);
-      setDeliveryCostPreview(0);
-      return response;
+      response = await onCreatePedidoPendiente(payload, {
+        operationId: operation.operationId,
+        operationScope
+      });
     } catch (error) {
+      const currentOperation = error?.operation || ventasService.getPedidoPendienteOperation();
+      if (currentOperation?.operationId === operation.operationId) {
+        pedidoPendienteOperationRef.current = currentOperation;
+        setPedidoPendienteOperation(currentOperation);
+        if (ventasService.isPedidoPendienteOperationLocked(currentOperation)) {
+          setFinalizarOpen(false);
+        }
+      }
       if (isSuperAdmin && composer.selectedSucursalId && isCajaSessionError(error)) {
         await openAutoAuxiliarForSucursal({ idSucursal: composer.selectedSucursalId });
       }
@@ -1096,7 +1217,79 @@ export default function CajaView({
       creatingPedidoPendienteRef.current = false;
       setCreatingPedidoPendiente(false);
     }
+
+    return finalizePedidoPendienteCreation(response);
   };
+
+  const handleRecoverPedidoPendiente = async () => {
+    const target = pedidoPendienteOperationLocked
+      ? pedidoPendienteOperation
+      : sharedPedidoPendienteOperations.find((operation) => (
+          operation.status === ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN
+          || operation.leaseExpired
+        ));
+    if (!target || creatingPedidoPendienteRef.current) return;
+
+    pedidoPendienteOperationRef.current = target;
+    setPedidoPendienteOperation(target);
+    creatingPedidoPendienteRef.current = true;
+    setCreatingPedidoPendiente(true);
+    try {
+      const response = await ventasService.recoverPedidoPendienteOperation(target.operationId, {
+        operationScope: target.operationScope
+      });
+      onNotify?.('PEDIDO RECUPERADO', 'Se confirmó el resultado del pedido pendiente.', 'success');
+      await finalizePedidoPendienteCreation(response);
+    } catch (error) {
+      const currentOperation = error?.operation || ventasService.getPedidoPendienteOperation() || target;
+      pedidoPendienteOperationRef.current = currentOperation;
+      setPedidoPendienteOperation(currentOperation);
+      onNotify?.(
+        'RESULTADO PENDIENTE',
+        String(error?.message || 'No fue posible recuperar todavía el resultado del pedido.'),
+        'warning'
+      );
+    } finally {
+      creatingPedidoPendienteRef.current = false;
+      setCreatingPedidoPendiente(false);
+    }
+  };
+
+  const handleAbandonPedidoPendiente = () => {
+    const target = pedidoPendienteOperationLocked
+      ? pedidoPendienteOperation
+      : sharedPedidoPendienteOperations.find((operation) => operation.status === ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN);
+    if (!target || typeof window === 'undefined') return;
+    const confirmed = window.confirm(
+      'No se pudo confirmar si el pedido fue registrado. Si abandonas esta operación y creas otro pedido, podrías generar un duplicado. Primero revisa o recupera el pedido. ¿Deseas abandonar conscientemente esta operación?'
+    );
+    if (!confirmed) return;
+    const abandoned = ventasService.abandonPedidoPendienteOperation(target.operationId, {
+      explicit: true,
+      operationScope: target.operationScope
+    });
+    if (!abandoned) {
+      onNotify?.('OPERACIÓN ACTIVA', 'No se puede abandonar mientras exista una solicitud activa.', 'warning');
+      return;
+    }
+    console.info('[Ventas] Operación de pedido pendiente abandonada explícitamente.', {
+      ...ventasService.buildPedidoPendienteSafeLogContext(target)
+    });
+    pedidoPendienteOperationRef.current = null;
+    setPedidoPendienteOperation(null);
+    composer.resetComposer({ preserveSucursal: true, preserveSession: true, force: true });
+    setFinalizarOpen(false);
+    setDeliveryCostPreview(0);
+    onNotify?.('OPERACIÓN ABANDONADA', 'La operación local fue liberada. Revisa pedidos antes de crear otro.', 'warning');
+  };
+
+  const visiblePedidoPendienteOperation = pedidoPendienteOperationLocked
+    ? pedidoPendienteOperation
+    : sharedPedidoPendienteOperations[0] || null;
+  const canRecoverPedidoPendiente = Boolean(visiblePedidoPendienteOperation) && (
+    visiblePedidoPendienteOperation.status === ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN
+    || visiblePedidoPendienteOperation.leaseExpired
+  ) && visiblePedidoPendienteOperation.hasRecoveryPayload !== false;
 
   const handleRegistrarPagoPedido = async (idPedido, payload) => {
     if (registrandoPagoPedidoRef.current) {
@@ -1587,25 +1780,74 @@ export default function CajaView({
         onCancel={composer.closeExtrasModal}
         onConfirm={composer.confirmExtrasModal}
       />
+      {pedidoPendienteStorageContext.persistenceDegraded ? (
+        <div className="alert alert-danger mt-3" role="alert" data-testid="pedido-pendiente-storage-degraded-alert">
+          El navegador no permite conservar de forma segura la recuperación del pedido. No cierres ni recargues esta pestaña hasta confirmar el resultado.
+        </div>
+      ) : null}
+      {pedidoPendienteStorageContext.invalidRecord ? (
+        <div className="alert alert-danger mt-3" role="alert" data-testid="pedido-pendiente-storage-invalid-alert">
+          Se encontró una recuperación de pedido dañada o incompatible. Revisa los pedidos recientes antes de iniciar otro.
+        </div>
+      ) : null}
+      {pedidoPendienteStorageContext.scopeMismatch ? (
+        <div className="alert alert-warning mt-3" role="alert" data-testid="pedido-pendiente-scope-mismatch-alert">
+          Existe una operación pendiente perteneciente a otra sesión o sucursal. No puede recuperarse desde el contexto actual.
+        </div>
+      ) : null}
+      {visiblePedidoPendienteOperation ? (
+        <div className="alert alert-warning mt-3" role="alert" data-testid="pedido-pendiente-recovery-alert">
+          <div className="fw-semibold">Resultado de pedido pendiente por confirmar</div>
+          <div className="small mt-1">
+            {canRecoverPedidoPendiente
+              ? 'El servidor podría haber registrado el pedido. Recupera el resultado con la misma clave antes de crear o modificar otro pedido.'
+              : visiblePedidoPendienteOperation.hasRecoveryPayload === false
+                ? 'Existe una operación en otra pestaña. Su payload privado no se comparte; vuelve a la pestaña original o revisa los pedidos recientes.'
+                : 'Existe una operación activa en esta u otra pestaña. Espera a que termine antes de intentar recuperarla.'}
+          </div>
+          <div className="d-flex flex-wrap gap-2 mt-3">
+            <button
+              type="button"
+              className="btn btn-sm btn-warning"
+              onClick={handleRecoverPedidoPendiente}
+              disabled={!canRecoverPedidoPendiente || creatingPedidoPendiente}
+            >
+              {creatingPedidoPendiente ? 'Recuperando...' : 'Recuperar pedido'}
+            </button>
+            {canRecoverPedidoPendiente ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-danger"
+                onClick={handleAbandonPedidoPendiente}
+                disabled={creatingPedidoPendiente}
+              >
+                Abandonar operación
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {finalizarOpen ? (
-        <VentaFinalizarOperacionModal
-          open={finalizarOpen}
-          composer={composer}
-          saving={saving || creatingPedidoPendiente}
-          onClose={() => {
-            setFinalizarOpen(false);
-            setDeliveryCostPreview(0);
-          }}
-          onCreatePedidoPendiente={handleCreatePedidoPendiente}
-          onDeliveryCostChange={setDeliveryCostPreview}
-          onClientesRefresh={onClientesRefresh}
-          onClienteCatalogUpsert={onClienteCatalogUpsert}
-          clientesMeta={clientesMeta}
-          clientsLoading={Boolean(catalogLoadingStates.clientsLoading)}
-          clientsStatus={catalogStatuses.clientes || 'idle'}
-          clientsError={catalogErrors.clientes || ''}
-          onNotify={onNotify}
-        />
+        <div inert={pedidoPendienteComposerGuarded ? true : undefined}>
+          <VentaFinalizarOperacionModal
+            open={finalizarOpen}
+            composer={composer}
+            saving={saving || creatingPedidoPendiente || pedidoPendienteComposerGuarded}
+            onClose={() => {
+              setFinalizarOpen(false);
+              setDeliveryCostPreview(0);
+            }}
+            onCreatePedidoPendiente={handleCreatePedidoPendiente}
+            onDeliveryCostChange={pedidoPendienteComposerGuarded ? undefined : setDeliveryCostPreview}
+            onClientesRefresh={onClientesRefresh}
+            onClienteCatalogUpsert={onClienteCatalogUpsert}
+            clientesMeta={clientesMeta}
+            clientsLoading={Boolean(catalogLoadingStates.clientsLoading)}
+            clientsStatus={catalogStatuses.clientes || 'idle'}
+            clientsError={catalogErrors.clientes || ''}
+            onNotify={onNotify}
+          />
+        </div>
       ) : null}
       {registrarPagoOpen ? (
         <VentaRegistrarPagoPedidoModal

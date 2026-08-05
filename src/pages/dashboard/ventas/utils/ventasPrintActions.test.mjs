@@ -249,6 +249,45 @@ describe('acciones independientes de impresion en ventas', () => {
     await viteServer?.close();
   });
 
+  it('la impresion de comanda no intenta transicionar el pedido a EN_COCINA', async () => {
+    const source = await readFile(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
+    const printStart = source.indexOf('const executeComandaPrint = async');
+    const printEnd = source.indexOf('const openComandaReprintFromDetail', printStart);
+    const printFlow = source.slice(printStart, printEnd);
+    assert.ok(printStart >= 0 && printEnd > printStart);
+    assert.doesNotMatch(printFlow, /updatePedidoEstado|estado_destino|EN_COCINA/);
+    assert.match(printFlow, /loadKitchenComandaPrintSource/);
+    assert.match(printFlow, /comanda no pudo imprimirse/);
+
+    const cajaSource = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
+    const createStart = cajaSource.indexOf('const finalizePedidoPendienteCreation =');
+    const createEnd = cajaSource.indexOf('const handleRegistrarPagoPedido', createStart);
+    const createFlow = cajaSource.slice(createStart, createEnd);
+    assert.match(createFlow, /onPedidoPendienteCreated\?\.\(response\)/);
+    assert.doesNotMatch(createFlow, /getPedidoComanda|executeComandaPrint/);
+    assert.doesNotMatch(printFlow, /createPedidoPendiente/);
+  });
+
+  it('pedido pendiente en modo agente encola automaticamente una sola identidad inicial', async () => {
+    const source = await readFile(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
+    const start = source.indexOf('const handlePendingOrderCreatedPrintPrompt');
+    const end = source.indexOf('const handleSuccessfulPendingOrderPaymentPrint', start);
+    const flow = source.slice(start, end);
+    assert.match(flow, /if \(AGENT_PRINT_MODE\)[\s\S]*executeComandaPrint/);
+    assert.match(flow, /sourceType: 'pedido'[\s\S]*action: 'initial'/);
+    assert.equal(buildComandaIdempotencyKey({
+      sourceType: 'pedido', action: 'initial', idPedido: 12
+    }), 'comanda:pedido:12:inicial');
+  });
+
+  it('auditoria distingue cancelacion explicita, fallo tecnico y dialogo aun pendiente', async () => {
+    const source = await readFile(new URL('../VentasPage.jsx', import.meta.url), 'utf8');
+    assert.match(source, /estado: 'CANCELADA'[\s\S]*outcome: 'USER_CANCELLED'/);
+    assert.match(source, /estado: 'ERROR'[\s\S]*outcome: 'TECHNICAL_FAILURE'/);
+    assert.match(source, /printMode: 'BROWSER'[\s\S]*outcome: 'PENDING_USER_CONFIRMATION'/);
+    assert.match(source, /documento sigue pendiente en la cola/);
+  });
+
   it('serializa commits y el segundo observa el resultado exacto del primero', () => {
     const initialPedidos = [{ id_pedido: 12, id_factura: null }];
     const applied = [];
