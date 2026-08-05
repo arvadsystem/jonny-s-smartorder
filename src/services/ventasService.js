@@ -1,6 +1,7 @@
 ﻿import { apiFetch } from './api';
 import { API_URL } from '../utils/constants';
 import { createFinancialOperationManager } from '../pages/dashboard/ventas/utils/financialOperationManager';
+import { parsePositiveIntegerId } from '../pages/dashboard/ventas/utils/authenticatedUserScope';
 
 const financialOperationManager = createFinancialOperationManager();
 
@@ -292,15 +293,19 @@ const serializePedidoPendienteRecoveryPayload = (payload) => {
 
 const normalizePedidoPendienteOperationScope = (scope = null) => {
   if (scope && typeof scope === 'object' && !Array.isArray(scope)) {
+    const userId = parsePositiveIntegerId(scope.userId ?? scope.id_usuario);
+    const sucursalId = parsePositiveIntegerId(scope.sucursalId ?? scope.id_sucursal);
+    const cashSessionId = parsePositiveIntegerId(scope.cashSessionId ?? scope.id_sesion_caja);
     return {
-      userId: String(scope.userId ?? scope.id_usuario ?? '').trim(),
-      sucursalId: String(scope.sucursalId ?? scope.id_sucursal ?? '').trim(),
-      cashSessionId: String(scope.cashSessionId ?? scope.id_sesion_caja ?? '').trim(),
+      userId: userId ? String(userId) : '',
+      sucursalId: sucursalId ? String(sucursalId) : '',
+      cashSessionId: cashSessionId ? String(cashSessionId) : '',
       origin: String(scope.origin ?? scope.origen ?? 'SMARTORDER_POS').trim().toUpperCase()
     };
   }
+  const userId = parsePositiveIntegerId(scope);
   return {
-    userId: String(scope ?? '').trim(),
+    userId: userId ? String(userId) : '',
     sucursalId: '',
     cashSessionId: '',
     origin: 'SMARTORDER_POS'

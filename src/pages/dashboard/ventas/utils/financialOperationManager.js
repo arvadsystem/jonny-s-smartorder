@@ -1,3 +1,5 @@
+import { parsePositiveIntegerId } from './authenticatedUserScope.js';
+
 export const FINANCIAL_OPERATION_STATUS = Object.freeze({
   NEW: 'NUEVA',
   SENDING: 'ENVIANDO',
@@ -34,9 +36,9 @@ const inFlight = new Map();
 const ownerId = createId();
 
 const normalizeScope = (scope = {}) => ({
-  userId: Number(scope.userId) || null,
-  sucursalId: Number(scope.sucursalId) || null,
-  cashSessionId: Number(scope.cashSessionId) || null,
+  userId: parsePositiveIntegerId(scope.userId),
+  sucursalId: parsePositiveIntegerId(scope.sucursalId),
+  cashSessionId: parsePositiveIntegerId(scope.cashSessionId),
   origin: String(scope.origin || '').trim().toUpperCase()
 });
 

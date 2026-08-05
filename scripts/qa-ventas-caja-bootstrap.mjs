@@ -15,6 +15,10 @@ const composerSummarySource = readFileSync(new URL('../src/pages/dashboard/venta
 const payloadBuildersSource = readFileSync(new URL('../src/modules/ventas/utils/ventasPayloadBuilders.js', import.meta.url), 'utf8');
 const ventasHelpersSource = readFileSync(new URL('../src/pages/dashboard/ventas/utils/ventasHelpers.js', import.meta.url), 'utf8');
 const cajaSucursalStorageSource = readFileSync(new URL('../src/pages/dashboard/ventas/utils/ventasCajaSucursalStorage.js', import.meta.url), 'utf8');
+const createVentaSource = useVentasSource.slice(
+  useVentasSource.indexOf('const createVenta = useCallback('),
+  useVentasSource.indexOf('const createPedidoPendiente = useCallback(')
+);
 
 assert.match(serviceSource, /getCajaBootstrap[\s\S]*\/ventas\/caja\/bootstrap/, 'debe existir el servicio bootstrap');
 assert.match(useVentasSource, /activeTab[\s\S]*=== 'caja'[\s\S]*loadCajaBootstrap/, 'Caja debe cargar bootstrap sin esperar historial');
@@ -57,7 +61,7 @@ assert.doesNotMatch(
   /validIds\.has\(sessionSelection\)[\s\S]{0,120}validIds\.has\(currentSelection\)/,
   'defaultSucursalId no debe priorizarse sobre la seleccion manual vigente'
 );
-assert.match(useVentasSource, /userId = null/, 'useVentas debe recibir id_usuario');
+assert.match(useVentasSource, /userId = null/, 'useVentas debe recibir el identificador canonico del usuario');
 assert.match(useVentasSource, /const cajaUserKey = String\(parsePositiveId\(userId\) \|\| 'anon'\)/, 'useVentas debe aislar caches por usuario');
 assert.match(useVentasSource, /const buildCajaUserScopeKey = \(userKey,\s*idSucursal\) =>[\s\S]{0,120}usuario:\$\{userKey\}:sucursal:\$\{idSucursal \|\| 'auto'\}/, 'useVentas debe construir llaves usuario/sucursal canonicas');
 assert.match(useVentasSource, /`bootstrap:\$\{scopeKey\}`/, 'bootstrap debe cachearse por usuario y sucursal');
@@ -69,7 +73,7 @@ assert.match(useVentasSource, /cajaCatalogRequestIdRef/, 'catalogos deben tener 
 assert.match(useVentasSource, /activeCajaSucursalRef\.current === requestSucursalId|activeCajaSucursalRef\.current === idSucursal/, 'respuestas de Caja deben validar la ultima sucursal elegida');
 assert.match(useVentasSource, /currentInFlight\?\.promise[\s\S]{0,120}!currentInFlight\.controller\?\.signal\?\.aborted/, 'no se deben reutilizar promesas abortadas');
 assert.match(cajaSource, /userId,\s*[\s\S]*defaultSucursalId/, 'CajaView debe recibir userId');
-assert.match(cajaSource, /userId:\s*userId \?\? user\?\.id_usuario/, 'CajaView debe pasar userId a useVentaComposer');
+assert.match(cajaSource, /userId:\s*authenticatedUserId/, 'CajaView debe pasar el usuario autenticado canonico a useVentaComposer');
 assert.match(cajaSource, /lockedSucursalId = toPositiveId\(cajaSesionActiva\?\.id_sucursal \|\| cajaAsignacion\?\.id_sucursal \|\| defaultSucursalId\)/, 'no superadmin debe bloquearse por sesion, asignacion y luego sucursal laboral');
 assert.match(cajaSource, /defaultSucursalId:\s*isSuperAdmin \? defaultSucursalId : lockedSucursalId/, 'responsable y auxiliar deben quedar bloqueados a la sucursal operativa');
 assert.match(cajaSource, /catalogSucursalRequestIdRef/, 'CajaView debe generar requestId monotono por seleccion');
@@ -92,9 +96,9 @@ assert.match(cajaSource, /id_sucursal:\s*selectedSucursalId/, 'pendientes debe c
 assert.doesNotMatch(cajaSource, /pedidos-pendientes\?id_sucursal=1|id_sucursal:\s*1/, 'Caja no debe forzar pendientes de sucursal 1');
 assert.match(composerSource, /origin:\s*'CAJA'/, 'la venta creada desde Caja debe marcar su origen');
 assert.match(composerSource, /resetComposer\(\{\s*preserveSucursal:\s*true,\s*preserveSession:\s*true\s*\}\)/, 'despues de vender desde Caja debe conservar sucursal y sesion');
-assert.match(useVentasSource, /const shouldRefreshAfterCreate = origin !== 'CAJA'/, 'Caja no debe disparar refreshVentas general tras vender');
-assert.match(useVentasSource, /if \(shouldRefreshAfterCreate\)[\s\S]{0,140}refreshVentas/, 'solo origen no-Caja debe refrescar historial general');
-assert.doesNotMatch(useVentasSource, /origin:\s*'CAJA'[\s\S]{0,300}refreshVentas/, 'el flujo Caja no debe refrescar historial ni scopeInfo tras vender');
+assert.match(createVentaSource, /const shouldRefreshAfterCreate = origin !== 'CAJA'/, 'Caja no debe disparar refreshVentas general tras vender');
+assert.match(createVentaSource, /if \(shouldRefreshAfterCreate\)[\s\S]{0,140}refreshVentas/, 'solo origen no-Caja debe refrescar historial general');
+assert.match(createVentaSource, /origin:\s*origin \|\| 'VENTAS'/, 'la venta debe conservar el origen Caja en su scope financiero');
 assert.match(useVentasSource, /recipeCatalogCacheRef[\s\S]*buildCajaUserScopeKey\(cajaUserKey,\s*idSucursal\)[\s\S]*departamento/, 'recetas deben usar cache por usuario, sucursal y departamento');
 assert.match(useVentasSource, /getRecetasCatalog\([\s\S]*id_tipo_departamento/, 'otro departamento debe solicitarse al backend');
 assert.match(useVentasSource, /cajaCatalogDataCacheRef/, 'productos deben conservar cache independiente por sucursal');
@@ -110,11 +114,11 @@ assert.match(cajasServiceSource, /listSesionesAbiertasSafe:\s*\(params = \{\}, c
 assert.match(composerSource, /shouldLoadExtras[\s\S]*activeCatalog === 'EXTRAS'/, 'Extras debe cargarse solo bajo demanda');
 assert.match(optionsSource, /key: 'EXTRAS'/, 'la pestaña Extras debe permanecer visible');
 assert.match(composerSource, /getExtrasPermitidos/, 'el catalogo de Extras debe cargarse por sucursal');
-assert.match(composerSource, /getCurrentQuantityInCartByKind\('ITEM'/, 'Extras debe soportar incremento de cantidad');
+assert.match(composerSource, /isQuantityManagedVentaLineKind[\s\S]{0,120}'ITEM'[\s\S]*const nextQty = Number\(currentLine\.cantidad \?\? 0\) \+ 1/, 'Extras debe soportar incremento de cantidad');
 assert.match(composerSummarySource, /isStandaloneExtraLine/, 'el carrito debe distinguir extras independientes');
 
 assert.match(payloadBuildersSource, /id_extra:\s*line\.kind === 'ITEM' \? line\.id_extra : null/, 'ITEM debe enviar id_extra');
-assert.match(payloadBuildersSource, /if \(line\.kind === 'ITEM'\)[\s\S]{0,100}payload\.cantidad/, 'ITEM debe enviar su cantidad');
+assert.match(payloadBuildersSource, /const cantidad = parseVentaLineQuantity\(line\.cantidad\)[\s\S]{0,500}id_extra: line\.kind === 'ITEM'[\s\S]{0,120}cantidad/, 'ITEM debe enviar su cantidad normalizada');
 assert.match(payloadBuildersSource, /const extras = line\.kind === 'ITEM' \? \[\]/, 'ITEM no debe duplicarse como extra interno');
 
 const standaloneExtraPrint = validateComandaForPrint({

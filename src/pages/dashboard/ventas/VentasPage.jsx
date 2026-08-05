@@ -33,6 +33,7 @@ import {
   prepareComandaPrintWindow
 } from './utils/ventasPrintActions';
 import { loadKitchenComandaPrintSource } from './utils/ventasKitchenRouting';
+import { resolveAuthenticatedUserId } from './utils/authenticatedUserScope';
 import {
   getAllowedTabs,
   MODULE_PRIMARY_PERMISSION,
@@ -65,7 +66,8 @@ const resolvePrintWidthMm = (...values) =>
 
 export default function VentasPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const authenticatedUserId = resolveAuthenticatedUserId(user);
   const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
   const requestedVentasTab = String(
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') || '' : ''
@@ -121,7 +123,7 @@ export default function VentasPage() {
     activeTab: requestedVentasTab,
     initialSucursalId: user?.id_sucursal,
     isSuperAdmin,
-    userId: user?.id_usuario
+    userId: authenticatedUserId
   });
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1206,7 +1208,8 @@ export default function VentasPage() {
         <CajaView
           sucursales={sucursales}
           isSuperAdmin={isSuperAdmin}
-          userId={user?.id_usuario}
+          userId={authenticatedUserId}
+          authLoading={authLoading}
           defaultSucursalId={!isSuperAdmin && Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
           productos={productos}
           categorias={categorias}
@@ -1245,7 +1248,7 @@ export default function VentasPage() {
 
       {activeTab === 'pedidos' ? (
         <PedidosView
-          userId={user?.id_usuario || user?.id}
+          userId={authenticatedUserId}
           isSuperAdmin={isSuperAdmin}
           sucursales={sucursales}
           defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}

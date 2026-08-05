@@ -1382,7 +1382,12 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       try {
         response = await ventasService.createPedidoPendiente(payload, {
           ...options,
-          operationScope: userId ?? options?.operationScope ?? null
+          operationScope: options?.operationScope ?? {
+            userId,
+            sucursalId: payload?.id_sucursal,
+            cashSessionId: payload?.id_sesion_caja,
+            origin: 'SMARTORDER_POS'
+          }
         });
       } catch (error) {
         const message = extractApiMessage(error, 'No se pudo crear el pedido pendiente.');
