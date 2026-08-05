@@ -39,7 +39,7 @@ export default function CocinaToolbar({
 
         <div className={`kds-realtime ${isRealtimeConnected ? 'is-connected' : ''}`}>
           <span className="kds-realtime__dot" />
-          <span>{isRealtimeConnected ? 'En tiempo real' : 'Reconectando...'}</span>
+          <span>{isRealtimeConnected ? 'Actualización automática' : 'Reintentando...'}</span>
         </div>
 
         <button

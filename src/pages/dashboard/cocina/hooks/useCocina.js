@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import sucursalesService from '../../../../services/sucursalesService';
 import { cocinaApi } from '../services/cocinaApi';
-import { supabase } from '../../../../lib/supabaseClient';
 import {
   applyKitchenTransition,
   filterActiveSucursales,
@@ -9,6 +8,11 @@ import {
   resolveOrderColumnKey
 } from '../utils/cocinaHelpers';
 import { createCocinaAudioManager } from '../utils/cocinaAudio';
+import { createPollingRequestCoordinator } from '../../../../utils/pollingRequestCoordinator.mjs';
+
+const COCINA_POLL_DELAY_MS = 10_000;
+const COCINA_POLL_MAX_DELAY_MS = 60_000;
+const COCINA_REQUEST_TIMEOUT_MS = 12_000;
 
 const initialToast = {
   show: false,
@@ -70,6 +74,13 @@ export const useCocina = ({
   const hasAudioBaselineRef = useRef(false);
   const latestPedidosRef = useRef([]);
   const demandBaselineCountRef = useRef(null);
+  const pollingCoordinatorRef = useRef(null);
+  if (!pollingCoordinatorRef.current) {
+    pollingCoordinatorRef.current = createPollingRequestCoordinator({
+      baseDelayMs: COCINA_POLL_DELAY_MS,
+      maxDelayMs: COCINA_POLL_MAX_DELAY_MS
+    });
+  }
   const isAudioEnabled = audioMode === 'cocina' || audioMode === 'pantalla';
   const isCocinaOperativeAudio = audioMode === 'cocina';
 
@@ -235,12 +246,18 @@ export const useCocina = ({
   const loadPedidos = useCallback(
     async ({ silent = false } = {}) => {
       if (requireSucursalSelection && !selectedSucursalId) {
+        pollingCoordinatorRef.current.reset();
         setPedidos([]);
         setError('');
         setLoading(false);
         setRefreshing(false);
         return [];
       }
+
+      const requestScope = selectedSucursalId ? `sucursal:${selectedSucursalId}` : 'scope';
+      const requestToken = pollingCoordinatorRef.current.begin(requestScope);
+      if (!requestToken) return null;
+      let requestSucceeded = false;
 
       if (silent) {
         setRefreshing(true);
@@ -251,31 +268,44 @@ export const useCocina = ({
       try {
         const response = await cocinaApi.listPedidos({
           id_sucursal: selectedSucursalId || undefined
+        }, {
+          signal: requestToken.controller.signal,
+          timeoutMs: COCINA_REQUEST_TIMEOUT_MS
         });
+        if (!pollingCoordinatorRef.current.isCurrent(requestToken)) return null;
         const rows = enrichPedidosWithTiming((Array.isArray(response) ? response : []).map(normalizeKitchenOrder));
         setPedidos(rows);
         setError('');
+        setIsRealtimeConnected(true);
+        requestSucceeded = true;
         return rows;
       } catch (loadError) {
+        if (!pollingCoordinatorRef.current.isCurrent(requestToken)) return null;
         const message = extractApiMessage(loadError, 'No se pudieron cargar los pedidos de cocina.');
         setError(message);
+        setIsRealtimeConnected(false);
         if (!silent) {
           openToast('ERROR', message, 'danger', { origin: 'system', code: 'LOAD_ERROR' });
         }
         throw loadError;
       } finally {
-        if (silent) {
-          setRefreshing(false);
-        } else {
-          setLoading(false);
+        if (pollingCoordinatorRef.current.isCurrent(requestToken)) {
+          pollingCoordinatorRef.current.finish(requestToken, { success: requestSucceeded });
+          if (silent) {
+            setRefreshing(false);
+          } else {
+            setLoading(false);
+          }
         }
       }
     },
-    [enrichPedidosWithTiming, openToast, selectedSucursalId]
+    [enrichPedidosWithTiming, openToast, requireSucursalSelection, selectedSucursalId]
   );
 
   useEffect(() => {
+    pollingCoordinatorRef.current.reset();
     Promise.allSettled([loadSucursales(), loadPedidos()]);
+    return () => pollingCoordinatorRef.current.cancel();
   }, [loadPedidos, loadSucursales]);
 
   const refreshBoard = useCallback(
@@ -283,61 +313,46 @@ export const useCocina = ({
     [loadPedidos]
   );
 
-  const pollBoard = useEffectEvent(() => {
+  const pollBoard = useEffectEvent(async () => {
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     if (mutatingIdsRef.current.length > 0) return;
-    refreshBoard({ silent: true }).catch(() => {});
+    await refreshBoard({ silent: true }).catch(() => null);
   });
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      pollBoard();
-    }, 10000);
+    let disposed = false;
+    let timerId = null;
+
+    const schedule = (delayMs) => {
+      if (disposed) return;
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = window.setTimeout(runPoll, delayMs);
+    };
+
+    const runPoll = async () => {
+      if (timerId !== null) window.clearTimeout(timerId);
+      timerId = null;
+      await pollBoard();
+      schedule(pollingCoordinatorRef.current.getNextDelay());
+    };
+
+    schedule(COCINA_POLL_DELAY_MS);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        pollBoard();
+        void runPoll();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.clearInterval(interval);
+      disposed = true;
+      if (timerId !== null) window.clearTimeout(timerId);
+      pollingCoordinatorRef.current.cancel();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [pollBoard]);
-
-  useEffect(() => {
-    // Suscripción Realtime a cambios en la tabla 'pedidos'
-    const channel = supabase
-      .channel('cocina-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'pedidos'
-        },
-        (payload) => {
-          // Si el pedido cambiado pertenece a la sucursal seleccionada (o si estamos viendo todas), refrescamos.
-          // El refreshBoard ya maneja el filtro de sucursal.
-          const changedRecord = payload.new || payload.old;
-          const idSucursalChanged = Number(changedRecord?.id_sucursal ?? 0);
-
-          if (!selectedSucursalId || idSucursalChanged === Number(selectedSucursalId)) {
-            refreshBoard({ silent: true }).catch(() => {});
-          }
-        }
-      )
-      .subscribe((status) => {
-        setIsRealtimeConnected(status === 'SUBSCRIBED');
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [refreshBoard, selectedSucursalId]);
+  }, []);
 
   const advancePedido = useCallback(
     async (pedido, estadoDestino) => {

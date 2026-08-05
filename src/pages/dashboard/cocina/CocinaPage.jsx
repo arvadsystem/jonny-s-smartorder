@@ -274,7 +274,7 @@ export default function CocinaPage() {
             <div className="kds-tv-header__title">Kitchen Display</div>
             <div className={`kds-realtime kds-realtime--tv ${isRealtimeConnected ? 'is-connected' : ''}`}>
               <span className="kds-realtime__dot" />
-              <span>{isRealtimeConnected ? 'En tiempo real' : 'Reconectando...'}</span>
+              <span>{isRealtimeConnected ? 'Actualización automática' : 'Reintentando...'}</span>
               <span className="kds-tv-header__clock" aria-label="Hora actual">
                 · {tvClockLabel}
               </span>

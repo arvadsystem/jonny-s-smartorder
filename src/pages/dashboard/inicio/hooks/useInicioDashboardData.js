@@ -16,8 +16,7 @@ import {
   filterRowsBySucursal,
   getTimedCacheValue,
   resolveFinancialShape,
-  setTimedCacheValue,
-  toNumber
+  setTimedCacheValue
 } from './dashboardDataUtils';
 import { formatDateInput, resolvePreviousSalesRangeWindow, resolveSalesRangeWindow } from './dashboardDateUtils';
 import {
@@ -252,29 +251,6 @@ export const useInicioDashboardData = ({
           comparisonWindow: previousWindow
         };
         setFinancialPayload(nextPayload);
-        setTimedCacheValue(financialCacheRef.current, cacheKey, {
-          payload: nextPayload,
-          error: ''
-        });
-        return;
-      }
-
-      const supabaseFinancial = await dashboardSupabaseService.getFinancialSummary({
-        fechaDesde: financialWindow.fechaDesde,
-        fechaHasta: financialWindow.fechaHasta,
-        sucursalFilter
-      });
-
-      if (supabaseFinancial?.hasSummary) {
-        const nextPayload = { summary: supabaseFinancial.summary, comparisonSummary: null, comparisonWindow: null };
-        setFinancialPayload(nextPayload);
-        setDataSourceMode((current) =>
-          current === 'Supabase + API consolidada' || current === 'API consolidada'
-            ? current
-            : current === 'Supabase + API'
-              ? current
-              : 'Supabase'
-        );
         setTimedCacheValue(financialCacheRef.current, cacheKey, {
           payload: nextPayload,
           error: ''
