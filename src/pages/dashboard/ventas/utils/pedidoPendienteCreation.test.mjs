@@ -37,14 +37,18 @@ test('Caja espera el encolado post-COMMIT y absorbe su fallo sin repetir el pedi
   assert.match(source, /return finalizePedidoPendienteCreation\(response\)/);
 });
 
-test('CajaView ofrece recuperacion y abandono consciente sin reset silencioso', async () => {
+test('CajaView ofrece recuperacion/verificacion sin reset silencioso ni abandono directo de UNKNOWN', async () => {
   const source = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
   assert.match(source, /PEDIDO_PENDIENTE_RESULTADO_DESCONOCIDO/);
   assert.match(source, /recoverPedidoPendienteOperation/);
   assert.match(source, /Recuperar pedido/);
-  assert.match(source, /window\.confirm/);
-  assert.match(source, /explicit: true/);
-  assert.match(source, /No se puede abandonar mientras exista una solicitud activa/);
+  assert.match(source, /reconcilePedidoPendienteOperation/);
+  assert.match(source, /Verificar resultado/);
+  // RONDA 3: un UNKNOWN (con o sin payload) ya no puede abandonarse directamente --
+  // ni con confirmacion consciente del usuario. Ver pedidoPendienteOrphanLockFix.test.mjs
+  // y ventasServicePendingOrderIdempotency.test.mjs para la regla completa.
+  assert.doesNotMatch(source, /const handleAbandonPedidoPendiente = /);
+  assert.doesNotMatch(source, />\s*Abandonar operación\s*</);
   assert.match(source, /inert=\{pedidoPendienteComposerGuarded/);
   assert.match(source, /pedido-pendiente-storage-degraded-alert/);
   assert.match(source, /pedido-pendiente-storage-invalid-alert/);

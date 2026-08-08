@@ -2,20 +2,24 @@
 // bloqueado mostrando "RESULTADO PENDIENTE" / "Existe una operación en otra pestaña"
 // incluso sin otra pestaña real y tras recargar.
 //
-// Hallazgo de auditoria (ronda 2): la solucion de la ronda 1 permitia "Abandonar
-// operación" para un registro huerfano (otra pestaña, sin payload) con solo
-// leaseExpired=true. Eso es incorrecto: leaseExpired describe unicamente si sigue
-// existiendo una pestaña dueña del navegador, NUNCA si el pedido existe o no en el
-// servidor. Un UNKNOWN real solo puede liberarse cuando el servidor confirma un
-// estado terminal (FAILED) via GET /ventas/idempotency-result con la MISMA
-// idempotency-key -- nunca solo por vencimiento de lease.
+// Ronda 2: se prohibio liberar un registro huerfano (otra pestaña, sin payload) solo
+// porque su lease vencio.
+//
+// Ronda 3 (este archivo): la auditoria encontro que un UNKNOWN CON payload propio
+// todavia podia "Abandonar operación" (explicit=true), lo que permitia borrar el
+// operationId/idempotency-key de un pedido que el servidor pudo haber creado y
+// duplicarlo en el siguiente intento. La regla final: NINGUN UNKNOWN (con o sin
+// payload) puede abandonarse directamente. Por eso "Abandonar operación" se elimino
+// por completo de este banner -- la unica accion posible para un lock visible aqui es
+// verificar con el servidor (reutilizando "Recuperar pedido"/"Verificar resultado",
+// que ahora reconcilian antes de decidir).
 //
 // CajaView.jsx es un componente React sin jsdom/Testing Library disponible en este
 // proyecto -- esta prueba lee el codigo fuente y confirma, de forma ejecutable, que:
-//   1. el registro huerfano YA NO ofrece "Abandonar operación" como accion primaria;
-//   2. en su lugar ofrece "Verificar resultado", que reconcilia con el servidor;
-//   3. "Abandonar operación" solo aparece para el caso con payload propio (riesgo
-//      consciente y explicito del propio operador, no relacionado con este incidente).
+//   1. "Abandonar operación" y handleAbandonPedidoPendiente ya no existen en el archivo;
+//   2. el banner de pedido pendiente solo ofrece "Recuperar pedido" (payload propio,
+//      reconcilia antes de decidir) y "Verificar resultado" (huerfano, solo lectura);
+//   3. la reconciliacion automatica del huerfano se dispara una sola vez, sin polling.
 // La logica de estados en si vive en ventasServicePendingOrderIdempotency.test.mjs.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -24,37 +28,43 @@ import { resolve } from 'node:path';
 
 const source = readFileSync(resolve('src/pages/dashboard/ventas/components/CajaView.jsx'), 'utf8');
 
-describe('Fix (ronda 2): candado huerfano ya no se libera solo por leaseExpired -- requiere verificar con el servidor', () => {
-  it('ya NO existe canAbandonOrphanPedidoPendiente (el bypass de la ronda 1 fue eliminado)', () => {
+describe('Fix (ronda 3): ningun UNKNOWN puede abandonarse directamente -- "Abandonar operación" eliminado del banner', () => {
+  it('ya NO existe canAbandonOrphanPedidoPendiente (bypass de la ronda 1, eliminado en ronda 2)', () => {
+    assert.doesNotMatch(source, /canAbandonOrphanPedidoPendiente/);
+  });
+
+  it('"Abandonar operación" y handleAbandonPedidoPendiente ya NO existen como JSX/handler en CajaView.jsx', () => {
+    // Solo se prohibe el JSX/handler reales; los comentarios que documentan la
+    // eliminacion (para auditoria futura) pueden seguir mencionando el texto.
     assert.doesNotMatch(
       source,
-      /canAbandonOrphanPedidoPendiente/,
-      'El bypass de abandono para el caso huerfano debe estar completamente eliminado, no solo renombrado.'
+      />\s*Abandonar operación\s*</,
+      'No debe existir ningun boton JSX con el texto "Abandonar operación".'
+    );
+    assert.doesNotMatch(
+      source,
+      /onClick=\{handleAbandonPedidoPendiente\}/,
+      'No debe existir ningun onClick que dispare un abandono manual.'
+    );
+    assert.doesNotMatch(
+      source,
+      /const handleAbandonPedidoPendiente = /,
+      'El handler de abandono manual debe estar eliminado -- ya no hay ningun camino de UI hacia el.'
     );
   });
 
-  it('define canVerifyOrphanPedidoPendiente para el caso sin payload + lease vencido', () => {
+  it('define canVerifyOrphanPedidoPendiente para el caso sin payload + lease vencido (accion de solo verificacion)', () => {
     assert.match(
       source,
-      /const canVerifyOrphanPedidoPendiente = Boolean\(visiblePedidoPendienteOperation\)\s*&&\s*visiblePedidoPendienteOperation\.hasRecoveryPayload === false\s*&&\s*Boolean\(visiblePedidoPendienteOperation\.leaseExpired\);/,
-      'Debe existir una condicion explicita para el registro huerfano (coordinacion sin payload, lease vencido) que habilite VERIFICAR, no abandonar.'
+      /const canVerifyOrphanPedidoPendiente = Boolean\(visiblePedidoPendienteOperation\)\s*&&\s*visiblePedidoPendienteOperation\.hasRecoveryPayload === false\s*&&\s*Boolean\(visiblePedidoPendienteOperation\.leaseExpired\);/
     );
   });
 
-  it('el boton "Abandonar operación" ya NO se habilita para el caso huerfano -- solo para canRecoverPedidoPendiente (payload propio)', () => {
-    const buttonBlockIdx = source.indexOf('Abandonar operación');
-    assert.notEqual(buttonBlockIdx, -1, 'No se encontro el boton de abandonar.');
-    const before = source.slice(Math.max(0, buttonBlockIdx - 400), buttonBlockIdx);
-    assert.match(
-      before,
-      /\{canRecoverPedidoPendiente \? \(/,
-      'El boton de abandonar debe depender unicamente de canRecoverPedidoPendiente (payload propio), nunca del caso huerfano.'
-    );
-    assert.doesNotMatch(
-      before,
-      /canVerifyOrphanPedidoPendiente/,
-      'canVerifyOrphanPedidoPendiente no debe habilitar el boton de abandonar.'
-    );
+  it('el boton principal del banner es "Recuperar pedido"/"Verificando..." y llama a ventasService.recoverPedidoPendienteOperation (payload propio)', () => {
+    const idx = source.indexOf('const handleRecoverPedidoPendiente');
+    assert.notEqual(idx, -1);
+    const snippet = source.slice(idx, idx + 900);
+    assert.match(snippet, /ventasService\.recoverPedidoPendienteOperation\(target\.operationId, \{/);
   });
 
   it('existe un boton "Verificar resultado" habilitado por canVerifyOrphanPedidoPendiente, que llama a handleReconcilePedidoPendiente', () => {
@@ -75,8 +85,6 @@ describe('Fix (ronda 2): candado huerfano ya no se libera solo por leaseExpired 
   });
 
   it('la reconciliacion automatica se dispara UNA sola vez por operacion (guardada en un ref), no en cada render/poll', () => {
-    const idx = source.indexOf('autoReconciledPedidoPendienteIdsRef');
-    assert.notEqual(idx, -1, 'Debe existir un mecanismo para no repetir la reconciliacion automatica indefinidamente.');
     assert.match(source, /const autoReconciledPedidoPendienteIdsRef = useRef\(new Set\(\)\);/);
     assert.match(
       source,
@@ -85,15 +93,12 @@ describe('Fix (ronda 2): candado huerfano ya no se libera solo por leaseExpired 
     );
   });
 
-  it('el mensaje del banner para el caso huerfano ya no promete "liberar" -- indica que se debe verificar con el servidor', () => {
-    assert.doesNotMatch(
-      source,
-      /Puedes liberarlo para continuar vendiendo/,
-      'El copy de la ronda 1 sugeria que el lease vencido por si solo autorizaba liberar el candado -- eso ya no es correcto.'
-    );
+  it('el banner nunca ofrece "liberar" el candado por vencimiento de lease -- solo verificar con el servidor', () => {
+    assert.doesNotMatch(source, /Puedes liberarlo para continuar vendiendo/);
+    assert.match(source, /No se puede reintentar desde aquí; verifica con el servidor antes de continuar vendiendo\./);
     assert.match(
       source,
-      /No se puede reintentar desde aquí; verifica con el servidor antes de continuar vendiendo\./
+      /No sabemos con certeza si el servidor registró el pedido\. Verifica el resultado con la misma clave antes de crear o modificar otro pedido: nunca se reenviará como una operación nueva\./
     );
   });
 });

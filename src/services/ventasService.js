@@ -923,7 +923,10 @@ const renewPedidoPendienteOperationLease = (record) => {
 };
 
 const abandonPedidoPendienteOperation = (operationId, {
-  explicit = false,
+  // `explicit` se conserva por compatibilidad de firma con callers existentes, pero
+  // RONDA 3: ya NO tiene ningun poder para saltarse la regla de abajo. Ningun valor
+  // de explicit, leaseExpired o presencia/ausencia de payload autoriza abandonar una
+  // operacion que alguna vez se envio al servidor.
   operationScope = null
 } = {}) => {
   const normalizedOperationId = String(operationId || '').trim();
@@ -936,17 +939,18 @@ const abandonPedidoPendienteOperation = (operationId, {
     : findSharedPedidoPendienteOperation(normalizedOperationId, operationScope);
   if (!record) return false;
   if (!isSamePedidoPendienteScope(record.operationScope, normalizedScope)) return false;
-  // IMPORTANTE: leaseExpired describe unicamente si sigue existiendo una pestaña
-  // dueña del navegador -- NUNCA es evidencia de si el pedido fue creado o no en el
-  // servidor. Un registro de coordinacion (otra pestaña) nunca trae payload propio;
-  // no existe forma segura de "abandonarlo" sin antes preguntarle al servidor la
-  // verdad (ver reconcilePedidoPendienteOperation / accion "Verificar resultado").
-  // Abandonar aqui solo libera lo que ESTA pestaña sabe con certeza: su propia
-  // operacion con payload, nunca un registro huerfano de otra pestaña.
-  if (!record.hasRecoveryPayload) return false;
-  if (record.status === PEDIDO_PENDIENTE_OPERATION_STATUS.SENDING && !record.leaseExpired) return false;
-  if (record.status === PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN && !explicit) return false;
-  if (isPedidoPendienteOperationLocked(record) && !explicit) return false;
+  // REGLA DEFINITIVA (ronda 3): "abandonar" solo puede liberar una operacion que
+  // JAMAS se envio al servidor (NEW, hasBeenSent === false). En cuanto un POST salio
+  // hacia el backend -- SENDING, UNKNOWN, o cualquier registro de coordinacion de
+  // otra pestaña (que por definicion siempre tuvo un POST en vuelo) -- existe la
+  // posibilidad real de que el servidor ya haya creado el pedido. Borrar el
+  // operationId/idempotency-key en ese caso permitiria que el siguiente intento
+  // genere una clave NUEVA sobre un pedido que quiza ya existe: pedido duplicado.
+  // Sin excepciones: ni explicit=true, ni leaseExpired=true, ni "el usuario confirma
+  // conscientemente" autorizan saltarse esto. La UNICA salida para un estado con
+  // hasBeenSent=true es reconciliar con el servidor (reconcilePedidoPendienteOperation
+  // / recoverPedidoPendienteOperation), nunca abandonar localmente.
+  if (record.status !== PEDIDO_PENDIENTE_OPERATION_STATUS.NEW || record.hasBeenSent) return false;
   const abandoned = transitionPedidoPendienteOperation(record, PEDIDO_PENDIENTE_OPERATION_STATUS.ABANDONED, {
     leaseToken: '',
     leaseExpiresAt: 0
@@ -1005,31 +1009,10 @@ const reconcilePedidoPendienteOperation = async (operationId, { operationScope =
   }
 
   const truth = await queryPedidoPendienteServerTruth(record);
-
-  if (truth.status === 'SUCCESS') {
-    const confirmed = transitionPedidoPendienteOperation(record, PEDIDO_PENDIENTE_OPERATION_STATUS.CONFIRMED, {
-      leaseToken: '',
-      leaseExpiresAt: 0,
-      confirmedPedidoId: truth.idPedido,
-      confirmedAt: Date.now()
-    });
-    clearPedidoPendienteOperation(confirmed);
-    return { status: 'SUCCESS', idPedido: truth.idPedido };
-  }
-
-  if (truth.status === 'FAILED') {
-    const rejected = transitionPedidoPendienteOperation(record, PEDIDO_PENDIENTE_OPERATION_STATUS.REJECTED, {
-      leaseToken: '',
-      leaseExpiresAt: 0,
-      lastErrorCode: 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED'
-    });
-    clearPedidoPendienteOperation(rejected);
-    return { status: 'FAILED' };
-  }
-
-  // IN_PROGRESS o NOT_FOUND: el resultado real sigue sin confirmarse. No se toca el
-  // almacenamiento -- el candado se mantiene exactamente como estaba.
-  return { status: truth.status };
+  const outcome = applyPedidoPendienteServerTruthOutcome(record, truth);
+  return outcome.status === 'SUCCESS'
+    ? { status: 'SUCCESS', idPedido: outcome.idPedido }
+    : { status: outcome.status };
 };
 
 const subscribePedidoPendienteOperations = (operationScope, callback) => {
@@ -1294,6 +1277,36 @@ const queryPedidoPendienteServerTruth = async (operation) => {
   }
 };
 
+// Aplica un resultado de queryPedidoPendienteServerTruth ya obtenido: transiciona el
+// estado y limpia storage SOLO cuando el servidor confirmo algo terminal (SUCCESS o
+// FAILED). Punto unico compartido por createPedidoPendienteWithRecovery,
+// recoverPedidoPendienteOperation y reconcilePedidoPendienteOperation para que las
+// tres rutas de salida de un UNKNOWN apliquen exactamente la misma regla.
+const applyPedidoPendienteServerTruthOutcome = (operation, truth) => {
+  if (truth.status === 'SUCCESS') {
+    const confirmed = transitionPedidoPendienteOperation(operation, PEDIDO_PENDIENTE_OPERATION_STATUS.CONFIRMED, {
+      leaseToken: '',
+      leaseExpiresAt: 0,
+      confirmedPedidoId: truth.idPedido,
+      confirmedAt: Date.now()
+    });
+    clearPedidoPendienteOperation(confirmed);
+    return { resolved: true, status: 'SUCCESS', idPedido: truth.idPedido };
+  }
+  if (truth.status === 'FAILED') {
+    const rejected = transitionPedidoPendienteOperation(operation, PEDIDO_PENDIENTE_OPERATION_STATUS.REJECTED, {
+      leaseToken: '',
+      leaseExpiresAt: 0,
+      lastErrorCode: 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED'
+    });
+    clearPedidoPendienteOperation(rejected);
+    return { resolved: true, status: 'FAILED' };
+  }
+  // IN_PROGRESS o NOT_FOUND: el resultado real sigue sin confirmarse. No se toca el
+  // almacenamiento -- el candado se mantiene exactamente como estaba.
+  return { resolved: false, status: truth.status };
+};
+
 const createPedidoPendienteWithRecovery = async (payload, options = {}) => {
   let operation = preparePedidoPendienteOperation(payload, options);
   const existingRequest = pedidoPendienteInFlight.get(operation.operationId);
@@ -1377,23 +1390,11 @@ const createPedidoPendienteWithRecovery = async (payload, options = {}) => {
           // nueva idempotency-key ni un nuevo POST logico.
           if (attempt === 0) {
             const truth = await queryPedidoPendienteServerTruth(operation);
-            if (truth.status === 'SUCCESS') {
-              const confirmed = transitionPedidoPendienteOperation(operation, PEDIDO_PENDIENTE_OPERATION_STATUS.CONFIRMED, {
-                leaseToken: '',
-                leaseExpiresAt: 0,
-                confirmedPedidoId: truth.idPedido,
-                confirmedAt: Date.now()
-              });
-              clearPedidoPendienteOperation(confirmed);
-              return { id_pedido: truth.idPedido, idempotent_replay: true };
+            const outcome = applyPedidoPendienteServerTruthOutcome(operation, truth);
+            if (outcome.status === 'SUCCESS') {
+              return { id_pedido: outcome.idPedido, idempotent_replay: true };
             }
-            if (truth.status === 'FAILED') {
-              operation = transitionPedidoPendienteOperation(operation, PEDIDO_PENDIENTE_OPERATION_STATUS.REJECTED, {
-                leaseToken: '',
-                leaseExpiresAt: 0,
-                lastErrorCode: 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED'
-              });
-              clearPedidoPendienteOperation(operation);
+            if (outcome.status === 'FAILED') {
               const definitiveError = new Error('El servidor confirmó que el pedido no fue creado.');
               definitiveError.status = 422;
               definitiveError.code = 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED';
@@ -1479,6 +1480,33 @@ const recoverPedidoPendienteOperation = async (operationId, {
     error.code = 'PEDIDO_PENDIENTE_ACTIVO_EN_OTRA_PESTANA';
     error.operation = operation;
     throw error;
+  }
+  // RONDA 3: un UNKNOWN nunca se "recupera" reenviando a ciegas. Primero se le
+  // pregunta al servidor la verdad con la MISMA idempotency-key. Solo si el
+  // resultado real sigue sin confirmarse (NOT_FOUND) se cae al mecanismo de
+  // replay existente de abajo -- siempre con el MISMO operationId/idempotency-key/
+  // payload, nunca uno nuevo.
+  if (operation.status === PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN) {
+    const truth = await queryPedidoPendienteServerTruth(operation);
+    const outcome = applyPedidoPendienteServerTruthOutcome(operation, truth);
+    if (outcome.status === 'SUCCESS') {
+      return { id_pedido: outcome.idPedido, idempotent_replay: true };
+    }
+    if (outcome.status === 'FAILED') {
+      const definitiveError = new Error('El servidor confirmó que el pedido no fue creado.');
+      definitiveError.status = 422;
+      definitiveError.code = 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED';
+      throw definitiveError;
+    }
+    if (outcome.status === 'IN_PROGRESS') {
+      const error = new Error('El servidor todavía está procesando esta operación. Vuelve a intentar en un momento.');
+      error.status = 409;
+      error.code = 'PEDIDO_PENDIENTE_EN_PROCESO';
+      error.operation = operation;
+      throw error;
+    }
+    // NOT_FOUND: el resultado real sigue sin confirmarse. Se continua con el replay
+    // de abajo usando exactamente la misma operationId/idempotency-key/payload.
   }
   return createPedidoPendienteWithRecovery(operation.payload, {
     operationId: operation.operationId,

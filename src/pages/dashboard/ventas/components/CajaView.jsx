@@ -1444,33 +1444,13 @@ export default function CajaView({
     }
   };
 
-  const handleAbandonPedidoPendiente = () => {
-    const target = pedidoPendienteOperationLocked
-      ? pedidoPendienteOperation
-      : sharedPedidoPendienteOperations.find((operation) => operation.status === ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN);
-    if (!target || typeof window === 'undefined') return;
-    const confirmed = window.confirm(
-      'No se pudo confirmar si el pedido fue registrado. Si abandonas esta operación y creas otro pedido, podrías generar un duplicado. Primero revisa o recupera el pedido. ¿Deseas abandonar conscientemente esta operación?'
-    );
-    if (!confirmed) return;
-    const abandoned = ventasService.abandonPedidoPendienteOperation(target.operationId, {
-      explicit: true,
-      operationScope: target.operationScope
-    });
-    if (!abandoned) {
-      onNotify?.('OPERACIÓN ACTIVA', 'No se puede abandonar mientras exista una solicitud activa.', 'warning');
-      return;
-    }
-    console.info('[Ventas] Operación de pedido pendiente abandonada explícitamente.', {
-      ...ventasService.buildPedidoPendienteSafeLogContext(target)
-    });
-    pedidoPendienteOperationRef.current = null;
-    setPedidoPendienteOperation(null);
-    composer.resetComposer({ preserveSucursal: true, preserveSession: true, force: true });
-    setFinalizarOpen(false);
-    setDeliveryCostPreview(0);
-    onNotify?.('OPERACIÓN ABANDONADA', 'La operación local fue liberada. Revisa pedidos antes de crear otro.', 'warning');
-  };
+  // RONDA 3: se elimino handleAbandonPedidoPendiente y el boton "Abandonar operación"
+  // de este banner. abandonPedidoPendienteOperation ya solo permite liberar una
+  // operacion NEW que jamas se envio (hasBeenSent=false) -- ese estado nunca llega a
+  // mostrar este banner (solo aparece para SENDING/UNKNOWN, que siempre tuvieron un
+  // POST en vuelo), asi que el boton habria quedado deshabilitado/mentiroso para
+  // cualquier caso real. La unica salida para un candado visible aqui es reconciliar
+  // con el servidor (ver handleRecoverPedidoPendiente / handleReconcilePedidoPendiente).
 
   // Consulta al servidor la verdad de una operacion (misma idempotency-key, sin
   // generar una nueva ni reenviar el POST) y actua segun el resultado terminal:
@@ -2066,13 +2046,17 @@ export default function CajaView({
           <div className="fw-semibold">Resultado de pedido pendiente por confirmar</div>
           <div className="small mt-1">
             {canRecoverPedidoPendiente
-              ? 'El servidor podría haber registrado el pedido. Recupera el resultado con la misma clave antes de crear o modificar otro pedido.'
+              ? 'No sabemos con certeza si el servidor registró el pedido. Verifica el resultado con la misma clave antes de crear o modificar otro pedido: nunca se reenviará como una operación nueva.'
               : visiblePedidoPendienteOperation.hasRecoveryPayload === false
                 ? canVerifyOrphanPedidoPendiente
                   ? 'Existe un registro de una operación en otra pestaña que ya cerró. No se puede reintentar desde aquí; verifica con el servidor antes de continuar vendiendo.'
                   : 'Existe una operación en otra pestaña. Su payload privado no se comparte; vuelve a la pestaña original o revisa los pedidos recientes.'
                 : 'Existe una operación activa en esta u otra pestaña. Espera a que termine antes de intentar recuperarla.'}
           </div>
+          {/* RONDA 3: nunca se ofrece "Abandonar operación" aqui. Un UNKNOWN (con o sin
+              payload propio) solo puede resolverse verificando con el servidor -- jamas
+              borrando el candado local, porque eso permitiria una idempotency-key nueva
+              sobre un pedido que el servidor ya pudo haber creado. */}
           <div className="d-flex flex-wrap gap-2 mt-3">
             <button
               type="button"
@@ -2082,16 +2066,6 @@ export default function CajaView({
             >
               {creatingPedidoPendiente ? 'Recuperando...' : 'Recuperar pedido'}
             </button>
-            {canRecoverPedidoPendiente ? (
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-danger"
-                onClick={handleAbandonPedidoPendiente}
-                disabled={creatingPedidoPendiente}
-              >
-                Abandonar operación
-              </button>
-            ) : null}
             {canVerifyOrphanPedidoPendiente ? (
               <button
                 type="button"
