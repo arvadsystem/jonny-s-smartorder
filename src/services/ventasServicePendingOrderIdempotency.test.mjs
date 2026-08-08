@@ -752,8 +752,10 @@ describe('maquina de estados e idempotencia de pedidos pendientes', () => {
       () => createOrder(payload, operation),
       (error) => error.code === 'PEDIDO_PENDIENTE_RESULTADO_DESCONOCIDO'
     );
-    assert.equal(keys.length, 1);
-    assert.equal(keys[0], operation.idempotencyKey);
+    // El primer error ambiguo dispara UNA consulta server-truth (GET /ventas/idempotency-result)
+    // ademas del POST original -- ambas usan la MISMA idempotency-key, nunca una nueva.
+    assert.equal(keys.length, 2);
+    assert.ok(keys.every((key) => key === operation.idempotencyKey));
   });
 
   it('scope exacto restaura y usuario, sucursal o caja distintos no restauran ni exponen payload', () => {
@@ -801,6 +803,220 @@ describe('maquina de estados e idempotencia de pedidos pendientes', () => {
       () => ventasService.recoverPedidoPendienteOperation(operation.operationId, { operationScope }),
       (error) => error.code === 'PEDIDO_PENDIENTE_PAYLOAD_NO_DISPONIBLE_EN_ESTA_PESTANA'
     );
+  });
+
+  // ==========================================================================
+  // RONDA 2: reconciliacion server-truth (GET /ventas/idempotency-result)
+  // ==========================================================================
+  // Enruta el mock de fetch segun si es el POST original o la consulta de
+  // verificacion (GET /ventas/idempotency-result), para poder simular
+  // independientemente "que respondio el POST" vs "que dice el servidor de verdad".
+  const routeFetch = ({ onPost, onReconcile }) => async (url, options) => {
+    const method = String(options?.method || 'GET').toUpperCase();
+    if (method === 'GET' && String(url).includes('/ventas/idempotency-result')) {
+      return onReconcile(url, options);
+    }
+    return onPost(url, options);
+  };
+
+  it('ESCENARIO 1: POST -> 201 SUCCESS -> CONFIRMED sin lock', async () => {
+    globalThis.fetch = async () => jsonResponse({ id_pedido: 701 });
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 40 }] };
+    const operation = beginOperation(payload);
+    const response = await createOrder(payload, operation);
+    assert.equal(response.id_pedido, 701);
+    assert.equal(ventasService.getPedidoPendienteOperation(), null);
+    assert.equal(localValues.size, 0);
+  });
+
+  it('ESCENARIO 3: POST -> 500, server-truth FAILED -> cleanup inmediato, nunca UNKNOWN', async () => {
+    const postCalls = [];
+    const reconcileCalls = [];
+    globalThis.fetch = routeFetch({
+      onPost: async (url, options) => {
+        postCalls.push(options.headers['Idempotency-Key']);
+        return jsonResponse({ error: true, message: 'Rollback.' }, 500);
+      },
+      onReconcile: async (url, options) => {
+        reconcileCalls.push(options.headers['Idempotency-Key']);
+        return jsonResponse({ status: 'FAILED', http_status: 500 });
+      }
+    });
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 41 }] };
+    const operation = beginOperation(payload);
+    await assert.rejects(
+      () => createOrder(payload, operation),
+      (error) => error.code === 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED'
+    );
+    assert.equal(postCalls.length, 1, 'no debe reintentar el POST una vez que el servidor confirma FAILED');
+    assert.equal(reconcileCalls.length, 1);
+    assert.equal(reconcileCalls[0], operation.idempotencyKey);
+    assert.equal(ventasService.getPedidoPendienteOperation(), null, 'debe liberar el candado por completo, nunca quedar UNKNOWN');
+    assert.equal(localValues.size, 0);
+  });
+
+  it('ESCENARIO 4: POST -> 500, server-truth SUCCESS -> recupera el pedido, no duplica', async () => {
+    const postCalls = [];
+    globalThis.fetch = routeFetch({
+      onPost: async (url, options) => {
+        postCalls.push(options.headers['Idempotency-Key']);
+        return jsonResponse({ error: true, message: 'Respuesta perdida.' }, 500);
+      },
+      onReconcile: async () => jsonResponse({ status: 'SUCCESS', id_pedido: 702 })
+    });
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 42 }] };
+    const operation = beginOperation(payload);
+    const response = await createOrder(payload, operation);
+    assert.equal(response.id_pedido, 702);
+    assert.equal(postCalls.length, 1, 'no debe generar un segundo POST logico -- la confirmacion vino de la consulta, no de un reintento');
+    assert.equal(ventasService.getPedidoPendienteOperation(), null);
+  });
+
+  it('ESCENARIO 6: POST -> timeout, server-truth FAILED -> cleanup', async () => {
+    globalThis.fetch = routeFetch({
+      onPost: async () => jsonResponse({ error: true, code: 'REQUEST_TIMEOUT' }, 408),
+      onReconcile: async () => jsonResponse({ status: 'FAILED' })
+    });
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 43 }] };
+    const operation = beginOperation(payload);
+    await assert.rejects(
+      () => createOrder(payload, operation),
+      (error) => error.code === 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED'
+    );
+    assert.equal(ventasService.getPedidoPendienteOperation(), null);
+  });
+
+  it('ESCENARIO 7: POST -> timeout, server-truth IN_PROGRESS -> mantiene proteccion (no libera, no duplica)', async () => {
+    globalThis.fetch = routeFetch({
+      onPost: async () => jsonResponse({ error: true, code: 'REQUEST_TIMEOUT' }, 408),
+      onReconcile: async () => jsonResponse({ status: 'PROCESSING' })
+    });
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 44 }] };
+    const operation = beginOperation(payload);
+    await assert.rejects(
+      () => createOrder(payload, operation),
+      (error) => error.code === 'PEDIDO_PENDIENTE_RESULTADO_DESCONOCIDO'
+    );
+    const stored = ventasService.getPedidoPendienteOperation();
+    assert.equal(stored.status, ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN);
+    assert.equal(stored.idempotencyKey, operation.idempotencyKey);
+    assert.equal(ventasService.isPedidoPendienteOperationLocked(stored), true);
+  });
+
+  it('ESCENARIO 8: POST -> timeout, server-truth NOT_FOUND -> UNKNOWN protegido, misma key', async () => {
+    globalThis.fetch = routeFetch({
+      onPost: async () => jsonResponse({ error: true, code: 'REQUEST_TIMEOUT' }, 408),
+      onReconcile: async () => jsonResponse({ status: 'NOT_FOUND' }, 404)
+    });
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 45 }] };
+    const operation = beginOperation(payload);
+    await assert.rejects(
+      () => createOrder(payload, operation),
+      (error) => error.code === 'PEDIDO_PENDIENTE_RESULTADO_DESCONOCIDO'
+    );
+    const stored = ventasService.getPedidoPendienteOperation();
+    assert.equal(stored.status, ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN);
+    assert.equal(stored.idempotencyKey, operation.idempotencyKey);
+  });
+
+  it('ESCENARIO 10/11/12/13: registro huerfano (otra pestaña cerrada, lease vencido) -- reconcilePedidoPendienteOperation decide segun server-truth', async () => {
+    const makeOrphan = async (receta) => {
+      const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: receta }] };
+      const operation = beginOperation(payload);
+      globalThis.fetch = async () => jsonResponse({ error: true, code: 'REQUEST_TIMEOUT' }, 408);
+      await assert.rejects(() => createOrder(payload, operation));
+      const sharedKey = [...localValues.keys()][0];
+      const shared = JSON.parse(localValues.get(sharedKey));
+      localValues.set(sharedKey, JSON.stringify({
+        ...shared,
+        owner: { ownerId: 'tab:cerrada' },
+        lease: { token: 'lease-vencido', until: Date.now() - 1 }
+      }));
+      sessionValues.clear();
+      // Simula que la pestaña realmente cerro: sin esto, la cache en memoria del
+      // modulo (misma pestaña/proceso de test) seguiria devolviendo el registro
+      // original con payload, en vez del huerfano de coordinacion.
+      ventasService.__resetPedidoPendienteOperationRuntimeForTests();
+      const orphan = ventasService.listSharedPedidoPendienteOperations(operationScope)[0];
+      assert.equal(orphan.hasRecoveryPayload, false);
+      assert.equal(orphan.leaseExpired, true);
+      return orphan;
+    };
+
+    // 10) SUCCESS -> recupera, nunca "abandona"
+    let orphan = await makeOrphan(46);
+    globalThis.fetch = async () => jsonResponse({ status: 'SUCCESS', id_pedido: 710 });
+    let result = await ventasService.reconcilePedidoPendienteOperation(orphan.operationId, { operationScope });
+    assert.deepEqual(result, { status: 'SUCCESS', idPedido: 710 });
+    assert.equal(ventasService.listSharedPedidoPendienteOperations(operationScope).length, 0);
+
+    // 11) FAILED -> cleanup seguro
+    orphan = await makeOrphan(47);
+    globalThis.fetch = async () => jsonResponse({ status: 'FAILED' });
+    result = await ventasService.reconcilePedidoPendienteOperation(orphan.operationId, { operationScope });
+    assert.deepEqual(result, { status: 'FAILED' });
+    assert.equal(ventasService.listSharedPedidoPendienteOperations(operationScope).length, 0);
+
+    // 12) IN_PROGRESS -> mantiene bloqueo (no se toca el storage)
+    orphan = await makeOrphan(48);
+    globalThis.fetch = async () => jsonResponse({ status: 'PROCESSING' });
+    result = await ventasService.reconcilePedidoPendienteOperation(orphan.operationId, { operationScope });
+    assert.deepEqual(result, { status: 'IN_PROGRESS' });
+    assert.ok(ventasService.listSharedPedidoPendienteOperations(operationScope).some((op) => op.operationId === orphan.operationId));
+
+    // 13) NOT_FOUND -> NO permite abandono, mantiene UNKNOWN protegido
+    orphan = await makeOrphan(49);
+    globalThis.fetch = async () => jsonResponse({ status: 'NOT_FOUND' }, 404);
+    result = await ventasService.reconcilePedidoPendienteOperation(orphan.operationId, { operationScope });
+    assert.deepEqual(result, { status: 'NOT_FOUND' });
+    assert.ok(ventasService.listSharedPedidoPendienteOperations(operationScope).some((op) => op.operationId === orphan.operationId));
+    assert.equal(
+      ventasService.abandonPedidoPendienteOperation(orphan.operationId, { explicit: true, operationScope }),
+      false,
+      'un NOT_FOUND no autoriza abandonar: el resultado real sigue sin confirmarse'
+    );
+  });
+
+  it('ESCENARIO 14: UNKNOWN huerfano + explicit abandon -- ya NO puede limpiarse localmente sin reconciliar (revierte el bypass de la ronda 1)', async () => {
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 50 }] };
+    const operation = beginOperation(payload);
+    globalThis.fetch = async () => jsonResponse({ error: true, code: 'REQUEST_TIMEOUT' }, 408);
+    await assert.rejects(() => createOrder(payload, operation));
+    const sharedKey = [...localValues.keys()][0];
+    const shared = JSON.parse(localValues.get(sharedKey));
+    localValues.set(sharedKey, JSON.stringify({
+      ...shared,
+      owner: { ownerId: 'tab:cerrada' },
+      lease: { token: 'lease-vencido', until: Date.now() - 1 }
+    }));
+    sessionValues.clear();
+    ventasService.__resetPedidoPendienteOperationRuntimeForTests();
+    const orphan = ventasService.listSharedPedidoPendienteOperations(operationScope)[0];
+    assert.equal(orphan.hasRecoveryPayload, false);
+    assert.equal(orphan.leaseExpired, true);
+
+    const abandoned = ventasService.abandonPedidoPendienteOperation(orphan.operationId, {
+      explicit: true,
+      operationScope
+    });
+    assert.equal(abandoned, false, 'leaseExpired no es evidencia financiera: nunca debe bastar por si solo para liberar el candado');
+    assert.equal(ventasService.listSharedPedidoPendienteOperations(operationScope).length, 1);
+  });
+
+  it('ESCENARIO 17: el servidor creo el pedido pero el navegador perdio la respuesta -- 0 POST logicos nuevos, mismo id_pedido', async () => {
+    const postCalls = [];
+    globalThis.fetch = routeFetch({
+      onPost: async (url, options) => {
+        postCalls.push(options.headers['Idempotency-Key']);
+        return Promise.reject(Object.assign(new Error('network lost'), { code: 'FETCH_ERROR', status: 0 }));
+      },
+      onReconcile: async () => jsonResponse({ status: 'SUCCESS', id_pedido: 703 })
+    });
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 51 }] };
+    const operation = beginOperation(payload);
+    const response = await createOrder(payload, operation);
+    assert.equal(response.id_pedido, 703);
+    assert.equal(postCalls.length, 1, 'el unico POST logico es el original -- la recuperacion fue una consulta, no un reenvio');
   });
 
   it('desmontar la suscripcion limpia ambos temporizadores de lease', () => {
