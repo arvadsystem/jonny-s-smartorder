@@ -1,7 +1,62 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { dispatchPedidoPendientePostCreationTasks } from './pedidoPendienteCreation.js';
+import { dispatchPedidoPendientePostCreationTasks, resolvePedidoPendienteUiAfterError } from './pedidoPendienteCreation.js';
+
+// ==========================================================================
+// RONDA 4: ventasService/storage es la fuente de verdad. Estas pruebas ejecutan
+// (no solo inspeccionan por texto) el helper real que CajaView usa en los catch de
+// creacion/recuperacion para decidir que debe reflejar React -- demostrando que un
+// UNKNOWN "fantasma" ya no puede sobrevivir en React despues de que el service
+// resolvio un estado terminal.
+// ==========================================================================
+
+test('resolvePedidoPendienteUiAfterError: si el service ya no tiene operacion, el resultado es null -- SIN importar target ni error.operation', () => {
+  const previousOperation = { operationId: 'op-1', status: 'RESULTADO_DESCONOCIDO', hasRecoveryPayload: true };
+  const errorWithStaleOperation = new Error('El servidor confirmó que el pedido no fue creado.');
+  errorWithStaleOperation.code = 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED';
+  // Simula el bug original: el error o el target previo todavia "recuerdan" el UNKNOWN,
+  // pero el service (fuente de verdad) ya lo limpio.
+  errorWithStaleOperation.operation = previousOperation;
+
+  const result = resolvePedidoPendienteUiAfterError({
+    serviceOperation: null,
+    previousOperation,
+    error: errorWithStaleOperation
+  });
+
+  assert.equal(result, null);
+});
+
+test('resolvePedidoPendienteUiAfterError: sin argumentos (llamada vacia) tambien resuelve a null', () => {
+  assert.equal(resolvePedidoPendienteUiAfterError(), null);
+  assert.equal(resolvePedidoPendienteUiAfterError({}), null);
+});
+
+test('resolvePedidoPendienteUiAfterError: si el service SI tiene una operacion (UNKNOWN/IN_PROGRESS real), se conserva -- el POS sigue protegido', () => {
+  const serviceOperation = { operationId: 'op-2', status: 'RESULTADO_DESCONOCIDO', hasRecoveryPayload: true };
+  const result = resolvePedidoPendienteUiAfterError({
+    serviceOperation,
+    previousOperation: { operationId: 'op-2-vieja-copia', status: 'ENVIANDO' },
+    error: new Error('timeout')
+  });
+  assert.equal(result, serviceOperation);
+});
+
+test('resolvePedidoPendienteUiAfterError: NUNCA devuelve previousOperation ni error.operation cuando difieren del service (aunque el service tenga una operacion distinta)', () => {
+  // El service es la unica fuente de verdad: incluso si previousOperation/error.operation
+  // sugieren otra cosa, el resultado debe ser exactamente lo que devuelve el service.
+  const serviceOperation = { operationId: 'op-nueva', status: 'NUEVA' };
+  const staleError = new Error('otro error');
+  staleError.operation = { operationId: 'op-vieja-distinta', status: 'RESULTADO_DESCONOCIDO' };
+  const result = resolvePedidoPendienteUiAfterError({
+    serviceOperation,
+    previousOperation: { operationId: 'op-vieja-distinta', status: 'RESULTADO_DESCONOCIDO' },
+    error: staleError
+  });
+  assert.equal(result, serviceOperation);
+  assert.notEqual(result.operationId, 'op-vieja-distinta');
+});
 
 test('fallos auxiliares posteriores al 201 se absorben sin alterar la respuesta creada', async () => {
   const response = { id_pedido: 501, numero_pedido: 'PED-00501' };
@@ -54,6 +109,60 @@ test('CajaView ofrece recuperacion/verificacion sin reset silencioso ni abandono
   assert.match(source, /pedido-pendiente-storage-invalid-alert/);
   assert.match(source, /pedido-pendiente-scope-mismatch-alert/);
   assert.match(source, /PAYLOAD_NO_DISPONIBLE_EN_ESTA_PESTANA|Su payload privado no se comparte/);
+});
+
+test('RONDA 4: handleCreatePedidoPendiente y handleRecoverPedidoPendiente usan resolvePedidoPendienteUiAfterError en su catch (no error.operation ni target sueltos)', async () => {
+  const source = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
+
+  const createIdx = source.indexOf('const handleCreatePedidoPendiente = async');
+  assert.notEqual(createIdx, -1);
+  const createSnippet = source.slice(createIdx, createIdx + 3200);
+  assert.match(
+    createSnippet,
+    /const serviceOperation = ventasService\.getPedidoPendienteOperation\(\);\s+const nextOperation = resolvePedidoPendienteUiAfterError\(\{\s+serviceOperation,/,
+    'El catch de creacion debe consultar el service y pasar el resultado por resolvePedidoPendienteUiAfterError.'
+  );
+  assert.doesNotMatch(
+    createSnippet,
+    /const currentOperation = error\?\.operation \|\|/,
+    'Ya no debe existir el fallback inseguro a error.operation en el catch de creacion.'
+  );
+
+  const recoverIdx = source.indexOf('const handleRecoverPedidoPendiente = async');
+  assert.notEqual(recoverIdx, -1);
+  const recoverSnippet = source.slice(recoverIdx, recoverIdx + 3200);
+  assert.match(
+    recoverSnippet,
+    /const serviceOperation = ventasService\.getPedidoPendienteOperation\(\);\s+const nextOperation = resolvePedidoPendienteUiAfterError\(\{\s+serviceOperation,/,
+    'El catch de recuperacion debe consultar el service y pasar el resultado por resolvePedidoPendienteUiAfterError.'
+  );
+  assert.doesNotMatch(
+    recoverSnippet,
+    /error\?\.operation \|\| ventasService\.getPedidoPendienteOperation\(\) \|\| target/,
+    'Ya no debe existir el fallback inseguro "error.operation || service || target" en el catch de recuperacion.'
+  );
+  assert.match(
+    recoverSnippet,
+    /if \(!nextOperation\) \{[\s\S]{0,450}'PEDIDO NO CREADO'/,
+    'Cuando el service ya no tiene operacion, debe mostrarse "PEDIDO NO CREADO", no "RESULTADO PENDIENTE".'
+  );
+});
+
+test('RONDA 4: el evento operation-released trata REJECTED como terminal (igual que CONFIRMED/ABANDONED) y respeta el operationId', async () => {
+  const source = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
+  const idx = source.indexOf("event?.type === 'operation-released'");
+  assert.notEqual(idx, -1);
+  const snippet = source.slice(idx, idx + 900);
+  assert.match(snippet, /event\.operationId === current\.operationId/, 'Debe verificar que el evento pertenece a la operacion actual antes de limpiar.');
+  assert.match(snippet, /PEDIDO_PENDIENTE_OPERATION_STATUS\.CONFIRMED/);
+  assert.match(snippet, /PEDIDO_PENDIENTE_OPERATION_STATUS\.REJECTED/);
+  assert.match(snippet, /PEDIDO_PENDIENTE_OPERATION_STATUS\.ABANDONED/);
+});
+
+test('RONDA 4: el texto obsoleto sobre "abandonar" un UNKNOWN ya no aparece en el mensaje de mutacion bloqueada', async () => {
+  const source = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /Recupera o abandona conscientemente la operación anterior/);
+  assert.match(source, /Verifica o recupera el resultado de la operación anterior antes de modificar el pedido\./);
 });
 
 test('el compositor bloquea mutaciones materiales y reset normal durante una operacion ambigua', async () => {

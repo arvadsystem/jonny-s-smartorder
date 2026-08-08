@@ -15,7 +15,7 @@ import printerDeviceDetectionService from '../../../../services/printerDeviceDet
 import { useAuth } from '../../../../hooks/useAuth';
 import AppSelect from '../../../../components/common/AppSelect';
 import { parseCajaUtcTimestamp } from '../utils/cajasHelpers';
-import { dispatchPedidoPendientePostCreationTasks } from '../utils/pedidoPendienteCreation';
+import { dispatchPedidoPendientePostCreationTasks, resolvePedidoPendienteUiAfterError } from '../utils/pedidoPendienteCreation';
 import {
   buildPedidoPendienteOperationContext,
   createPedidoPendienteContextError,
@@ -507,7 +507,7 @@ export default function CajaView({
     mutationBlocked: pedidoPendienteComposerGuarded,
     onMutationBlocked: () => onNotify?.(
       'RESULTADO PENDIENTE',
-      'Recupera o abandona conscientemente la operación anterior antes de modificar el pedido.',
+      'Verifica o recupera el resultado de la operación anterior antes de modificar el pedido.',
       'warning'
     ),
     userId: authenticatedUserId
@@ -550,7 +550,13 @@ export default function CajaView({
           event?.type === 'operation-released'
           && event.operationId === current.operationId
           && [
+            // Los tres son terminales: clearPedidoPendienteOperation() ya vacio el
+            // storage para cualquiera de estos tres estados (ver ventasService.js).
+            // REJECTED faltaba aqui -- por eso un rechazo definitivo resuelto por OTRO
+            // flujo (o notificado a esta misma pestaña via notifyPedidoPendienteSubscribers)
+            // podia dejar el UNKNOWN anterior vivo en este React state para siempre.
             ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.CONFIRMED,
+            ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.REJECTED,
             ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.ABANDONED
           ].includes(event.status)
         ) {
@@ -1384,14 +1390,19 @@ export default function CajaView({
       });
       return finalizePedidoPendienteCreation(response);
     } catch (error) {
-      const currentOperation = error?.operation || ventasService.getPedidoPendienteOperation();
-      const activeOperationId = pedidoPendienteOperationRef.current?.operationId;
-      if (activeOperationId && currentOperation?.operationId === activeOperationId) {
-        pedidoPendienteOperationRef.current = currentOperation;
-        setPedidoPendienteOperation(currentOperation);
-        if (ventasService.isPedidoPendienteOperationLocked(currentOperation)) {
-          setFinalizarOpen(false);
-        }
+      // ventasService/storage es la fuente de verdad: si ya no tiene operacion (rechazo
+      // definitivo -- 422 de validacion, REJECTED, etc.), React tambien debe quedar en
+      // null. Nunca se restaura `error.operation` ni la operacion previa del ref.
+      const serviceOperation = ventasService.getPedidoPendienteOperation();
+      const nextOperation = resolvePedidoPendienteUiAfterError({
+        serviceOperation,
+        previousOperation: pedidoPendienteOperationRef.current,
+        error
+      });
+      pedidoPendienteOperationRef.current = nextOperation;
+      setPedidoPendienteOperation(nextOperation);
+      if (nextOperation && ventasService.isPedidoPendienteOperationLocked(nextOperation)) {
+        setFinalizarOpen(false);
       }
       if (isDefinitiveCajaSessionError(error)) {
         setPedidoContextStale(true);
@@ -1430,14 +1441,36 @@ export default function CajaView({
       onNotify?.('PEDIDO RECUPERADO', 'Se confirmó el resultado del pedido pendiente.', 'success');
       await finalizePedidoPendienteCreation(response);
     } catch (error) {
-      const currentOperation = error?.operation || ventasService.getPedidoPendienteOperation() || target;
-      pedidoPendienteOperationRef.current = currentOperation;
-      setPedidoPendienteOperation(currentOperation);
-      onNotify?.(
-        'RESULTADO PENDIENTE',
-        String(error?.message || 'No fue posible recuperar todavía el resultado del pedido.'),
-        'warning'
-      );
+      // Igual que en la creacion: la fuente de verdad es ventasService/storage, nunca
+      // `target` ni error.operation. Si el service ya resolvio un estado terminal (por
+      // ejemplo FAILED via server-truth dentro de recoverPedidoPendienteOperation),
+      // React debe quedar en null tambien -- jamas volver a mostrar el UNKNOWN anterior.
+      const serviceOperation = ventasService.getPedidoPendienteOperation();
+      const nextOperation = resolvePedidoPendienteUiAfterError({
+        serviceOperation,
+        previousOperation: target,
+        error
+      });
+      pedidoPendienteOperationRef.current = nextOperation;
+      setPedidoPendienteOperation(nextOperation);
+      if (!nextOperation) {
+        // Resultado terminal (el service ya no tiene ninguna operacion protegida): el
+        // POS queda libre de inmediato para la siguiente venta.
+        composer.resetComposer({ preserveSucursal: true, preserveSession: true, force: true });
+        setFinalizarOpen(false);
+        setDeliveryCostPreview(0);
+        onNotify?.(
+          'PEDIDO NO CREADO',
+          'El servidor confirmó que el pedido no fue creado. Puedes intentarlo nuevamente.',
+          'warning'
+        );
+      } else {
+        onNotify?.(
+          'RESULTADO PENDIENTE',
+          String(error?.message || 'No fue posible recuperar todavía el resultado del pedido.'),
+          'warning'
+        );
+      }
     } finally {
       creatingPedidoPendienteRef.current = false;
       setCreatingPedidoPendiente(false);
