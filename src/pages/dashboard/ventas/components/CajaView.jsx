@@ -563,6 +563,25 @@ export default function CajaView({
           pedidoPendienteOperationRef.current = null;
           return null;
         }
+        // `operations` es SIEMPRE la lista de coordinacion (sin payload, hasRecoveryPayload
+        // false por construccion -- ver listSharedPedidoPendienteOperations). Si `current`
+        // es la copia PROPIA de esta pestaña (con payload), su fuente de verdad es la
+        // lectura propia (sessionStorage), nunca esa lista compartida: usarla aqui
+        // degradaba silenciosamente una operacion propia y recuperable a una version
+        // "huerfana" cada vez que este callback se disparaba (incluye el timer periodico
+        // de 5s en ventasService.js), mostrando "otra pestaña" sobre el propio pedido.
+        if (current.hasRecoveryPayload !== false) {
+          const own = ventasService.getPedidoPendienteOperation();
+          if (own?.operationId === current.operationId) {
+            pedidoPendienteOperationRef.current = own;
+            return own;
+          }
+          if (!own) {
+            pedidoPendienteOperationRef.current = null;
+            return null;
+          }
+          return current;
+        }
         const updated = operations.find((operation) => operation.operationId === current.operationId);
         if (!updated) return current;
         pedidoPendienteOperationRef.current = updated;

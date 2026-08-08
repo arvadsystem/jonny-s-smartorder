@@ -165,6 +165,32 @@ test('RONDA 4: el texto obsoleto sobre "abandonar" un UNKNOWN ya no aparece en e
   assert.match(source, /Verifica o recupera el resultado de la operación anterior antes de modificar el pedido\./);
 });
 
+test('RONDA 5 (hallazgo de QA real): el callback de suscripcion NO degrada una operacion propia (con payload) usando la lista compartida (sin payload)', async () => {
+  // Bug encontrado probando en QA con dos pestañas reales: el timer periodico de 5s
+  // (ver PEDIDO_PENDIENTE_LEASE_RENEW_MS en ventasService.js) dispara este callback
+  // con `operations` = listSharedPedidoPendienteOperations(...), que SIEMPRE viene sin
+  // payload (hasRecoveryPayload: false por construccion). Antes de este fix, el
+  // callback hacia `operations.find(...)` incondicionalmente y sobreescribia la copia
+  // PROPIA (con payload, recuperable) de la pestaña dueña con la version "huerfana",
+  // mostrando "Existe una operación en otra pestaña" sobre el propio pedido pendiente
+  // de esa misma pestaña -- de forma intermitente, cada ~5 segundos.
+  const source = await readFile(new URL('../components/CajaView.jsx', import.meta.url), 'utf8');
+  const idx = source.indexOf('setPedidoPendienteOperation((current) => {');
+  assert.notEqual(idx, -1);
+  const snippet = source.slice(idx, idx + 2400);
+  assert.match(
+    snippet,
+    /if \(current\.hasRecoveryPayload !== false\) \{\s*\n\s*const own = ventasService\.getPedidoPendienteOperation\(\);/,
+    'Cuando current tiene payload propio, debe re-derivarse desde ventasService.getPedidoPendienteOperation() (lectura propia), no desde la lista compartida.'
+  );
+  // La rama de la lista compartida (operations.find) solo debe alcanzarse para el caso
+  // huerfano (hasRecoveryPayload === false), nunca para una operacion propia.
+  const ownBranchIdx = snippet.indexOf('current.hasRecoveryPayload !== false');
+  const sharedBranchIdx = snippet.indexOf('operations.find((operation) => operation.operationId === current.operationId)');
+  assert.notEqual(sharedBranchIdx, -1, 'Debe seguir existiendo la rama basada en la lista compartida para el caso huerfano.');
+  assert.ok(ownBranchIdx < sharedBranchIdx, 'La rama de "operacion propia" debe evaluarse ANTES que la rama basada en la lista compartida.');
+});
+
 test('el compositor bloquea mutaciones materiales y reset normal durante una operacion ambigua', async () => {
   const source = await readFile(new URL('../hooks/useVentaComposer.js', import.meta.url), 'utf8');
   assert.match(source, /const rejectBlockedMutation/);
