@@ -393,10 +393,16 @@ const normalizePedidoPendienteOperation = (rawRecord, { coordination = false } =
     hasRecoveryPayload: !coordination
   };
   if (
-    normalized.status === PEDIDO_PENDIENTE_OPERATION_STATUS.SENDING
+    (
+      normalized.status === PEDIDO_PENDIENTE_OPERATION_STATUS.SENDING
+      || normalized.status === PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN
+    )
     && normalized.leaseExpiresAt > 0
     && normalized.leaseExpiresAt <= Date.now()
   ) {
+    // Sin esto, un registro que ya paso de SENDING a UNKNOWN nunca recalculaba
+    // leaseExpired en lecturas posteriores (refresh, poll entre pestañas), por lo
+    // que quedaba bloqueado indefinidamente aunque el lease llevara minutos vencido.
     return {
       ...normalized,
       status: PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN,
@@ -784,6 +790,11 @@ const preparePedidoPendienteOperation = (payload, {
       ? stored.operationId
       : createPedidoPendienteOperationId();
     clearPedidoPendienteOperation(stored);
+  } else if (requestedOperationId) {
+    // El caller referenciaba una operacion que ya no existe (por ejemplo, fue
+    // limpiada de inmediato tras un rechazo definitivo). No reutilizar esa
+    // identidad vieja: cada intento realmente nuevo obtiene su propio operationId.
+    nextOperationId = null;
   }
 
   const now = Date.now();
@@ -912,7 +923,10 @@ const renewPedidoPendienteOperationLease = (record) => {
 };
 
 const abandonPedidoPendienteOperation = (operationId, {
-  explicit = false,
+  // `explicit` se conserva por compatibilidad de firma con callers existentes, pero
+  // RONDA 3: ya NO tiene ningun poder para saltarse la regla de abajo. Ningun valor
+  // de explicit, leaseExpired o presencia/ausencia de payload autoriza abandonar una
+  // operacion que alguna vez se envio al servidor.
   operationScope = null
 } = {}) => {
   const normalizedOperationId = String(operationId || '').trim();
@@ -925,16 +939,80 @@ const abandonPedidoPendienteOperation = (operationId, {
     : findSharedPedidoPendienteOperation(normalizedOperationId, operationScope);
   if (!record) return false;
   if (!isSamePedidoPendienteScope(record.operationScope, normalizedScope)) return false;
-  if (!record.hasRecoveryPayload) return false;
-  if (record.status === PEDIDO_PENDIENTE_OPERATION_STATUS.SENDING && !record.leaseExpired) return false;
-  if (record.status === PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN && !explicit) return false;
-  if (isPedidoPendienteOperationLocked(record) && !explicit) return false;
+  // REGLA DEFINITIVA (ronda 3): "abandonar" solo puede liberar una operacion que
+  // JAMAS se envio al servidor (NEW, hasBeenSent === false). En cuanto un POST salio
+  // hacia el backend -- SENDING, UNKNOWN, o cualquier registro de coordinacion de
+  // otra pestaña (que por definicion siempre tuvo un POST en vuelo) -- existe la
+  // posibilidad real de que el servidor ya haya creado el pedido. Borrar el
+  // operationId/idempotency-key en ese caso permitiria que el siguiente intento
+  // genere una clave NUEVA sobre un pedido que quiza ya existe: pedido duplicado.
+  // Sin excepciones: ni explicit=true, ni leaseExpired=true, ni "el usuario confirma
+  // conscientemente" autorizan saltarse esto. La UNICA salida para un estado con
+  // hasBeenSent=true es reconciliar con el servidor (reconcilePedidoPendienteOperation
+  // / recoverPedidoPendienteOperation), nunca abandonar localmente.
+  if (record.status !== PEDIDO_PENDIENTE_OPERATION_STATUS.NEW || record.hasBeenSent) return false;
   const abandoned = transitionPedidoPendienteOperation(record, PEDIDO_PENDIENTE_OPERATION_STATUS.ABANDONED, {
     leaseToken: '',
     leaseExpiresAt: 0
   });
   clearPedidoPendienteOperation(abandoned);
   return true;
+};
+
+// Accion "Verificar resultado": la UNICA forma de liberar un registro huerfano
+// (registro de coordinacion de otra pestaña, sin payload propio, con lease vencido).
+// A diferencia de abandonPedidoPendienteOperation, esta funcion nunca limpia el
+// candado por su cuenta -- solo lo hace cuando el servidor confirma explicitamente
+// un estado terminal (SUCCESS o FAILED) via la misma idempotency-key. Funciona sin
+// payload porque idempotencyKey y operationScope se conservan en cualquier registro,
+// incluso los de coordinacion (ver normalizePedidoPendienteOperation).
+//
+// Retorna { status: 'SUCCESS', idPedido } | { status: 'FAILED' }
+//       | { status: 'IN_PROGRESS' } | { status: 'NOT_FOUND' }
+// Lanza solo si la operacion ni siquiera pudo localizarse/consultarse (record ausente,
+// scope invalido, o una solicitud propia en curso para el mismo operationId).
+const reconcilePedidoPendienteOperation = async (operationId, { operationScope = null } = {}) => {
+  const normalizedOperationId = String(operationId || '').trim();
+  if (!normalizedOperationId) {
+    throw createPedidoPendienteStorageError(
+      'PEDIDO_PENDIENTE_OPERACION_NO_ENCONTRADA',
+      'No se encontró la operación pendiente para verificarla.'
+    );
+  }
+  if (pedidoPendienteInFlight.has(normalizedOperationId)) {
+    const error = new Error('La operación ya tiene una solicitud en curso.');
+    error.code = 'PEDIDO_PENDIENTE_VERIFICACION_EN_CURSO';
+    throw error;
+  }
+  const normalizedScope = normalizePedidoPendienteOperationScope(operationScope);
+  if (!isCompletePedidoPendienteScope(normalizedScope)) {
+    throw createPedidoPendienteStorageError(
+      'PEDIDO_PENDIENTE_SCOPE_INVALIDO',
+      'No se puede verificar el resultado desde un contexto incompleto.'
+    );
+  }
+  const sessionRecord = readPedidoPendienteOperation(normalizedScope);
+  const record = sessionRecord?.operationId === normalizedOperationId
+    ? sessionRecord
+    : findSharedPedidoPendienteOperation(normalizedOperationId, operationScope);
+  if (!record) {
+    throw createPedidoPendienteStorageError(
+      'PEDIDO_PENDIENTE_OPERACION_NO_ENCONTRADA',
+      'No se encontró la operación pendiente para verificarla.'
+    );
+  }
+  if (!isSamePedidoPendienteScope(record.operationScope, normalizedScope)) {
+    throw createPedidoPendienteStorageError(
+      'PEDIDO_PENDIENTE_SCOPE_NO_COINCIDE',
+      'Existe una operación pendiente perteneciente a otra sesión o sucursal. No puede verificarse desde el contexto actual.'
+    );
+  }
+
+  const truth = await queryPedidoPendienteServerTruth(record);
+  const outcome = applyPedidoPendienteServerTruthOutcome(record, truth);
+  return outcome.status === 'SUCCESS'
+    ? { status: 'SUCCESS', idPedido: outcome.idPedido }
+    : { status: outcome.status };
 };
 
 const subscribePedidoPendienteOperations = (operationScope, callback) => {
@@ -1159,6 +1237,76 @@ const createPedidoPendienteRequest = (payload, { idempotencyKey, timeoutMs }) =>
   withIdempotencyKey({ timeoutMs }, idempotencyKey)
 );
 
+// El lease de navegador (leaseToken/leaseExpiresAt/ownerTabId) solo responde
+// "¿sigue existiendo una pestaña dueña?" -- nunca "¿el pedido existe en el servidor?".
+// Esta funcion es la UNICA fuente de verdad sobre el resultado real de una operacion:
+// reutiliza el mismo endpoint GET /ventas/idempotency-result y la misma idempotency-key
+// que ya usan POST /ventas y POST /ventas/pedidos/:id/registrar-pago (recoverFinancialOperationResult),
+// sin inventar un segundo mecanismo. Nunca genera una idempotency-key nueva.
+//
+// Contrato de salida (siempre uno de estos, nunca lanza para un resultado ambiguo):
+//   { status: 'SUCCESS', idPedido }  -> servidor confirma que el pedido existe.
+//   { status: 'FAILED' }             -> servidor confirma que el pedido NO fue creado.
+//   { status: 'IN_PROGRESS' }        -> el servidor todavia esta procesando.
+//   { status: 'NOT_FOUND' }          -> no se pudo confirmar nada (clave no encontrada,
+//                                        conflicto de operacion, o la consulta misma fallo).
+//                                        NUNCA se interpreta como FAILED.
+const queryPedidoPendienteServerTruth = async (operation) => {
+  try {
+    const result = await recoverFinancialOperationResult({
+      idempotencyKey: operation.idempotencyKey,
+      operation: 'POST /ventas/pedidos-pendientes',
+      scope: operation.operationScope
+    });
+    const status = String(result?.status || '').trim().toUpperCase();
+    if (status === 'SUCCESS') {
+      const idPedido = Number.parseInt(String(result?.id_pedido ?? result?.response_body?.id_pedido ?? ''), 10);
+      if (Number.isSafeInteger(idPedido) && idPedido > 0) return { status: 'SUCCESS', idPedido };
+      // Una respuesta SUCCESS sin id_pedido utilizable no es confiable: no se asume
+      // nada, se trata como resultado todavia sin confirmar.
+      return { status: 'NOT_FOUND' };
+    }
+    if (status === 'FAILED') return { status: 'FAILED' };
+    if (status === 'PROCESSING') return { status: 'IN_PROGRESS' };
+    // NOT_FOUND, CONFLICT o cualquier valor inesperado: nunca se interpreta como FAILED.
+    return { status: 'NOT_FOUND' };
+  } catch {
+    // La consulta de verificacion en si fallo (red/timeout/500 al consultar). Seguimos
+    // sin saber el resultado real: se trata igual que NOT_FOUND (mantiene proteccion).
+    return { status: 'NOT_FOUND' };
+  }
+};
+
+// Aplica un resultado de queryPedidoPendienteServerTruth ya obtenido: transiciona el
+// estado y limpia storage SOLO cuando el servidor confirmo algo terminal (SUCCESS o
+// FAILED). Punto unico compartido por createPedidoPendienteWithRecovery,
+// recoverPedidoPendienteOperation y reconcilePedidoPendienteOperation para que las
+// tres rutas de salida de un UNKNOWN apliquen exactamente la misma regla.
+const applyPedidoPendienteServerTruthOutcome = (operation, truth) => {
+  if (truth.status === 'SUCCESS') {
+    const confirmed = transitionPedidoPendienteOperation(operation, PEDIDO_PENDIENTE_OPERATION_STATUS.CONFIRMED, {
+      leaseToken: '',
+      leaseExpiresAt: 0,
+      confirmedPedidoId: truth.idPedido,
+      confirmedAt: Date.now()
+    });
+    clearPedidoPendienteOperation(confirmed);
+    return { resolved: true, status: 'SUCCESS', idPedido: truth.idPedido };
+  }
+  if (truth.status === 'FAILED') {
+    const rejected = transitionPedidoPendienteOperation(operation, PEDIDO_PENDIENTE_OPERATION_STATUS.REJECTED, {
+      leaseToken: '',
+      leaseExpiresAt: 0,
+      lastErrorCode: 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED'
+    });
+    clearPedidoPendienteOperation(rejected);
+    return { resolved: true, status: 'FAILED' };
+  }
+  // IN_PROGRESS o NOT_FOUND: el resultado real sigue sin confirmarse. No se toca el
+  // almacenamiento -- el candado se mantiene exactamente como estaba.
+  return { resolved: false, status: truth.status };
+};
+
 const createPedidoPendienteWithRecovery = async (payload, options = {}) => {
   let operation = preparePedidoPendienteOperation(payload, options);
   const existingRequest = pedidoPendienteInFlight.get(operation.operationId);
@@ -1228,8 +1376,33 @@ const createPedidoPendienteWithRecovery = async (payload, options = {}) => {
               leaseExpiresAt: 0,
               lastErrorCode: String(error?.code || error?.data?.code || '').trim().toUpperCase()
             });
-            removeSharedPedidoPendienteOperation(operation);
+            // Rechazo definitivo (4xx o 22001 mapeado a 422): el servidor no creo el
+            // pedido, asi que no debe quedar ningun candado - ni el registro privado de
+            // recuperacion (sessionStorage) ni el puntero de coordinacion (localStorage).
+            clearPedidoPendienteOperation(operation);
             throw error;
+          }
+          // Error ambiguo (timeout, red, o un HTTP como 500/502/503 sin cuerpo
+          // definitivo). NO se adivina el resultado ni se reintenta a ciegas: se
+          // consulta al servidor la verdad con la MISMA idempotency-key una sola vez
+          // (no en cada intento del bucle, para no hacer polling agresivo). Si el
+          // servidor ya sabe la respuesta, se resuelve aqui mismo sin generar una
+          // nueva idempotency-key ni un nuevo POST logico.
+          if (attempt === 0) {
+            const truth = await queryPedidoPendienteServerTruth(operation);
+            const outcome = applyPedidoPendienteServerTruthOutcome(operation, truth);
+            if (outcome.status === 'SUCCESS') {
+              return { id_pedido: outcome.idPedido, idempotent_replay: true };
+            }
+            if (outcome.status === 'FAILED') {
+              const definitiveError = new Error('El servidor confirmó que el pedido no fue creado.');
+              definitiveError.status = 422;
+              definitiveError.code = 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED';
+              throw definitiveError;
+            }
+            // IN_PROGRESS o NOT_FOUND: el resultado real sigue sin confirmarse. Se
+            // continua con el ciclo de reintentos acotado existente (misma
+            // idempotency-key); si tambien se agota, cae a UNKNOWN protegido.
           }
         }
       }
@@ -1307,6 +1480,33 @@ const recoverPedidoPendienteOperation = async (operationId, {
     error.code = 'PEDIDO_PENDIENTE_ACTIVO_EN_OTRA_PESTANA';
     error.operation = operation;
     throw error;
+  }
+  // RONDA 3: un UNKNOWN nunca se "recupera" reenviando a ciegas. Primero se le
+  // pregunta al servidor la verdad con la MISMA idempotency-key. Solo si el
+  // resultado real sigue sin confirmarse (NOT_FOUND) se cae al mecanismo de
+  // replay existente de abajo -- siempre con el MISMO operationId/idempotency-key/
+  // payload, nunca uno nuevo.
+  if (operation.status === PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN) {
+    const truth = await queryPedidoPendienteServerTruth(operation);
+    const outcome = applyPedidoPendienteServerTruthOutcome(operation, truth);
+    if (outcome.status === 'SUCCESS') {
+      return { id_pedido: outcome.idPedido, idempotent_replay: true };
+    }
+    if (outcome.status === 'FAILED') {
+      const definitiveError = new Error('El servidor confirmó que el pedido no fue creado.');
+      definitiveError.status = 422;
+      definitiveError.code = 'PEDIDO_PENDIENTE_SERVER_TRUTH_FAILED';
+      throw definitiveError;
+    }
+    if (outcome.status === 'IN_PROGRESS') {
+      const error = new Error('El servidor todavía está procesando esta operación. Vuelve a intentar en un momento.');
+      error.status = 409;
+      error.code = 'PEDIDO_PENDIENTE_EN_PROCESO';
+      error.operation = operation;
+      throw error;
+    }
+    // NOT_FOUND: el resultado real sigue sin confirmarse. Se continua con el replay
+    // de abajo usando exactamente la misma operationId/idempotency-key/payload.
   }
   return createPedidoPendienteWithRecovery(operation.payload, {
     operationId: operation.operationId,
@@ -1422,6 +1622,7 @@ const ventasService = {
   renewPedidoPendienteOperationLease,
   abandonPedidoPendienteOperation,
   recoverPedidoPendienteOperation,
+  reconcilePedidoPendienteOperation,
   createPedidoPendiente: (payload, options = {}) => createPedidoPendienteWithRecovery(payload, options),
   ...(import.meta.env.SSR ? {
     __resetPedidoPendienteOperationRuntimeForTests: resetPedidoPendienteOperationRuntimeForTests

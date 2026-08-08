@@ -15,7 +15,7 @@ import printerDeviceDetectionService from '../../../../services/printerDeviceDet
 import { useAuth } from '../../../../hooks/useAuth';
 import AppSelect from '../../../../components/common/AppSelect';
 import { parseCajaUtcTimestamp } from '../utils/cajasHelpers';
-import { dispatchPedidoPendientePostCreationTasks } from '../utils/pedidoPendienteCreation';
+import { dispatchPedidoPendientePostCreationTasks, resolvePedidoPendienteUiAfterError } from '../utils/pedidoPendienteCreation';
 import {
   buildPedidoPendienteOperationContext,
   createPedidoPendienteContextError,
@@ -302,6 +302,7 @@ export default function CajaView({
   const [abrirSesionSaving, setAbrirSesionSaving] = useState(false);
   const [abrirSesionError, setAbrirSesionError] = useState('');
   const [creatingPedidoPendiente, setCreatingPedidoPendiente] = useState(false);
+  const [verifyingPedidoPendiente, setVerifyingPedidoPendiente] = useState(false);
   const [revalidatingPedidoContext, setRevalidatingPedidoContext] = useState(false);
   const [pedidoContextStale, setPedidoContextStale] = useState(false);
   const [pedidoPendienteOperation, setPedidoPendienteOperation] = useState(null);
@@ -326,6 +327,8 @@ export default function CajaView({
   const creatingPedidoPendienteRef = useRef(false);
   const pedidoContextRevalidationRef = useRef({ key: '', promise: null, controller: null, requestId: 0 });
   const pedidoPendienteOperationRef = useRef(null);
+  const verifyingPedidoPendienteRef = useRef(false);
+  const autoReconciledPedidoPendienteIdsRef = useRef(new Set());
   const registrandoPagoPedidoRef = useRef(false);
   const lastDetectionSessionRef = useRef('');
   const pedidoPendienteOperationLocked = ventasService.isPedidoPendienteOperationLocked(pedidoPendienteOperation);
@@ -504,7 +507,7 @@ export default function CajaView({
     mutationBlocked: pedidoPendienteComposerGuarded,
     onMutationBlocked: () => onNotify?.(
       'RESULTADO PENDIENTE',
-      'Recupera o abandona conscientemente la operación anterior antes de modificar el pedido.',
+      'Verifica o recupera el resultado de la operación anterior antes de modificar el pedido.',
       'warning'
     ),
     userId: authenticatedUserId
@@ -547,12 +550,37 @@ export default function CajaView({
           event?.type === 'operation-released'
           && event.operationId === current.operationId
           && [
+            // Los tres son terminales: clearPedidoPendienteOperation() ya vacio el
+            // storage para cualquiera de estos tres estados (ver ventasService.js).
+            // REJECTED faltaba aqui -- por eso un rechazo definitivo resuelto por OTRO
+            // flujo (o notificado a esta misma pestaña via notifyPedidoPendienteSubscribers)
+            // podia dejar el UNKNOWN anterior vivo en este React state para siempre.
             ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.CONFIRMED,
+            ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.REJECTED,
             ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.ABANDONED
           ].includes(event.status)
         ) {
           pedidoPendienteOperationRef.current = null;
           return null;
+        }
+        // `operations` es SIEMPRE la lista de coordinacion (sin payload, hasRecoveryPayload
+        // false por construccion -- ver listSharedPedidoPendienteOperations). Si `current`
+        // es la copia PROPIA de esta pestaña (con payload), su fuente de verdad es la
+        // lectura propia (sessionStorage), nunca esa lista compartida: usarla aqui
+        // degradaba silenciosamente una operacion propia y recuperable a una version
+        // "huerfana" cada vez que este callback se disparaba (incluye el timer periodico
+        // de 5s en ventasService.js), mostrando "otra pestaña" sobre el propio pedido.
+        if (current.hasRecoveryPayload !== false) {
+          const own = ventasService.getPedidoPendienteOperation();
+          if (own?.operationId === current.operationId) {
+            pedidoPendienteOperationRef.current = own;
+            return own;
+          }
+          if (!own) {
+            pedidoPendienteOperationRef.current = null;
+            return null;
+          }
+          return current;
         }
         const updated = operations.find((operation) => operation.operationId === current.operationId);
         if (!updated) return current;
@@ -1381,14 +1409,19 @@ export default function CajaView({
       });
       return finalizePedidoPendienteCreation(response);
     } catch (error) {
-      const currentOperation = error?.operation || ventasService.getPedidoPendienteOperation();
-      const activeOperationId = pedidoPendienteOperationRef.current?.operationId;
-      if (activeOperationId && currentOperation?.operationId === activeOperationId) {
-        pedidoPendienteOperationRef.current = currentOperation;
-        setPedidoPendienteOperation(currentOperation);
-        if (ventasService.isPedidoPendienteOperationLocked(currentOperation)) {
-          setFinalizarOpen(false);
-        }
+      // ventasService/storage es la fuente de verdad: si ya no tiene operacion (rechazo
+      // definitivo -- 422 de validacion, REJECTED, etc.), React tambien debe quedar en
+      // null. Nunca se restaura `error.operation` ni la operacion previa del ref.
+      const serviceOperation = ventasService.getPedidoPendienteOperation();
+      const nextOperation = resolvePedidoPendienteUiAfterError({
+        serviceOperation,
+        previousOperation: pedidoPendienteOperationRef.current,
+        error
+      });
+      pedidoPendienteOperationRef.current = nextOperation;
+      setPedidoPendienteOperation(nextOperation);
+      if (nextOperation && ventasService.isPedidoPendienteOperationLocked(nextOperation)) {
+        setFinalizarOpen(false);
       }
       if (isDefinitiveCajaSessionError(error)) {
         setPedidoContextStale(true);
@@ -1427,46 +1460,107 @@ export default function CajaView({
       onNotify?.('PEDIDO RECUPERADO', 'Se confirmó el resultado del pedido pendiente.', 'success');
       await finalizePedidoPendienteCreation(response);
     } catch (error) {
-      const currentOperation = error?.operation || ventasService.getPedidoPendienteOperation() || target;
-      pedidoPendienteOperationRef.current = currentOperation;
-      setPedidoPendienteOperation(currentOperation);
-      onNotify?.(
-        'RESULTADO PENDIENTE',
-        String(error?.message || 'No fue posible recuperar todavía el resultado del pedido.'),
-        'warning'
-      );
+      // Igual que en la creacion: la fuente de verdad es ventasService/storage, nunca
+      // `target` ni error.operation. Si el service ya resolvio un estado terminal (por
+      // ejemplo FAILED via server-truth dentro de recoverPedidoPendienteOperation),
+      // React debe quedar en null tambien -- jamas volver a mostrar el UNKNOWN anterior.
+      const serviceOperation = ventasService.getPedidoPendienteOperation();
+      const nextOperation = resolvePedidoPendienteUiAfterError({
+        serviceOperation,
+        previousOperation: target,
+        error
+      });
+      pedidoPendienteOperationRef.current = nextOperation;
+      setPedidoPendienteOperation(nextOperation);
+      if (!nextOperation) {
+        // Resultado terminal (el service ya no tiene ninguna operacion protegida): el
+        // POS queda libre de inmediato para la siguiente venta.
+        composer.resetComposer({ preserveSucursal: true, preserveSession: true, force: true });
+        setFinalizarOpen(false);
+        setDeliveryCostPreview(0);
+        onNotify?.(
+          'PEDIDO NO CREADO',
+          'El servidor confirmó que el pedido no fue creado. Puedes intentarlo nuevamente.',
+          'warning'
+        );
+      } else {
+        onNotify?.(
+          'RESULTADO PENDIENTE',
+          String(error?.message || 'No fue posible recuperar todavía el resultado del pedido.'),
+          'warning'
+        );
+      }
     } finally {
       creatingPedidoPendienteRef.current = false;
       setCreatingPedidoPendiente(false);
     }
   };
 
-  const handleAbandonPedidoPendiente = () => {
-    const target = pedidoPendienteOperationLocked
+  // RONDA 3: se elimino handleAbandonPedidoPendiente y el boton "Abandonar operación"
+  // de este banner. abandonPedidoPendienteOperation ya solo permite liberar una
+  // operacion NEW que jamas se envio (hasBeenSent=false) -- ese estado nunca llega a
+  // mostrar este banner (solo aparece para SENDING/UNKNOWN, que siempre tuvieron un
+  // POST en vuelo), asi que el boton habria quedado deshabilitado/mentiroso para
+  // cualquier caso real. La unica salida para un candado visible aqui es reconciliar
+  // con el servidor (ver handleRecoverPedidoPendiente / handleReconcilePedidoPendiente).
+
+  // Consulta al servidor la verdad de una operacion (misma idempotency-key, sin
+  // generar una nueva ni reenviar el POST) y actua segun el resultado terminal:
+  //   SUCCESS -> recupera el pedido, limpia el candado, refresca la lista.
+  //   FAILED  -> el servidor confirma que NO se creo el pedido: libera el POS.
+  //   IN_PROGRESS / NOT_FOUND -> el resultado real sigue sin confirmarse: el
+  //     candado se mantiene exactamente igual (leaseExpired NUNCA es evidencia
+  //     financiera por si solo).
+  const handleReconcilePedidoPendiente = async (targetOverride = null) => {
+    const target = targetOverride || (pedidoPendienteOperationLocked
       ? pedidoPendienteOperation
-      : sharedPedidoPendienteOperations.find((operation) => operation.status === ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN);
-    if (!target || typeof window === 'undefined') return;
-    const confirmed = window.confirm(
-      'No se pudo confirmar si el pedido fue registrado. Si abandonas esta operación y creas otro pedido, podrías generar un duplicado. Primero revisa o recupera el pedido. ¿Deseas abandonar conscientemente esta operación?'
-    );
-    if (!confirmed) return;
-    const abandoned = ventasService.abandonPedidoPendienteOperation(target.operationId, {
-      explicit: true,
-      operationScope: target.operationScope
-    });
-    if (!abandoned) {
-      onNotify?.('OPERACIÓN ACTIVA', 'No se puede abandonar mientras exista una solicitud activa.', 'warning');
-      return;
+      : sharedPedidoPendienteOperations.find((operation) => (
+          operation.status === ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN
+          || operation.leaseExpired
+        )));
+    if (!target || verifyingPedidoPendienteRef.current) return;
+
+    verifyingPedidoPendienteRef.current = true;
+    setVerifyingPedidoPendiente(true);
+    try {
+      const result = await ventasService.reconcilePedidoPendienteOperation(target.operationId, {
+        operationScope: target.operationScope
+      });
+      if (result.status === 'SUCCESS') {
+        pedidoPendienteOperationRef.current = null;
+        setPedidoPendienteOperation(null);
+        composer.resetComposer({ preserveSucursal: true, preserveSession: true, force: true });
+        setFinalizarOpen(false);
+        setDeliveryCostPreview(0);
+        loadPendientesSummary();
+        onNotify?.('PEDIDO RECUPERADO', `El servidor confirmó que el pedido #${result.idPedido} fue creado.`, 'success');
+        return;
+      }
+      if (result.status === 'FAILED') {
+        pedidoPendienteOperationRef.current = null;
+        setPedidoPendienteOperation(null);
+        composer.resetComposer({ preserveSucursal: true, preserveSession: true, force: true });
+        setFinalizarOpen(false);
+        setDeliveryCostPreview(0);
+        onNotify?.('PEDIDO NO CREADO', 'El servidor confirmó que el pedido no fue creado. Puedes intentarlo de nuevo.', 'warning');
+        return;
+      }
+      const currentOperation = ventasService.getPedidoPendienteOperation() || target;
+      pedidoPendienteOperationRef.current = currentOperation;
+      setPedidoPendienteOperation(currentOperation);
+      onNotify?.(
+        'RESULTADO PENDIENTE',
+        result.status === 'IN_PROGRESS'
+          ? 'El servidor todavía está procesando esta operación. Vuelve a verificar en un momento.'
+          : 'Todavía no fue posible confirmar el resultado. La protección contra pedidos duplicados se mantiene.',
+        'warning'
+      );
+    } catch (error) {
+      onNotify?.('NO SE PUDO VERIFICAR', String(error?.message || 'No se pudo verificar el resultado del pedido.'), 'warning');
+    } finally {
+      verifyingPedidoPendienteRef.current = false;
+      setVerifyingPedidoPendiente(false);
     }
-    console.info('[Ventas] Operación de pedido pendiente abandonada explícitamente.', {
-      ...ventasService.buildPedidoPendienteSafeLogContext(target)
-    });
-    pedidoPendienteOperationRef.current = null;
-    setPedidoPendienteOperation(null);
-    composer.resetComposer({ preserveSucursal: true, preserveSession: true, force: true });
-    setFinalizarOpen(false);
-    setDeliveryCostPreview(0);
-    onNotify?.('OPERACIÓN ABANDONADA', 'La operación local fue liberada. Revisa pedidos antes de crear otro.', 'warning');
   };
 
   const visiblePedidoPendienteOperation = pedidoPendienteOperationLocked
@@ -1476,6 +1570,24 @@ export default function CajaView({
     visiblePedidoPendienteOperation.status === ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN
     || visiblePedidoPendienteOperation.leaseExpired
   ) && visiblePedidoPendienteOperation.hasRecoveryPayload !== false;
+  // Registro de coordinacion (otra pestaña) sin payload propio: no se puede reintentar/recuperar
+  // (ni abandonar) desde aqui sin antes preguntarle al servidor la verdad. leaseExpired solo dice
+  // que ninguna pestaña sigue siendo dueña del navegador -- NUNCA que el pedido no exista.
+  const canVerifyOrphanPedidoPendiente = Boolean(visiblePedidoPendienteOperation)
+    && visiblePedidoPendienteOperation.hasRecoveryPayload === false
+    && Boolean(visiblePedidoPendienteOperation.leaseExpired);
+
+  // Reconciliacion automatica, UNA sola vez por operacion huerfana detectada (no es
+  // polling: se dispara al aparecer, se marca como intentada y no se repite sola).
+  // El usuario siempre puede repetirla manualmente con "Verificar resultado".
+  useEffect(() => {
+    if (!canVerifyOrphanPedidoPendiente) return;
+    const operationId = visiblePedidoPendienteOperation?.operationId;
+    if (!operationId || autoReconciledPedidoPendienteIdsRef.current.has(operationId)) return;
+    autoReconciledPedidoPendienteIdsRef.current.add(operationId);
+    handleReconcilePedidoPendiente(visiblePedidoPendienteOperation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canVerifyOrphanPedidoPendiente, visiblePedidoPendienteOperation?.operationId]);
 
   const handleRegistrarPagoPedido = async (idPedido, payload) => {
     if (registrandoPagoPedidoRef.current) {
@@ -1986,11 +2098,17 @@ export default function CajaView({
           <div className="fw-semibold">Resultado de pedido pendiente por confirmar</div>
           <div className="small mt-1">
             {canRecoverPedidoPendiente
-              ? 'El servidor podría haber registrado el pedido. Recupera el resultado con la misma clave antes de crear o modificar otro pedido.'
+              ? 'No sabemos con certeza si el servidor registró el pedido. Verifica el resultado con la misma clave antes de crear o modificar otro pedido: nunca se reenviará como una operación nueva.'
               : visiblePedidoPendienteOperation.hasRecoveryPayload === false
-                ? 'Existe una operación en otra pestaña. Su payload privado no se comparte; vuelve a la pestaña original o revisa los pedidos recientes.'
+                ? canVerifyOrphanPedidoPendiente
+                  ? 'Existe un registro de una operación en otra pestaña que ya cerró. No se puede reintentar desde aquí; verifica con el servidor antes de continuar vendiendo.'
+                  : 'Existe una operación en otra pestaña. Su payload privado no se comparte; vuelve a la pestaña original o revisa los pedidos recientes.'
                 : 'Existe una operación activa en esta u otra pestaña. Espera a que termine antes de intentar recuperarla.'}
           </div>
+          {/* RONDA 3: nunca se ofrece "Abandonar operación" aqui. Un UNKNOWN (con o sin
+              payload propio) solo puede resolverse verificando con el servidor -- jamas
+              borrando el candado local, porque eso permitiria una idempotency-key nueva
+              sobre un pedido que el servidor ya pudo haber creado. */}
           <div className="d-flex flex-wrap gap-2 mt-3">
             <button
               type="button"
@@ -2000,14 +2118,14 @@ export default function CajaView({
             >
               {creatingPedidoPendiente ? 'Recuperando...' : 'Recuperar pedido'}
             </button>
-            {canRecoverPedidoPendiente ? (
+            {canVerifyOrphanPedidoPendiente ? (
               <button
                 type="button"
-                className="btn btn-sm btn-outline-danger"
-                onClick={handleAbandonPedidoPendiente}
-                disabled={creatingPedidoPendiente}
+                className="btn btn-sm btn-outline-primary"
+                onClick={() => handleReconcilePedidoPendiente()}
+                disabled={verifyingPedidoPendiente}
               >
-                Abandonar operación
+                {verifyingPedidoPendiente ? 'Verificando...' : 'Verificar resultado'}
               </button>
             ) : null}
           </div>
