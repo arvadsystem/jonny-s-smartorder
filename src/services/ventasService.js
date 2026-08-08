@@ -393,10 +393,16 @@ const normalizePedidoPendienteOperation = (rawRecord, { coordination = false } =
     hasRecoveryPayload: !coordination
   };
   if (
-    normalized.status === PEDIDO_PENDIENTE_OPERATION_STATUS.SENDING
+    (
+      normalized.status === PEDIDO_PENDIENTE_OPERATION_STATUS.SENDING
+      || normalized.status === PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN
+    )
     && normalized.leaseExpiresAt > 0
     && normalized.leaseExpiresAt <= Date.now()
   ) {
+    // Sin esto, un registro que ya paso de SENDING a UNKNOWN nunca recalculaba
+    // leaseExpired en lecturas posteriores (refresh, poll entre pestañas), por lo
+    // que quedaba bloqueado indefinidamente aunque el lease llevara minutos vencido.
     return {
       ...normalized,
       status: PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN,
@@ -784,6 +790,11 @@ const preparePedidoPendienteOperation = (payload, {
       ? stored.operationId
       : createPedidoPendienteOperationId();
     clearPedidoPendienteOperation(stored);
+  } else if (requestedOperationId) {
+    // El caller referenciaba una operacion que ya no existe (por ejemplo, fue
+    // limpiada de inmediato tras un rechazo definitivo). No reutilizar esa
+    // identidad vieja: cada intento realmente nuevo obtiene su propio operationId.
+    nextOperationId = null;
   }
 
   const now = Date.now();
@@ -925,7 +936,12 @@ const abandonPedidoPendienteOperation = (operationId, {
     : findSharedPedidoPendienteOperation(normalizedOperationId, operationScope);
   if (!record) return false;
   if (!isSamePedidoPendienteScope(record.operationScope, normalizedScope)) return false;
-  if (!record.hasRecoveryPayload) return false;
+  // Un registro de coordinacion (otra pestaña) nunca trae payload propio. Antes eso
+  // bloqueaba el abandono para siempre, incluso con el lease vencido hace rato -
+  // dejando un candado huerfano que ninguna accion del usuario podia liberar. Se
+  // permite abandonar explicitamente cuando el lease ya vencio (ninguna pestaña viva
+  // puede seguir siendo dueña de la operacion).
+  if (!record.hasRecoveryPayload && !(explicit && record.leaseExpired)) return false;
   if (record.status === PEDIDO_PENDIENTE_OPERATION_STATUS.SENDING && !record.leaseExpired) return false;
   if (record.status === PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN && !explicit) return false;
   if (isPedidoPendienteOperationLocked(record) && !explicit) return false;
@@ -1228,7 +1244,10 @@ const createPedidoPendienteWithRecovery = async (payload, options = {}) => {
               leaseExpiresAt: 0,
               lastErrorCode: String(error?.code || error?.data?.code || '').trim().toUpperCase()
             });
-            removeSharedPedidoPendienteOperation(operation);
+            // Rechazo definitivo (4xx o 22001 mapeado a 422): el servidor no creo el
+            // pedido, asi que no debe quedar ningun candado - ni el registro privado de
+            // recuperacion (sessionStorage) ni el puntero de coordinacion (localStorage).
+            clearPedidoPendienteOperation(operation);
             throw error;
           }
         }

@@ -1476,6 +1476,12 @@ export default function CajaView({
     visiblePedidoPendienteOperation.status === ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN
     || visiblePedidoPendienteOperation.leaseExpired
   ) && visiblePedidoPendienteOperation.hasRecoveryPayload !== false;
+  // Registro de coordinacion (otra pestaña) sin payload propio: no se puede reintentar/recuperar
+  // desde aqui, pero si el lease ya vencio ninguna pestaña viva puede seguir siendo dueña, asi que
+  // se permite liberarlo explicitamente en vez de dejarlo bloqueando el POS para siempre.
+  const canAbandonOrphanPedidoPendiente = Boolean(visiblePedidoPendienteOperation)
+    && visiblePedidoPendienteOperation.hasRecoveryPayload === false
+    && Boolean(visiblePedidoPendienteOperation.leaseExpired);
 
   const handleRegistrarPagoPedido = async (idPedido, payload) => {
     if (registrandoPagoPedidoRef.current) {
@@ -1988,7 +1994,9 @@ export default function CajaView({
             {canRecoverPedidoPendiente
               ? 'El servidor podría haber registrado el pedido. Recupera el resultado con la misma clave antes de crear o modificar otro pedido.'
               : visiblePedidoPendienteOperation.hasRecoveryPayload === false
-                ? 'Existe una operación en otra pestaña. Su payload privado no se comparte; vuelve a la pestaña original o revisa los pedidos recientes.'
+                ? canAbandonOrphanPedidoPendiente
+                  ? 'Existe un registro de una operación en otra pestaña, pero su tiempo de espera ya venció. Puedes liberarlo para continuar vendiendo.'
+                  : 'Existe una operación en otra pestaña. Su payload privado no se comparte; vuelve a la pestaña original o revisa los pedidos recientes.'
                 : 'Existe una operación activa en esta u otra pestaña. Espera a que termine antes de intentar recuperarla.'}
           </div>
           <div className="d-flex flex-wrap gap-2 mt-3">
@@ -2000,7 +2008,7 @@ export default function CajaView({
             >
               {creatingPedidoPendiente ? 'Recuperando...' : 'Recuperar pedido'}
             </button>
-            {canRecoverPedidoPendiente ? (
+            {canRecoverPedidoPendiente || canAbandonOrphanPedidoPendiente ? (
               <button
                 type="button"
                 className="btn btn-sm btn-outline-danger"

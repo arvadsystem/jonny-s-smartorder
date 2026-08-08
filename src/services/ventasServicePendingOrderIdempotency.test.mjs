@@ -314,7 +314,7 @@ describe('maquina de estados e idempotencia de pedidos pendientes', () => {
     assert.ok(sessionValues.size > 0);
   });
 
-  it('un error funcional no reintentable realiza una solicitud y queda RECHAZADA', async () => {
+  it('un error funcional no reintentable realiza una solicitud y libera el bloqueo de inmediato (sin tombstone RECHAZADA)', async () => {
     const keys = [];
     globalThis.fetch = async (url, options) => {
       keys.push(options.headers['Idempotency-Key']);
@@ -325,7 +325,11 @@ describe('maquina de estados e idempotencia de pedidos pendientes', () => {
 
     await assert.rejects(() => createOrder(payload, operation), (error) => error.code === 'CAJA_CERRADA');
     assert.equal(keys.length, 1);
-    assert.equal(ventasService.getPedidoPendienteOperation().status, ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.REJECTED);
+    // Un rechazo definitivo (el servidor confirmo que no se creo el pedido) debe liberar
+    // el candado de inmediato: ni el registro privado (sessionStorage) ni el de coordinacion
+    // (localStorage) deben sobrevivir, para no bloquear la siguiente venta.
+    assert.equal(ventasService.getPedidoPendienteOperation(), null);
+    assert.equal(localValues.size, 0);
 
     const nextConfirmation = beginOperation(payload, operation.operationId);
     assert.notEqual(nextConfirmation.operationId, operation.operationId);
@@ -386,6 +390,71 @@ describe('maquina de estados e idempotencia de pedidos pendientes', () => {
     assert.equal(visible[0].operationId, operation.operationId);
     assert.equal(visible[0].idempotencyKey, operation.idempotencyKey);
     assert.equal(ventasService.getPedidoPendienteOperation(operationScope).status, ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN);
+  });
+
+  it('leaseExpired se recalcula en cada lectura, no solo en la transicion SENDING->UNKNOWN', async () => {
+    // Bug del incidente: un registro que ya estaba en UNKNOWN nunca volvia a marcarse
+    // leaseExpired en lecturas posteriores, aunque su lease llevara minutos vencido.
+    // Eso dejaba el banner "espera a que termine" (no recuperable) para siempre, en
+    // vez de habilitar recuperar/abandonar cuando ninguna pestaña puede seguir siendo
+    // dueña de la operacion.
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 182 }] };
+    const operation = beginOperation(payload);
+    await exhaustAsUnknown(payload, operation);
+
+    const freshRead = ventasService.getPedidoPendienteOperation(operationScope);
+    assert.equal(freshRead.status, ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN);
+    assert.equal(freshRead.leaseExpired, undefined);
+
+    const sessionKey = [...sessionValues.keys()][0];
+    const stored = JSON.parse(sessionValues.get(sessionKey));
+    sessionValues.set(sessionKey, JSON.stringify({
+      ...stored,
+      lease: { token: stored.lease.token, until: Date.now() - 1 }
+    }));
+    // Simula un refresco de pestaña: la cache en memoria del modulo desaparece y la
+    // proxima lectura debe re-parsear sessionStorage (que es lo que sobrevive a un
+    // refresh) en vez de devolver el snapshot en memoria ya obsoleto.
+    ventasService.__resetPedidoPendienteOperationRuntimeForTests();
+
+    const expiredRead = ventasService.getPedidoPendienteOperation(operationScope);
+    assert.equal(expiredRead.status, ventasService.PEDIDO_PENDIENTE_OPERATION_STATUS.UNKNOWN);
+    assert.equal(expiredRead.leaseExpired, true);
+    assert.equal(expiredRead.operationId, operation.operationId);
+    assert.equal(expiredRead.idempotencyKey, operation.idempotencyKey);
+  });
+
+  it('un registro huerfano de coordinacion (otra pestaña, sin payload) con lease vencido puede abandonarse explicitamente', async () => {
+    // Bug del incidente: "Existe una operacion en otra pestaña" sobrevivia sin que la
+    // pestaña siguiera existiendo, y no habia ninguna accion de UI capaz de liberarlo
+    // porque abandonar exigia un payload que un registro de coordinacion nunca tiene.
+    const payload = { id_sucursal: 1, id_sesion_caja: 91, items: [{ id_receta: 183 }] };
+    const operation = beginOperation(payload);
+    await exhaustAsUnknown(payload, operation);
+
+    const sharedKey = [...localValues.keys()][0];
+    const shared = JSON.parse(localValues.get(sharedKey));
+    localValues.set(sharedKey, JSON.stringify({
+      ...shared,
+      owner: { ownerId: 'tab:cerrada-hace-rato' },
+      lease: { token: 'lease-vencido', until: Date.now() - 1 }
+    }));
+    // Simula que la pestaña original ya cerro: sin registro privado propio.
+    sessionValues.clear();
+
+    const orphan = ventasService.listSharedPedidoPendienteOperations(operationScope)[0];
+    assert.equal(orphan.hasRecoveryPayload, false);
+    assert.equal(orphan.leaseExpired, true);
+
+    // Sin explicit, sigue protegido (no se libera por accidente).
+    assert.equal(ventasService.abandonPedidoPendienteOperation(orphan.operationId, { operationScope }), false);
+
+    const abandoned = ventasService.abandonPedidoPendienteOperation(orphan.operationId, {
+      explicit: true,
+      operationScope
+    });
+    assert.equal(abandoned, true);
+    assert.equal(ventasService.listSharedPedidoPendienteOperations(operationScope).length, 0);
   });
 
   it('confirmar publica la liberacion y un registro confirmado no bloquea otro pedido', async () => {
