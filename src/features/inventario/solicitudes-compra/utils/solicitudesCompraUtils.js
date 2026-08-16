@@ -125,10 +125,28 @@ export const buildSolicitudPayload = ({ idAlmacen, observacion, detalles }) => (
   })
 });
 
+const SAFE_SOLICITUD_CONFLICT_CODES = new Set([
+  'INSUMO_SIN_UNIDAD_BASE',
+  'PRESENTACION_UNIDAD_BASE_INCOMPATIBLE',
+  'SCOPE_AMBIGUOUS'
+]);
+
+const TECHNICAL_ERROR_PATTERN = /(?:duplicate\s+key|violates|constraint|sqlstate|postgres|stack\s*trace|relation\s+[^\s]+\s+does\s+not\s+exist|\bpublic\.|\bselect\b|\binsert\b|\bupdate\b|\bdelete\b)/i;
+
+const getSafeSolicitudConflictMessage = (error) => {
+  const code = String(error?.code ?? error?.data?.code ?? '').trim().toUpperCase();
+  const message = String(error?.message ?? error?.data?.message ?? '').replace(/\s+/g, ' ').trim();
+  if (!SAFE_SOLICITUD_CONFLICT_CODES.has(code) || !message || TECHNICAL_ERROR_PATTERN.test(message)) return null;
+  return message;
+};
+
 export const mapSolicitudError = (error) => {
   if (error?.status === 403) return 'No tienes permiso para realizar esta acción.';
   if (error?.status === 404) return 'La solicitud ya no está disponible.';
-  if (error?.status === 409) return 'La solicitud o el inventario cambió. Actualiza la información.';
+  if (error?.status === 409) {
+    return getSafeSolicitudConflictMessage(error)
+      || 'La solicitud o el inventario cambió. Actualiza la información y vuelve a intentar.';
+  }
   if (error?.status >= 500) return 'No fue posible completar la operación.';
   return error?.message || 'No fue posible completar la operación.';
 };

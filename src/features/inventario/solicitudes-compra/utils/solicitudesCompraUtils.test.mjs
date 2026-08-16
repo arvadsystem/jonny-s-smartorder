@@ -78,3 +78,25 @@ for (const state of ['PENDIENTE', 'APROBADA', 'RECHAZADA', 'RECIBIDA', 'CANCELAD
 test('utils no contiene estados legacy', () => assert.equal(JSON.stringify(SOLICITUD_ESTADOS).includes('EN_COMPRA') || JSON.stringify(SOLICITUD_ESTADOS).includes('ABASTECIDA'), false));
 for (const [status, expected] of [[403, 'No tienes permiso'], [404, 'ya no está disponible'], [409, 'cambió'], [500, 'No fue posible']]) test(`error ${status} se mapea`, () => assert.match(mapSolicitudError({ status }), new RegExp(expected)));
 test('validacion especifica del backend se conserva', () => assert.equal(mapSolicitudError({ status: 400, message: 'La cantidad es inválida.' }), 'La cantidad es inválida.'));
+test('409 de unidad allowlisted conserva el mensaje accionable del backend', () => {
+  const message = "CONCENTRADO PINA: la presentacion 'Bote' utiliza una unidad base diferente. Revisa la presentacion en Inventario.";
+  assert.equal(mapSolicitudError({ status: 409, code: 'PRESENTACION_UNIDAD_BASE_INCOMPATIBLE', message }), message);
+});
+test('otro conflicto allowlisted conserva su mensaje seguro', () => {
+  const message = 'La sucursal requiere una asignación explícita de almacén.';
+  assert.equal(mapSolicitudError({ status: 409, data: { code: 'SCOPE_AMBIGUOUS', message }, message }), message);
+});
+test('409 desconocido usa fallback y no muestra su mensaje arbitrario', () => {
+  const result = mapSolicitudError({ status: 409, code: 'OTRO_CONFLICTO', message: 'Mensaje no autorizado.' });
+  assert.equal(result, 'La solicitud o el inventario cambió. Actualiza la información y vuelve a intentar.');
+});
+for (const technicalMessage of [
+  'duplicate key value violates unique constraint foo',
+  'relation public.foo does not exist',
+  'SELECT * FROM secretos'
+]) {
+  test(`conflicto conocido no filtra detalle tecnico: ${technicalMessage}`, () => {
+    const result = mapSolicitudError({ status: 409, code: 'PRESENTACION_UNIDAD_BASE_INCOMPATIBLE', message: technicalMessage });
+    assert.equal(result, 'La solicitud o el inventario cambió. Actualiza la información y vuelve a intentar.');
+  });
+}
