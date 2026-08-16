@@ -4,29 +4,12 @@ import { inventarioService } from '../../../services/inventarioService';
 import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
+import { formatKardexFecha } from './utils/kardexDateTime';
 
 const parseEstado = (value) => {
   if (value === true || value === 'true' || value === 1 || value === '1') return true;
   if (value === false || value === 'false' || value === 0 || value === '0') return false;
   return Boolean(value);
-};
-
-// NEW: normaliza fechas visibles del kardex en una sola funcion reutilizable.
-// WHY: la tabla y las cards mobile deben usar el mismo formato para no generar diferencias visuales.
-// IMPACT: solo presentacion; no altera requests ni contratos del endpoint.
-const formatKardexFecha = (value) => {
-  if (!value) return '-';
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-
-  return date.toLocaleString('es-HN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
 };
 
 const formatRefLabel = (movimiento) => {
