@@ -24,7 +24,8 @@ test('controles no solicitables quedan deshabilitados y add aplica defensa adici
   assert.match(component, /<input[^>]+aria-disabled=\{!isSolicitable\}[^>]+disabled=\{!isSolicitable\}/);
   assert.match(component, /<button[^>]+disabled=\{!isSolicitable\}[^>]+aria-disabled=\{!isSolicitable\}/);
   assert.match(component, /aria-describedby=\{!isSolicitable \? unavailableMessageId/);
-  assert.match(component, /\{isSolicitable \? 'Agregar' : 'No disponible'\}/);
+  assert.match(component, /\{isSolicitable \? addLabel : 'No disponible'\}/);
+  assert.match(component, /addLabel = 'Agregar'/);
 });
 
 test('articulos validos conservan agregar presentaciones cantidades y conversion', () => {

@@ -51,6 +51,7 @@ export default function SolicitudCompraDetalle({ state, onBack, onRetry, reloadD
         <TraceItem icon="bi-building" label="Almacén">{request.almacen?.nombre || '—'}</TraceItem>
         <TraceItem icon="bi-person" label="Solicitante">{request.solicitante?.nombre || '—'}</TraceItem>
         <TraceItem icon="bi-calendar3" label="Creación">{formatDateTime(request.fecha_creacion)}</TraceItem>
+        {request.origen_captura_rapida ? <TraceItem icon="bi-receipt" label="Origen">Captura rápida #{request.origen_captura_rapida.id_captura_compra_rapida}</TraceItem> : null}
       </div>
       <section className="sol-comp-trace" aria-labelledby="sol-comp-trace-title">
         <div className="sol-comp-panel-heading"><span aria-hidden="true"><i className="bi bi-clock-history" /></span><div><h3 id="sol-comp-trace-title">Trazabilidad</h3><p>Responsables y registros disponibles hasta este momento.</p></div></div>

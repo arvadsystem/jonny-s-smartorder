@@ -7,7 +7,7 @@ import { createCatalogSearchController } from '../utils/solicitudesCompraCatalog
 const STOCK_LABELS = { SIN_STOCK: 'Sin stock', STOCK_BAJO: 'Stock bajo', DISPONIBLE: 'Disponible' };
 const TYPE_OPTIONS = [{ value: '', label: 'Todos' }, { value: 'producto', label: 'Productos' }, { value: 'insumo', label: 'Insumos' }];
 
-function CatalogItem({ item, onAdd }) {
+function CatalogItem({ item, onAdd, quantityLabel, addLabel, previewLabel }) {
   const isSupply = String(item.tipo_item).toLowerCase() === 'insumo';
   const isSolicitable = item.solicitable !== false;
   const presentations = useMemo(() => Array.isArray(item.presentaciones) ? item.presentaciones : [], [item.presentaciones]);
@@ -90,18 +90,18 @@ function CatalogItem({ item, onAdd }) {
         </div>
       ) : <div className="sol-comp-base-presentation"><i className={`bi ${isSolicitable ? 'bi-box' : 'bi-exclamation-circle'}`} aria-hidden="true" /><span><strong>{isSupply ? (isSolicitable ? 'Solo unidad base' : 'Unidad base sin configurar') : 'Solicitud por unidad'}</strong>{isSolicitable ? <small>{isSupply ? `Este insumo no tiene una presentación de compra configurada. Se solicitará directamente en ${item.unidad_base}.` : 'Se solicitará directamente en Unidades.'}</small> : null}</span></div>}
       <div className="sol-comp-add-row">
-        <label>Cantidad solicitada
+        <label>{quantityLabel}
           <input aria-invalid={Boolean(error)} aria-disabled={!isSolicitable} aria-describedby={error ? quantityErrorId : (!isSolicitable ? unavailableMessageId : undefined)} disabled={!isSolicitable} type="number" min="0" step={isSupply ? '0.000001' : '1'} inputMode={isSupply ? 'decimal' : 'numeric'} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
           {error ? <small id={quantityErrorId} className="sol-comp-field-error" role="alert">{error}</small> : null}
         </label>
-        <button type="button" className="btn sol-comp-add-action" disabled={!isSolicitable} aria-disabled={!isSolicitable} aria-describedby={!isSolicitable ? unavailableMessageId : undefined} onClick={add}><i className={`bi ${isSolicitable ? 'bi-plus-circle' : 'bi-exclamation-circle'}`} aria-hidden="true" /> {isSolicitable ? 'Agregar' : 'No disponible'}</button>
+        <button type="button" className="btn sol-comp-add-action" disabled={!isSolicitable} aria-disabled={!isSolicitable} aria-describedby={!isSolicitable ? unavailableMessageId : undefined} onClick={add}><i className={`bi ${isSolicitable ? 'bi-plus-circle' : 'bi-exclamation-circle'}`} aria-hidden="true" /> {isSolicitable ? addLabel : 'No disponible'}</button>
       </div>
-      {isSolicitable && conversionPreview.valid ? <div className="sol-comp-conversion-preview" aria-live="polite"><small>Entrada estimada al inventario:</small><strong>{conversionPreview.baseQuantity} {conversionPreview.baseUnit}</strong></div> : null}
+      {isSolicitable && conversionPreview.valid ? <div className="sol-comp-conversion-preview" aria-live="polite"><small>{previewLabel}:</small><strong>{conversionPreview.baseQuantity} {conversionPreview.baseUnit}</strong></div> : null}
     </article>
   );
 }
 
-export default function SolicitudCompraCatalogo({ warehouseId, state, loadCatalog, onAdd }) {
+export default function SolicitudCompraCatalogo({ warehouseId, state, loadCatalog, onAdd, quantityLabel = 'Cantidad solicitada', addLabel = 'Agregar', previewLabel = 'Entrada estimada al inventario' }) {
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
   const [scope, setScope] = useState('all');
@@ -159,7 +159,7 @@ export default function SolicitudCompraCatalogo({ warehouseId, state, loadCatalo
         {state.error ? <div className="sol-comp-feedback sol-comp-feedback--error">{state.error} <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => searchController.page(page)}>Reintentar</button></div> : null}
       </div>
       {hasUnavailableItems ? <div className="sol-comp-catalog-warning" role="status"><i className="bi bi-exclamation-triangle" aria-hidden="true" /> Algunos insumos no pueden solicitarse porque su unidad base está pendiente de configuración. Repórtalos al responsable de Inventario.</div> : null}
-      <div className="sol-comp-catalog-grid">{visibleItems.map((item) => <CatalogItem key={`${item.tipo_item}-${item.id_item}`} item={item} onAdd={onAdd} />)}</div>
+      <div className="sol-comp-catalog-grid">{visibleItems.map((item) => <CatalogItem key={`${item.tipo_item}-${item.id_item}`} item={item} onAdd={onAdd} quantityLabel={quantityLabel} addLabel={addLabel} previewLabel={previewLabel} />)}</div>
       {!state.loading && !state.error && matchesWarehouse && !visibleItems.length ? <div className="sol-comp-empty"><i className="bi bi-search" aria-hidden="true" /><h4>No encontramos artículos{search ? ` para “${search}”` : ''}</h4><p>Los filtros actuales no produjeron coincidencias.</p></div> : null}
       <nav className="sol-comp-pagination" aria-label="Paginación del catálogo">
         <button type="button" className="btn btn-outline-secondary btn-sm" disabled={page <= 1} onClick={() => searchController.page(page - 1)}>Anterior</button>

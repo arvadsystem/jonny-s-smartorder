@@ -65,13 +65,14 @@ test('exito 409 y 403 usan contratos visibles y refresh canonico', async () => {
   assert.match(hook, /actionLock\.current = false/);
 });
 
-test('rechazada y formalizada son read only y muestran motivo u OC', async () => {
+test('rechazada y formalizada son read only y muestran motivo u OC; solo capacidad canonica ofrece formalizar', async () => {
   const [admin, operative] = await Promise.all([read('../components/CapturasCompraRapidaAdmin.jsx'), read('../components/CapturasCompraRapidaOperativa.jsx')]);
   for (const source of [admin, operative]) {
     assert.match(source, /motivo_rechazo/);
     assert.match(source, /id_solicitud_compra/);
   }
-  assert.doesNotMatch(admin, /Formalizar compra/);
+  assert.match(admin, /capture\.acciones\?\.puede_formalizar === true/);
+  assert.match(admin, /capture\.estado === 'FORMALIZADA'/);
 });
 
 test('servicio usa endpoint rechazo existente y QR2 y OC normal permanecen montados', async () => {

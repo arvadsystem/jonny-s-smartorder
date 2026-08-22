@@ -15,7 +15,7 @@ export const buildSolicitudesCompraQuery = (path, options = {}, allowed = []) =>
 const CATALOG_FILTERS = ['id_almacen', 'tipo', 'buscar', 'solo_stock_bajo', 'page', 'limit'];
 export const LIST_FILTERS = ['estado', 'buscar', 'id_sucursal', 'id_almacen', 'fecha_desde', 'fecha_hasta', 'page', 'limit'];
 const PROVIDER_FILTERS = ['buscar', 'page', 'limit'];
-const QUICK_CAPTURE_FILTERS = ['page', 'limit'];
+const QUICK_CAPTURE_FILTERS = ['estado', 'buscar', 'page', 'limit'];
 
 export const solicitudesCompraService = {
   getCatalogo: (options) => apiFetch(buildSolicitudesCompraQuery('/solicitudes_compra/catalogo', options, CATALOG_FILTERS), 'GET'),
@@ -37,5 +37,7 @@ export const solicitudesCompraService = {
   deleteQuickCaptureEvidence: (id, evidenceId) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/evidencias/${encodeURIComponent(String(evidenceId))}`, 'DELETE'),
   discardQuickCapture: (id) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}`, 'DELETE'),
   sendQuickCapture: (id) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/enviar`, 'PUT', {}),
-  rejectQuickCapture: (id, motivo_rechazo) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/rechazar`, 'PUT', { motivo_rechazo })
+  rejectQuickCapture: (id, motivo_rechazo) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/rechazar`, 'PUT', { motivo_rechazo }),
+  getQuickCaptureProviders: () => apiFetch('/solicitudes_compra/capturas-rapidas/proveedores', 'GET'),
+  formalizeQuickCapture: (id, payload) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/formalizar`, 'POST', payload)
 };
