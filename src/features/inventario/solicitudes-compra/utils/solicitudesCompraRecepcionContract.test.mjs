@@ -75,9 +75,10 @@ test('hook bloquea doble envio, carga secuencial y conserva borrador en error or
   const source = await read('../hooks/useSolicitudCompraRecepcion.js');
   assert.match(source, /receiveLock\.current/);
   assert.match(source, /if \(receiveLock\.current \|\| receiveDisabled/);
-  assert.match(source, /for \(const file of selected\)/);
+  assert.match(source, /prevalidateInvoiceFiles\(selected\)/);
+  assert.match(source, /uploadInvoiceFilesSequentially\(selected/);
   assert.match(source, /subirFactura\(idSolicitud/);
-  assert.match(source, /finally \{[\s\S]*loadEvidence\(\)/);
+  assert.match(source, /finally \{[\s\S]*refreshReceptionEvidenceState/);
   const catchBlock = source.slice(source.indexOf('} catch (error)'));
   const ordinary = catchBlock.slice(0, catchBlock.indexOf('} finally'));
   assert.doesNotMatch(ordinary.split("if (error?.status === 409)")[0], /setLines\(\[\]\)|setObservation\(''\)|setInvoice\(EMPTY_INVOICE\)/);
@@ -95,6 +96,15 @@ test('recepcion nueva no conserva blob local ni envia factura en payload final',
   const source = await read('../hooks/useSolicitudCompraRecepcion.js');
   assert.doesNotMatch(source, /URL\.createObjectURL|URL\.revokeObjectURL|factura:/);
   assert.match(source, /buildReceptionPayload\(\{ observacion: observation, detalles: lines \}\)/);
+});
+
+test('upload delete individual y quitar todas refrescan estado canonico una vez por operacion', async () => {
+  const source = await read('../hooks/useSolicitudCompraRecepcion.js');
+  assert.match(source, /selectInvoices[\s\S]*finally \{[\s\S]*refreshReceptionEvidenceState\(\{ loadEvidence, reloadDetail, reloadList \}\)/);
+  assert.match(source, /removeEvidence[\s\S]*finally \{[\s\S]*refreshReceptionEvidenceState\(\{ loadEvidence, reloadDetail, reloadList \}\)/);
+  const removeAll = source.slice(source.indexOf('const removeAllEvidence'), source.indexOf('const refreshInformation'));
+  assert.equal((removeAll.match(/refreshReceptionEvidenceState/g) || []).length, 1);
+  assert.doesNotMatch(removeAll.match(/for \(const item[\s\S]*?\n\s*\}/)?.[0] || '', /refreshReceptionEvidenceState|reloadDetail|reloadList/);
 });
 
 test('evidencias cargan solo bajo demanda y permiten renovar y cerrar', async () => {

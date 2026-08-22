@@ -12,7 +12,10 @@ import {
   mapReceptionError,
   normalizeReceptionObservation,
   parseReceivedQuantity,
+  prevalidateInvoiceFiles,
+  refreshReceptionEvidenceState,
   updateReceptionDraftLine,
+  uploadInvoiceFilesSequentially,
   validateInvoiceBytes,
   validateInvoiceBatch,
   validateInvoiceMetadata,
@@ -36,6 +39,12 @@ const invoice = (type = 'image/jpeg', size = 100) => ({ name: 'factura.jpg', typ
 const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0x00, 0x01]);
 const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const webp = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+const binaryFile = (name, type, bytes, events = []) => ({
+  name,
+  type,
+  size: bytes.length,
+  slice: () => ({ arrayBuffer: async () => { events.push(`validate:${name}`); return Uint8Array.from(bytes).buffer; } })
+});
 
 test('borrador conserva id_solicitud_detalle y prioriza cantidad recibida', () => {
   const [existing] = createReceptionDraft([detail({ cantidad_recibida: 2 })]);
@@ -148,6 +157,60 @@ test('firma invalida o MIME falso quedan rechazados', () => {
   assert.equal(validateInvoiceBytes(invoice('image/png'), jpeg).valid, false);
   assert.equal(validateInvoiceBytes(invoice('image/jpeg'), png).valid, false);
   assert.equal(validateInvoiceBytes(invoice('image/webp'), Uint8Array.from([0x52, 0x49, 0x46, 0x46])).valid, false);
+});
+
+test('prevalidacion de lote identifica archivo invalido antes de cualquier upload', async () => {
+  const events = [];
+  const files = [
+    binaryFile('uno.jpg', 'image/jpeg', jpeg, events),
+    binaryFile('dos.png', 'image/png', png, events),
+    binaryFile('tres.jpg', 'image/jpeg', Uint8Array.from([1, 2, 3]), events)
+  ];
+  let uploads = 0;
+  await assert.rejects(async () => {
+    const validated = await prevalidateInvoiceFiles(files);
+    await uploadInvoiceFilesSequentially(validated, async () => { uploads += 1; });
+  }, /tres\.jpg/);
+  assert.equal(uploads, 0);
+  assert.deepEqual(events, ['validate:uno.jpg', 'validate:dos.png', 'validate:tres.jpg']);
+});
+
+test('todas las firmas se prevalidan antes de uploads secuenciales', async () => {
+  const events = [];
+  const files = [binaryFile('uno.jpg', 'image/jpeg', jpeg, events), binaryFile('dos.png', 'image/png', png, events)];
+  const validated = await prevalidateInvoiceFiles(files);
+  let active = 0;
+  const result = await uploadInvoiceFilesSequentially(validated, async (file) => {
+    active += 1;
+    assert.equal(active, 1);
+    events.push(`upload:${file.name}`);
+    await Promise.resolve();
+    active -= 1;
+  });
+  assert.deepEqual(events, ['validate:uno.jpg', 'validate:dos.png', 'upload:uno.jpg', 'upload:dos.png']);
+  assert.deepEqual(result, { uploaded: 2, failures: [] });
+});
+
+test('fallo HTTP en segundo upload conserva exitos y continua lote', async () => {
+  const files = [{ name: 'uno.jpg' }, { name: 'dos.jpg' }, { name: 'tres.jpg' }];
+  const persisted = [];
+  const result = await uploadInvoiceFilesSequentially(files, async (file) => {
+    if (file.name === 'dos.jpg') throw Object.assign(new Error('HTTP'), { status: 502 });
+    persisted.push(file.name);
+  });
+  assert.deepEqual(persisted, ['uno.jpg', 'tres.jpg']);
+  assert.equal(result.uploaded, 2);
+  assert.equal(result.failures[0].file.name, 'dos.jpg');
+});
+
+test('refresh canonico consulta evidencias detalle y listado exactamente una vez', async () => {
+  const calls = [];
+  await refreshReceptionEvidenceState({
+    loadEvidence: async () => calls.push('evidence'),
+    reloadDetail: async () => calls.push('detail'),
+    reloadList: async () => calls.push('list')
+  });
+  assert.deepEqual(calls.sort(), ['detail', 'evidence', 'list']);
 });
 
 test('payload contiene solo contrato autorizado y omite metadatos visuales', () => {

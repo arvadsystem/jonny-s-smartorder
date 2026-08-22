@@ -179,6 +179,39 @@ export const validateInvoiceBytes = (file, bytes) => {
   return { valid: true, error: '', detectedMime };
 };
 
+export const prevalidateInvoiceFiles = async (files) => {
+  const selected = Array.from(files || []);
+  const validations = await Promise.all(selected.map(async (file) => {
+    try {
+      const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+      return { file, validation: validateInvoiceBytes(file, bytes) };
+    } catch {
+      return { file, validation: { valid: false, error: 'No fue posible leer la imagen.' } };
+    }
+  }));
+  const invalid = validations.find(({ validation }) => !validation.valid);
+  if (invalid) throw new Error(`${invalid.file?.name || 'Archivo'}: ${invalid.validation.error}`);
+  return selected;
+};
+
+export const uploadInvoiceFilesSequentially = async (files, uploadFile) => {
+  let uploaded = 0;
+  const failures = [];
+  for (const file of Array.from(files || [])) {
+    try {
+      await uploadFile(file);
+      uploaded += 1;
+    } catch (error) {
+      failures.push({ file, error });
+    }
+  }
+  return { uploaded, failures };
+};
+
+export const refreshReceptionEvidenceState = async ({ loadEvidence, reloadDetail, reloadList }) => {
+  await Promise.allSettled([loadEvidence(), reloadDetail?.(), reloadList?.()]);
+};
+
 export const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
   if (!file) {
     reject(new Error('No hay una fotografía para leer.'));

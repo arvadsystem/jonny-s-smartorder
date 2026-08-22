@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { solicitudesCompraService } from '../../../../services/solicitudesCompraService';
 import {
   buildInvoiceUploadPayload, buildReceptionPayload, createReceptionDraft, getReceptionDifferences,
-  getReceptionObservationError, mapReceptionError, readFileAsDataUrl, updateReceptionDraftLine,
-  validateInvoiceBatch, validateInvoiceBytes, validateReceptionDraft
+  getReceptionObservationError, mapReceptionError, prevalidateInvoiceFiles, readFileAsDataUrl,
+  refreshReceptionEvidenceState, updateReceptionDraftLine, uploadInvoiceFilesSequentially,
+  validateInvoiceBatch, validateReceptionDraft
 } from '../utils/solicitudesCompraRecepcionUtils';
 
 const EMPTY_EVIDENCE = { items: [], loading: false, error: '' };
@@ -57,26 +58,27 @@ export default function useSolicitudCompraRecepcion({ solicitud, detalles, canRe
     if (!batchValidation.valid) { setEvidence((current) => ({ ...current, error: batchValidation.error })); return; }
     setEvidenceBusy(true);
     setEvidence((current) => ({ ...current, error: '' }));
-    let uploaded = 0;
-    const failures = [];
     try {
-      for (const file of selected) {
-        try {
-          const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-          const binaryValidation = validateInvoiceBytes(file, bytes);
-          if (!binaryValidation.valid) throw new Error(binaryValidation.error);
+      await prevalidateInvoiceFiles(selected);
+    } catch (error) {
+      setEvidence((current) => ({ ...current, error: error.message }));
+      setEvidenceBusy(false);
+      return;
+    }
+    let result;
+    try {
+      result = await uploadInvoiceFilesSequentially(selected, async (file) => {
           const dataUrl = await readFileAsDataUrl(file);
           await solicitudesCompraService.subirFactura(idSolicitud, buildInvoiceUploadPayload(file, dataUrl));
-          uploaded += 1;
-        } catch (error) { failures.push(`${file.name}: ${mapReceptionError(error)}`); }
-      }
+      });
     } finally {
-      await loadEvidence();
+      await refreshReceptionEvidenceState({ loadEvidence, reloadDetail, reloadList });
       setEvidenceBusy(false);
     }
-    if (failures.length) openToast('CARGA PARCIAL', `${uploaded} imagen(es) guardadas. ${failures.length} no se pudieron guardar. ${failures.join(' ')}`, 'warning');
-    else openToast('FACTURAS GUARDADAS', `${uploaded} imagen(es) de factura guardadas.`, 'success');
-  }, [evidence.items.length, evidenceBusy, idSolicitud, loadEvidence, openToast]);
+    const failureMessages = result.failures.map(({ file, error }) => `${file.name}: ${mapReceptionError(error)}`);
+    if (failureMessages.length) openToast('CARGA PARCIAL', `${result.uploaded} imagen(es) guardadas. ${failureMessages.length} no se pudieron guardar. ${failureMessages.join(' ')}`, 'warning');
+    else openToast('FACTURAS GUARDADAS', `${result.uploaded} imagen(es) de factura guardadas.`, 'success');
+  }, [evidence.items.length, evidenceBusy, idSolicitud, loadEvidence, openToast, reloadDetail, reloadList]);
 
   const removeEvidence = useCallback(async (idEvidencia) => {
     if (receiveLock.current || evidenceBusy) return;
@@ -85,8 +87,11 @@ export default function useSolicitudCompraRecepcion({ solicitud, detalles, canRe
       await solicitudesCompraService.eliminarEvidencia(idSolicitud, idEvidencia);
       openToast('IMAGEN ELIMINADA', 'La imagen de factura fue eliminada.', 'success');
     } catch (error) { openToast('NO SE PUDO ELIMINAR', mapReceptionError(error), 'danger'); }
-    finally { await loadEvidence(); setEvidenceBusy(false); }
-  }, [evidenceBusy, idSolicitud, loadEvidence, openToast]);
+    finally {
+      await refreshReceptionEvidenceState({ loadEvidence, reloadDetail, reloadList });
+      setEvidenceBusy(false);
+    }
+  }, [evidenceBusy, idSolicitud, loadEvidence, openToast, reloadDetail, reloadList]);
 
   const removeAllEvidence = useCallback(async () => {
     if (receiveLock.current || evidenceBusy) return;
@@ -97,10 +102,11 @@ export default function useSolicitudCompraRecepcion({ solicitud, detalles, canRe
         try { await solicitudesCompraService.eliminarEvidencia(idSolicitud, item.id_evidencia); } catch { failed += 1; }
       }
     } finally {
-      await loadEvidence(); setEvidenceBusy(false); setRemoveAllConfirmation(false);
+      await refreshReceptionEvidenceState({ loadEvidence, reloadDetail, reloadList });
+      setEvidenceBusy(false); setRemoveAllConfirmation(false);
     }
     openToast(failed ? 'ELIMINACIÓN PARCIAL' : 'IMÁGENES ELIMINADAS', failed ? `${failed} imagen(es) no se pudieron eliminar.` : 'Todas las imágenes de factura fueron eliminadas.', failed ? 'warning' : 'success');
-  }, [evidence.items, evidenceBusy, idSolicitud, loadEvidence, openToast]);
+  }, [evidence.items, evidenceBusy, idSolicitud, loadEvidence, openToast, reloadDetail, reloadList]);
 
   const refreshInformation = useCallback(async () => { await Promise.all([reloadDetail?.(), reloadList?.()]); }, [reloadDetail, reloadList]);
   const startConfirmation = useCallback(() => { if (!receiveDisabled && !receiveLock.current) setConfirmation(true); }, [receiveDisabled]);
