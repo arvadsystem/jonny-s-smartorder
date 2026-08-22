@@ -1787,6 +1787,23 @@
   max-height: 96px;
 }
 
+.sol-comp-quick-reject__body {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem 1.25rem;
+}
+
+.sol-comp-quick-reject__body textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.sol-comp-quick-reject__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
 .sol-comp-invoice-list {
   grid-column: 1 / -1;
   min-width: 0;

@@ -367,7 +367,7 @@ test('detalle muestra stock proveedor y estados semanticos sin inventar valores'
 test('detalle preserva exactamente montaje de revision recepcion y evidencias', async () => {
   const detail = await read('../components/SolicitudCompraDetalle.jsx');
   assert.match(detail, /String\(request\.estado \|\| ''\)\.toUpperCase\(\) === 'PENDIENTE' && \(canApprove \|\| canReject\)/);
-  assert.match(detail, /SolicitudCompraRevisionPanel[\s\S]*solicitud=\{request\} detalles=\{details\} canApprove=\{canApprove\} canReject=\{canReject\} reloadDetail=\{reloadDetail\} reloadList=\{reloadList\} openToast=\{openToast\}/);
+  assert.match(detail, /SolicitudCompraRevisionPanel[\s\S]*solicitud=\{request\} detalles=\{details\} canApprove=\{canApprove\} canReject=\{canReject && request\.acciones\?\.puede_rechazar === true\} reloadDetail=\{reloadDetail\} reloadList=\{reloadList\} openToast=\{openToast\}/);
   assert.match(detail, /String\(request\.estado \|\| ''\)\.toUpperCase\(\) === 'APROBADA' && canReceive/);
   assert.match(detail, /SolicitudCompraRecepcionPanel[\s\S]*solicitud=\{request\} detalles=\{details\} canReceive=\{canReceive\} reloadDetail=\{reloadDetail\} reloadList=\{reloadList\} openToast=\{openToast\}/);
   assert.match(detail, /request\.tiene_evidencia && canViewEvidence/);

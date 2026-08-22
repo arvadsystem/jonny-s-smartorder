@@ -95,7 +95,7 @@ export default function SolicitudCompraDetalle({ state, onBack, onRetry, reloadD
         );
       })}</div>
       {String(request.estado || '').toUpperCase() === 'PENDIENTE' && (canApprove || canReject) ? (
-        <SolicitudCompraRevisionPanel key={request.id_solicitud_compra} solicitud={request} detalles={details} canApprove={canApprove} canReject={canReject} reloadDetail={reloadDetail} reloadList={reloadList} openToast={openToast} />
+        <SolicitudCompraRevisionPanel key={request.id_solicitud_compra} solicitud={request} detalles={details} canApprove={canApprove} canReject={canReject && request.acciones?.puede_rechazar === true} reloadDetail={reloadDetail} reloadList={reloadList} openToast={openToast} />
       ) : null}
       {String(request.estado || '').toUpperCase() === 'APROBADA' && canReceive ? (
         <SolicitudCompraRecepcionPanel key={request.id_solicitud_compra} solicitud={request} detalles={details} canReceive={canReceive} reloadDetail={reloadDetail} reloadList={reloadList} openToast={openToast} />

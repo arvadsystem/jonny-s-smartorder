@@ -1,12 +1,13 @@
 import SolicitudCompraEstado from './SolicitudCompraEstado';
 import { formatDateTime } from '../utils/solicitudesCompraUtils';
+import SolicitudCompraRechazoRapido from './SolicitudCompraRechazoRapido';
 
 const FILTERS = [
   ['', 'Todas'], ['PENDIENTE', 'Pendientes'], ['APROBADA', 'Aprobadas'],
   ['RECIBIDA', 'Recibidas'], ['RECHAZADA', 'Rechazadas'], ['CANCELADA', 'Canceladas']
 ];
 
-export default function SolicitudesCompraListado({ state, filter, onFilter, search, onSearch, onClearSearch, onPage, onDetail, onCreate, canCreate, canReview, canReceive }) {
+export default function SolicitudesCompraListado({ state, filter, onFilter, search, onSearch, onClearSearch, onPage, onDetail, onCreate, onRefresh, openToast, canCreate, canReview, canReceive }) {
   const page = Number(state.pagination?.page || 1);
   const pages = Math.max(1, Number(state.pagination?.total_pages || 1));
   return (
@@ -69,6 +70,7 @@ export default function SolicitudesCompraListado({ state, filter, onFilter, sear
               <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => onDetail(item.id_solicitud_compra)}>
                 {canReview && String(item.estado || '').toUpperCase() === 'PENDIENTE' ? 'Revisar solicitud' : canReceive && String(item.estado || '').toUpperCase() === 'APROBADA' ? 'Recibir solicitud' : 'Ver detalle'} <i className="bi bi-arrow-right" aria-hidden="true" />
               </button>
+              <SolicitudCompraRechazoRapido solicitud={item} onRefresh={onRefresh} openToast={openToast} />
             </div>
           </article>
         ))}

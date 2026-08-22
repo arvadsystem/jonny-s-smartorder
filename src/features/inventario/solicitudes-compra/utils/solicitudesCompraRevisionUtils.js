@@ -115,10 +115,14 @@ export const getRevisionCommentError = (comentario, required = false) => {
   return '';
 };
 
-export const mapRevisionError = (error) => {
-  if (error?.status === 403) return 'No tienes permiso para revisar esta solicitud.';
+export const mapRevisionError = (error, action = 'review') => {
+  if (error?.status === 403) return action === 'reject'
+    ? 'No tienes permiso para rechazar esta solicitud.'
+    : 'No tienes permiso para revisar esta solicitud.';
   if (error?.status === 404) return 'La solicitud ya no está disponible.';
-  if (error?.status === 409) return 'La solicitud cambió y debe actualizarse.';
+  if (error?.status === 409) return action === 'reject'
+    ? 'La solicitud cambió y ya no puede rechazarse.'
+    : 'La solicitud cambió y debe actualizarse.';
   if (error?.status >= 500) return 'No fue posible completar la revisión.';
   return error?.message || 'No fue posible completar la revisión.';
 };
