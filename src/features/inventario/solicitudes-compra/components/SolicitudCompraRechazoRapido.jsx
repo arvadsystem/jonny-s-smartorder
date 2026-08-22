@@ -2,22 +2,22 @@ import { useRef, useState } from 'react';
 import { solicitudesCompraService } from '../../../../services/solicitudesCompraService';
 import {
   buildRejectionPayload,
+  canQuickReject,
   getRevisionCommentError,
   mapRevisionError
 } from '../utils/solicitudesCompraRevisionUtils';
 
 const PRESETS = ['Solicitud duplicada', 'Creada por error', 'Ya no se requiere', 'Otro motivo'];
 
-export default function SolicitudCompraRechazoRapido({ solicitud, onRefresh, openToast }) {
+export default function SolicitudCompraRechazoRapido({ solicitud, canReject, onRefresh, openToast }) {
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const actionLock = useRef(false);
-  const canReject = solicitud?.acciones?.puede_rechazar === true
-    && String(solicitud?.estado || '').toUpperCase() === 'PENDIENTE';
+  const canShowQuickReject = canQuickReject(solicitud, canReject);
   const commentError = getRevisionCommentError(comment, true);
 
-  if (!canReject) return null;
+  if (!canShowQuickReject) return null;
 
   const close = () => {
     if (busy) return;

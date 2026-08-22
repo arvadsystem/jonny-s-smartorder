@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   buildRejectionPayload,
+  canQuickReject,
   getRevisionCommentError,
   mapRevisionError
 } from './solicitudesCompraRevisionUtils.js';
@@ -11,9 +12,29 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
 test('rechazo rapido depende de capacidad backend true y estado PENDIENTE', async () => {
   const source = await read('../components/SolicitudCompraRechazoRapido.jsx');
-  assert.match(source, /solicitud\?\.acciones\?\.puede_rechazar === true/);
-  assert.match(source, /=== 'PENDIENTE'/);
+  assert.match(source, /canQuickReject\(solicitud, canReject\)/);
   assert.doesNotMatch(source, /CAJERO|COCINA|ADMINISTRADOR|SUPER_ADMIN/);
+});
+
+for (const scenario of [
+  { name: 'permiso y capacidad en PENDIENTE', permission: true, capability: true, state: 'PENDIENTE', expected: true },
+  { name: 'administrador sin permiso efectivo', permission: false, capability: true, state: 'PENDIENTE', expected: false },
+  { name: 'operativo con permiso legacy', permission: true, capability: false, state: 'PENDIENTE', expected: false },
+  { name: 'sin permiso ni capacidad', permission: false, capability: false, state: 'PENDIENTE', expected: false },
+  { name: 'APROBADA aunque ambos sean true', permission: true, capability: true, state: 'APROBADA', expected: false }
+]) {
+  test(`visibilidad: ${scenario.name}`, () => {
+    assert.equal(canQuickReject({ estado: scenario.state, acciones: { puede_rechazar: scenario.capability } }, scenario.permission), scenario.expected);
+  });
+}
+
+test('tab y listado propagan canReject hasta rechazo rapido', async () => {
+  const [tab, list] = await Promise.all([
+    read('../SolicitudesCompraTab.jsx'),
+    read('../components/SolicitudesCompraListado.jsx')
+  ]);
+  assert.match(tab, /SolicitudesCompraListado[\s\S]*canReject=\{canReject\}/);
+  assert.match(list, /SolicitudCompraRechazoRapido solicitud=\{item\} canReject=\{canReject\}/);
 });
 
 test('listado no muestra accion fuera del componente autorizado', async () => {

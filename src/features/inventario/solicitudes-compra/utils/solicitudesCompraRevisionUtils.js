@@ -115,6 +115,10 @@ export const getRevisionCommentError = (comentario, required = false) => {
   return '';
 };
 
+export const canQuickReject = (solicitud, canReject) => canReject === true
+  && solicitud?.acciones?.puede_rechazar === true
+  && String(solicitud?.estado || '').toUpperCase() === 'PENDIENTE';
+
 export const mapRevisionError = (error, action = 'review') => {
   if (error?.status === 403) return action === 'reject'
     ? 'No tienes permiso para rechazar esta solicitud.'
