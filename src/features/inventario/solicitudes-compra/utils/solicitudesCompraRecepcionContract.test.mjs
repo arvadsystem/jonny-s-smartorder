@@ -9,10 +9,12 @@ const gitBlobSha = async (relative) => {
   return createHash('sha1').update(Buffer.from(`blob ${content.length}\0`)).update(content).digest('hex');
 };
 
-test('servicio usa POST recibir y GET evidencias con IDs codificados', async () => {
+test('servicio usa endpoints de recibir, listar, subir y eliminar evidencias con IDs codificados', async () => {
   const source = await read('../../../../services/solicitudesCompraService.js');
   assert.match(source, /recibirSolicitud:[\s\S]*encodeURIComponent\(String\(id\)\)[\s\S]*\/recibir`[\s\S]*'POST'/);
   assert.match(source, /getEvidencias:[\s\S]*encodeURIComponent\(String\(id\)\)[\s\S]*\/evidencias`[\s\S]*'GET'/);
+  assert.match(source, /subirFactura:[\s\S]*\/evidencias\/factura`[\s\S]*'POST'/);
+  assert.match(source, /eliminarEvidencia:[\s\S]*encodeURIComponent\(String\(idEvidencia\)\)[\s\S]*'DELETE'/);
   assert.doesNotMatch(source, /orden_compras|detalle_orden_compras|createSignedUrl|supabase/i);
 });
 
@@ -44,8 +46,8 @@ test('panel usa input nativo limitado a imagen y confirmacion modal', async () =
   const source = await read('../components/SolicitudCompraRecepcionPanel.jsx');
   assert.match(source, /type="file"/);
   assert.match(source, /accept="image\/jpeg,image\/png,image\/webp"/);
-  assert.match(source, /capture="environment"/);
-  assert.match(source, /Tomar foto o seleccionar imagen/);
+  assert.match(source, /multiple/);
+  assert.match(source, /Agregar imágenes/);
   assert.match(source, /Confirmar recepción final/);
   assert.match(source, /<SolicitudCompraConfirmModal/);
   assert.match(source, /sol-comp-confirm-summary/);
@@ -55,43 +57,44 @@ test('panel usa input nativo limitado a imagen y confirmacion modal', async () =
   assert.doesNotMatch(source, /sol-comp-inline-confirm--receive|window\.confirm|alert\(|application\/pdf|getUserMedia/i);
 });
 
-test('preview de factura es compacta, reemplazable y removible', async () => {
+test('lista de facturas permite quitar una o todas con confirmacion', async () => {
   const [source, css] = await Promise.all([
     read('../components/SolicitudCompraRecepcionPanel.jsx'),
     read('../solicitudesCompra.css')
   ]);
   assert.match(source, /className="sol-comp-invoice-preview"/);
-  assert.match(source, /Cambiar imagen/);
-  assert.match(source, /onClick=\{reception\.removeInvoice\}/);
-  assert.match(css, /\.sol-comp-invoice-preview img\s*\{[\s\S]*height:\s*clamp\(180px,\s*28vw,\s*280px\)[\s\S]*max-height:\s*280px/);
+  assert.match(source, /reception\.removeEvidence\(item\.id_evidencia\)/);
+  assert.match(source, /Quitar todas/);
+  assert.match(source, /removeAllConfirmation/);
+  assert.match(css, /\.sol-comp-invoice-preview img\s*\{[\s\S]*height:\s*96px[\s\S]*max-height:\s*96px/);
   assert.match(css, /\.sol-comp-invoice-preview img,[\s\S]*object-fit:\s*contain/);
   assert.doesNotMatch(source, /style=\{\{/);
 });
 
-test('hook bloquea doble envio y conserva borrador en error ordinario', async () => {
+test('hook bloquea doble envio, carga secuencial y conserva borrador en error ordinario', async () => {
   const source = await read('../hooks/useSolicitudCompraRecepcion.js');
   assert.match(source, /receiveLock\.current/);
   assert.match(source, /if \(receiveLock\.current \|\| receiveDisabled/);
-  assert.match(source, /readFileAsDataUrl\(invoice\.file\)/);
+  assert.match(source, /for \(const file of selected\)/);
+  assert.match(source, /subirFactura\(idSolicitud/);
+  assert.match(source, /finally \{[\s\S]*loadEvidence\(\)/);
   const catchBlock = source.slice(source.indexOf('} catch (error)'));
   const ordinary = catchBlock.slice(0, catchBlock.indexOf('} finally'));
   assert.doesNotMatch(ordinary.split("if (error?.status === 409)")[0], /setLines\(\[\]\)|setObservation\(''\)|setInvoice\(EMPTY_INVOICE\)/);
 });
 
-test('exito y 409 revocan URL y actualizan detalle y listado', async () => {
+test('exito y 409 actualizan evidencia, detalle y listado', async () => {
   const source = await read('../hooks/useSolicitudCompraRecepcion.js');
   assert.match(source, /Promise\.all\(\[reloadDetail\?\.\(\), reloadList\?\.\(\)\]\)/);
-  assert.match(source, /RECEPCIÓN REGISTRADA[\s\S]*revokePreview\(\)[\s\S]*refreshInformation\(\)/);
-  assert.match(source, /error\?\.status === 409[\s\S]*revokePreview\(\)[\s\S]*refreshInformation\(\)/);
+  assert.match(source, /RECEPCIÓN REGISTRADA[\s\S]*refreshInformation\(\)/);
+  assert.match(source, /error\?\.status === 409[\s\S]*loadEvidence\(\)[\s\S]*refreshInformation\(\)/);
   assert.match(source, /error\?\.status === 403[\s\S]*setAccessDenied\(true\)/);
 });
 
-test('object URL se revoca al reemplazar, quitar, desmontar y completar', async () => {
+test('recepcion nueva no conserva blob local ni envia factura en payload final', async () => {
   const source = await read('../hooks/useSolicitudCompraRecepcion.js');
-  assert.match(source, /const previewUrl = URL\.createObjectURL\(file\);[\s\S]*revokePreview\(\);[\s\S]*previewUrlRef\.current = previewUrl/);
-  assert.match(source, /const removeInvoice[\s\S]*revokePreview\(\)[\s\S]*setInvoice\(EMPTY_INVOICE\)/);
-  assert.match(source, /useEffect\(\(\) => \(\) => \{[\s\S]*revokePreview\(\)/);
-  assert.match(source, /URL\.revokeObjectURL/);
+  assert.doesNotMatch(source, /URL\.createObjectURL|URL\.revokeObjectURL|factura:/);
+  assert.match(source, /buildReceptionPayload\(\{ observacion: observation, detalles: lines \}\)/);
 });
 
 test('evidencias cargan solo bajo demanda y permiten renovar y cerrar', async () => {

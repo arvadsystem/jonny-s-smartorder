@@ -1763,11 +1763,10 @@
 }
 
 .sol-comp-invoice-preview {
-  grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(200px, 0.65fr) minmax(0, 1fr);
-  gap: 1rem;
-  padding: 1rem;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem;
   border: 1px solid #dfe5e8;
   border-radius: 12px;
   background: #fff;
@@ -1784,8 +1783,37 @@
 }
 
 .sol-comp-invoice-preview img {
-  height: clamp(180px, 28vw, 280px);
-  max-height: 280px;
+  height: 96px;
+  max-height: 96px;
+}
+
+.sol-comp-invoice-list {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.sol-comp-invoice-list__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.sol-comp-invoice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.sol-comp-invoice-placeholder {
+  display: grid;
+  place-items: center;
+  height: 96px;
+  border-radius: 9px;
+  color: var(--c-text-soft);
+  background: #f2f4f5;
+  font-size: 1.4rem;
 }
 
 .sol-comp-evidence-card img {
@@ -2200,6 +2228,7 @@
   .sol-comp-reception-line,
   .sol-comp-reception-form,
   .sol-comp-invoice-preview,
+  .sol-comp-invoice-grid,
   .sol-comp-evidence-card {
     grid-template-columns: 1fr;
   }
@@ -2278,7 +2307,7 @@
   }
 
   .sol-comp-invoice-preview img {
-    height: min(240px, 52vw);
+    height: 96px;
   }
 
   .sol-comp-evidence-meta {

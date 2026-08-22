@@ -451,13 +451,13 @@ test('recepcion conserva diferencias observacion y factura accesible', async () 
   assert.match(panel, /maxLength="1000"/);
   assert.match(panel, /reception\.observation\.length\} \/ 1000/);
   assert.match(panel, /accept="image\/jpeg,image\/png,image\/webp"/);
-  assert.match(panel, /capture="environment"/);
+  assert.match(panel, /multiple/);
   assert.match(panel, /Máximo 6 MB/);
   assert.match(panel, /onChange=\{handleInvoiceChange\}/);
-  assert.match(panel, /Validando imagen…/);
-  assert.match(panel, /src=\{reception\.invoice\.previewUrl\}/);
-  assert.match(panel, /Cambiar imagen/);
-  assert.match(panel, /onClick=\{reception\.removeInvoice\}/);
+  assert.match(panel, /Procesando imágenes…/);
+  assert.match(panel, /src=\{item\.url_firmada\}/);
+  assert.match(panel, /Agregar imágenes/);
+  assert.match(panel, /reception\.removeEvidence\(item\.id_evidencia\)/);
 });
 
 test('confirmacion de recepcion conserva contrato irreversible sin recepcion parcial', async () => {

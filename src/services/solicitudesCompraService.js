@@ -25,5 +25,7 @@ export const solicitudesCompraService = {
   aprobarSolicitud: (id, payload) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/aprobar`, 'PUT', payload),
   rechazarSolicitud: (id, payload) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/rechazar`, 'PUT', payload),
   recibirSolicitud: (id, payload) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/recibir`, 'POST', payload),
+  subirFactura: (id, factura) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/evidencias/factura`, 'POST', { factura }),
+  eliminarEvidencia: (id, idEvidencia) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/evidencias/${encodeURIComponent(String(idEvidencia))}`, 'DELETE'),
   getEvidencias: (id) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/evidencias`, 'GET')
 };

@@ -1,5 +1,5 @@
 import useSolicitudCompraRecepcion from '../hooks/useSolicitudCompraRecepcion';
-import { formatFileSize } from '../utils/solicitudesCompraRecepcionUtils';
+import { formatFileSize, MAX_INVOICE_EVIDENCES } from '../utils/solicitudesCompraRecepcionUtils';
 import SolicitudCompraConfirmModal from './SolicitudCompraConfirmModal';
 import SolicitudCompraRecepcionLinea from './SolicitudCompraRecepcionLinea';
 import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel, subtractConversionDecimal } from '../utils/solicitudesCompraConversionUtils';
@@ -8,8 +8,8 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
   const reception = useSolicitudCompraRecepcion({ solicitud, detalles, canReceive, reloadDetail, reloadList, openToast });
 
   const handleInvoiceChange = (event) => {
-    const file = event.target.files?.[0];
-    if (file) void reception.selectInvoice(file);
+    const files = Array.from(event.target.files || []);
+    if (files.length) void reception.selectInvoices(files);
     event.target.value = '';
   };
 
@@ -18,7 +18,7 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
       <header>
         <div className="sol-comp-workflow-heading">
           <span aria-hidden="true"><i className="bi bi-box-arrow-in-down" /></span>
-          <div><h3 id="sol-comp-reception-title">Recepción final</h3><p>Registra todas las cantidades recibidas y adjunta una fotografía de la factura.</p></div>
+          <div><h3 id="sol-comp-reception-title">Recepción final</h3><p>Registra todas las cantidades recibidas y adjunta las imágenes de la factura.</p></div>
         </div>
         <span className="sol-comp-workflow-badge sol-comp-workflow-badge--definitive"><i className="bi bi-lock" aria-hidden="true" /> Operación definitiva</span>
       </header>
@@ -69,36 +69,35 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
 
         <div className="sol-comp-invoice-field">
           <span className="sol-comp-invoice-field__icon" aria-hidden="true"><i className="bi bi-camera" /></span>
-          <div><strong>Factura</strong><p>Tomar foto o seleccionar imagen</p></div>
-          <label className="btn sol-comp-outline-action" htmlFor="sol-comp-invoice-input">Tomar foto o seleccionar imagen</label>
+          <div><strong>Factura / comprobantes</strong><p>{reception.evidence.items.length} de {MAX_INVOICE_EVIDENCES} imágenes guardadas</p></div>
+          <label className="btn sol-comp-outline-action" htmlFor="sol-comp-invoice-input">Agregar imágenes</label>
           <input
             id="sol-comp-invoice-input"
             type="file"
             accept="image/jpeg,image/png,image/webp"
-            capture="environment"
-            disabled={reception.controlsDisabled || reception.confirmation || reception.invoice.validating}
-            aria-invalid={Boolean(reception.invoice.error)}
+            multiple
+            disabled={reception.controlsDisabled || reception.confirmation || reception.evidence.loading || reception.evidence.items.length >= MAX_INVOICE_EVIDENCES}
+            aria-invalid={Boolean(reception.evidence.error)}
             aria-describedby="sol-comp-invoice-help sol-comp-invoice-error"
             onChange={handleInvoiceChange}
           />
-          <small id="sol-comp-invoice-help">JPEG, PNG o WEBP. Máximo 6 MB.</small>
-          <small id="sol-comp-invoice-error" className="sol-comp-field-error" aria-live="polite">{reception.invoice.validating ? 'Validando imagen…' : reception.invoice.error}</small>
+          <small id="sol-comp-invoice-help">JPEG, PNG o WEBP. Máximo 6 MB por imagen y {MAX_INVOICE_EVIDENCES} imágenes.</small>
+          <small id="sol-comp-invoice-error" className="sol-comp-field-error" aria-live="polite">{reception.evidence.loading ? 'Consultando imágenes…' : reception.evidenceBusy ? 'Procesando imágenes…' : reception.evidence.error}</small>
         </div>
 
-        {reception.invoice.file ? (
-          <div className="sol-comp-invoice-preview">
-            <img src={reception.invoice.previewUrl} alt={`Vista previa de la factura ${reception.invoice.file.name}`} />
-            <div>
-              <strong>{reception.invoice.file.name}</strong>
-              <span>{reception.invoice.file.type}</span>
-              <span>{formatFileSize(reception.invoice.file.size)}</span>
-              <div>
-                <label className="btn btn-outline-secondary btn-sm" htmlFor="sol-comp-invoice-input">Cambiar imagen</label>
-                <button type="button" className="btn btn-outline-danger btn-sm" disabled={reception.controlsDisabled || reception.confirmation} onClick={reception.removeInvoice}>Quitar imagen</button>
-              </div>
+        {reception.evidence.items.length ? (
+          <div className="sol-comp-invoice-list">
+            <div className="sol-comp-invoice-list__head"><strong>Imágenes guardadas</strong><button type="button" className="btn btn-outline-danger btn-sm" disabled={reception.controlsDisabled || reception.confirmation} onClick={() => reception.setRemoveAllConfirmation(true)}>Quitar todas</button></div>
+            <div className="sol-comp-invoice-grid">
+              {reception.evidence.items.map((item) => (
+                <article className="sol-comp-invoice-preview" key={item.id_evidencia}>
+                  {item.url_firmada ? <img src={item.url_firmada} alt={`Factura ${item.nombre_original || item.id_evidencia}`} /> : <span className="sol-comp-invoice-placeholder"><i className="bi bi-image" aria-hidden="true" /></span>}
+                  <div><strong>{item.nombre_original || 'Factura'}</strong><span>{item.tipo_archivo}</span><span>{formatFileSize(item.tamano_bytes)}</span><button type="button" className="btn btn-outline-danger btn-sm" disabled={reception.controlsDisabled || reception.confirmation} onClick={() => reception.removeEvidence(item.id_evidencia)}>Quitar</button></div>
+                </article>
+              ))}
             </div>
           </div>
-        ) : null}
+        ) : <p className="sol-comp-field-error" role="status">Agrega al menos una imagen para habilitar la recepción.</p>}
       </div>
 
       {reception.accessDenied ? <div className="sol-comp-contract-error" role="alert">No tienes permiso para registrar esta recepción.</div> : null}
@@ -111,7 +110,7 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
       <SolicitudCompraConfirmModal
         open={reception.confirmation}
         title="Confirmar recepción final"
-        description="La factura se guardará y las cantidades recibidas se aplicarán automáticamente al inventario."
+        description="Las cantidades recibidas se aplicarán automáticamente al inventario."
         icon="bi-box-arrow-in-down"
         confirmLabel="Confirmar recepción"
         busyLabel="Registrando…"
@@ -150,10 +149,23 @@ export default function SolicitudCompraRecepcionPanel({ solicitud, detalles, can
           })}
         </div>
         <div className="sol-comp-confirm-meta">
-          <p><strong>Factura:</strong> {reception.invoice.file?.name} ({formatFileSize(reception.invoice.file?.size)})</p>
+          <p><strong>Factura:</strong> {reception.evidence.items.length} {reception.evidence.items.length === 1 ? 'imagen guardada' : 'imágenes guardadas'}</p>
           {reception.observation.trim() ? <p><strong>Observación:</strong> {reception.observation}</p> : null}
           <p><i className="bi bi-lock" aria-hidden="true" /> Esta es una operación definitiva.</p>
         </div>
+      </SolicitudCompraConfirmModal>
+      <SolicitudCompraConfirmModal
+        open={reception.removeAllConfirmation}
+        title="Quitar todas las imágenes"
+        description="Esta acción eliminará todas las imágenes de factura guardadas para esta solicitud."
+        icon="bi-trash"
+        confirmLabel="Quitar todas"
+        busyLabel="Eliminando…"
+        busy={reception.evidenceBusy}
+        onClose={() => reception.setRemoveAllConfirmation(false)}
+        onConfirm={reception.removeAllEvidence}
+      >
+        <p>Se eliminarán {reception.evidence.items.length} imágenes. Podrás cargar otras mientras la solicitud siga aprobada y sin recibir.</p>
       </SolicitudCompraConfirmModal>
     </section>
   );

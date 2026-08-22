@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_INVOICE_SIZE,
+  MAX_INVOICE_EVIDENCES,
   buildReceptionPayload,
   compareDecimalQuantities,
   createReceptionDraft,
@@ -13,6 +14,7 @@ import {
   parseReceivedQuantity,
   updateReceptionDraftLine,
   validateInvoiceBytes,
+  validateInvoiceBatch,
   validateInvoiceMetadata,
   validateReceptionDraft
 } from './solicitudesCompraRecepcionUtils.js';
@@ -129,6 +131,12 @@ test('metadatos aceptan imagenes permitidas y rechazan PDF, SVG, vacios y exceso
   assert.equal(validateInvoiceMetadata(invoice('image/jpeg', MAX_INVOICE_SIZE + 1)).valid, false);
 });
 
+test('lote de facturas permite hasta diez evidencias persistidas', () => {
+  assert.equal(validateInvoiceBatch([invoice(), invoice()], 8).valid, true);
+  assert.equal(validateInvoiceBatch([invoice()], MAX_INVOICE_EVIDENCES).valid, false);
+  assert.equal(validateInvoiceBatch([], 0).valid, false);
+});
+
 test('firmas binarias detectan JPEG, PNG y WEBP', () => {
   assert.equal(detectImageMimeFromBytes(jpeg), 'image/jpeg');
   assert.equal(detectImageMimeFromBytes(png), 'image/png');
@@ -146,11 +154,9 @@ test('payload contiene solo contrato autorizado y omite metadatos visuales', () 
   const detalles = createReceptionDraft([detail()]);
   const payload = buildReceptionPayload({
     observacion: '  Todo   completo ',
-    detalles,
-    factura: { nombre_original: 'factura.jpg', mime_type: 'image/jpeg', data_url: 'data:image/jpeg;base64,/9j/' }
+    detalles
   });
-  assert.deepEqual(Object.keys(payload).sort(), ['detalles', 'factura', 'observacion_recepcion']);
-  assert.deepEqual(Object.keys(payload.factura).sort(), ['data_url', 'mime_type', 'nombre_original']);
+  assert.deepEqual(Object.keys(payload).sort(), ['detalles', 'observacion_recepcion']);
   assert.deepEqual(Object.keys(payload.detalles[0]).sort(), ['cantidad_recibida', 'id_solicitud_detalle']);
   assert.equal(payload.observacion_recepcion, 'Todo completo');
   assert.equal('cantidad_base_recibida' in payload.detalles[0], false);
@@ -161,8 +167,7 @@ test('payload contiene solo contrato autorizado y omite metadatos visuales', () 
 test('payload sin diferencias permite observacion nula', () => {
   const payload = buildReceptionPayload({
     observacion: '',
-    detalles: createReceptionDraft([detail()]),
-    factura: { nombre_original: 'factura.jpg', mime_type: 'image/jpeg', data_url: 'data:image/jpeg;base64,/9j/' }
+    detalles: createReceptionDraft([detail()])
   });
   assert.equal(payload.observacion_recepcion, null);
 });
@@ -170,8 +175,7 @@ test('payload sin diferencias permite observacion nula', () => {
 test('payload con diferencia rechaza observacion vacia', () => {
   assert.throws(() => buildReceptionPayload({
     observacion: '  ',
-    detalles: createReceptionDraft([detail({ cantidad_recibida: 2 })]),
-    factura: { nombre_original: 'factura.jpg', mime_type: 'image/jpeg', data_url: 'data:image/jpeg;base64,/9j/' }
+    detalles: createReceptionDraft([detail({ cantidad_recibida: 2 })])
   }), /diferencias/);
 });
 

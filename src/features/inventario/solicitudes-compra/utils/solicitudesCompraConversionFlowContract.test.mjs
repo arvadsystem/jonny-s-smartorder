@@ -73,7 +73,7 @@ test('recepcion calcula entrada y diferencias sin ampliar payload', async () => 
   const payload = draft.match(/export const buildReceptionPayload[\s\S]*?^};/m)?.[0] || '';
   assert.doesNotMatch(payload, /cantidad_base_recibida|factor_conversion_snapshot/);
   assert.match(payload, /cantidad_recibida/);
-  assert.match(payload, /factura/);
+  assert.doesNotMatch(payload, /factura/);
 });
 
 test('flujo no introduce precios movimientos ni dependencias', async () => {

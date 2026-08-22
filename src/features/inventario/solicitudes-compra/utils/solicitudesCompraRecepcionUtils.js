@@ -1,5 +1,6 @@
 export const MAX_RECEPTION_OBSERVATION_LENGTH = 1000;
 export const MAX_INVOICE_SIZE = 6 * 1024 * 1024;
+export const MAX_INVOICE_EVIDENCES = 10;
 export const ALLOWED_INVOICE_MIME_TYPES = Object.freeze(['image/jpeg', 'image/png', 'image/webp']);
 
 const DECIMAL_SCALE = 1_000_000n;
@@ -145,6 +146,19 @@ export const validateInvoiceMetadata = (file) => {
   return { valid: true, error: '' };
 };
 
+export const validateInvoiceBatch = (files, persistedCount = 0) => {
+  const selected = Array.from(files || []);
+  if (!selected.length) return { valid: false, error: 'Selecciona al menos una imagen de la factura.' };
+  if (Number(persistedCount) + selected.length > MAX_INVOICE_EVIDENCES) {
+    return { valid: false, error: `Puedes guardar un máximo de ${MAX_INVOICE_EVIDENCES} imágenes de factura.` };
+  }
+  for (const file of selected) {
+    const validation = validateInvoiceMetadata(file);
+    if (!validation.valid) return validation;
+  }
+  return { valid: true, error: '' };
+};
+
 export const detectImageMimeFromBytes = (input) => {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input || []);
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
@@ -183,22 +197,20 @@ export const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 
-export const buildReceptionPayload = ({ observacion, detalles, factura }) => {
+export const buildInvoiceUploadPayload = (file, dataUrl) => ({
+  nombre_original: String(file?.name || ''),
+  mime_type: String(file?.type || ''),
+  data_url: String(dataUrl || '')
+});
+
+export const buildReceptionPayload = ({ observacion, detalles }) => {
   const validation = validateReceptionDraft(detalles);
   if (!validation.valid) throw new Error('El borrador de recepción contiene datos inválidos.');
   const differences = hasReceptionDifferences(detalles);
   const observationError = getReceptionObservationError(observacion, differences);
   if (observationError) throw new Error(observationError);
-  if (!factura || !String(factura.nombre_original || '').trim() || !ALLOWED_INVOICE_MIME_TYPES.includes(factura.mime_type) || !String(factura.data_url || '').startsWith(`data:${factura.mime_type};base64,`)) {
-    throw new Error('La fotografía de la factura no es válida.');
-  }
   return {
     observacion_recepcion: normalizeReceptionObservation(observacion),
-    factura: {
-      nombre_original: String(factura.nombre_original || ''),
-      mime_type: factura.mime_type,
-      data_url: factura.data_url
-    },
     detalles: detalles.map((line) => ({
       id_solicitud_detalle: positiveInteger(line.id_solicitud_detalle),
       cantidad_recibida: parseReceivedQuantity(line.cantidad_recibida, line.tipo_item)
@@ -221,7 +233,7 @@ export const mapReceptionError = (error) => {
     : '';
   if (error?.status === 400) return safeMessage || 'Los datos de recepción no son válidos.';
   if (error?.status === 403) return 'No tienes permiso para registrar esta recepción.';
-  if (error?.status === 409) return 'La solicitud cambió y debe actualizarse.';
+  if (error?.status === 409) return safeMessage || 'La solicitud cambió y debe actualizarse.';
   if (error?.status === 413) return 'La fotografía no puede exceder 6 MB.';
   if (error?.status === 415) return 'El archivo debe ser una imagen JPEG, PNG o WEBP válida.';
   if (error?.status === 502) return 'No fue posible guardar o consultar la factura. Intenta nuevamente.';
