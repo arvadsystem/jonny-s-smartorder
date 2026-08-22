@@ -1787,6 +1787,13 @@
   max-height: 96px;
 }
 
+.sol-comp-quick-admin__pending { border-left: .3rem solid #d59b2d; }
+.sol-comp-quick-admin__detail { margin-bottom: 1rem; }
+.sol-comp-quick-presets { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
+.sol-comp-quick-admin textarea { width: 100%; min-height: 7rem; resize: vertical; }
+.sol-comp-modal-backdrop { position: fixed; inset: 0; z-index: 1080; display: grid; place-items: center; padding: 1rem; background: rgba(20, 15, 12, .58); }
+.sol-comp-modal { width: min(36rem, 100%); max-height: calc(100vh - 2rem); overflow: auto; padding: 1.25rem; border-radius: 1rem; background: #fff; box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, .25); }
+
 .sol-comp-header-actions {
   display: flex;
   flex-wrap: wrap;

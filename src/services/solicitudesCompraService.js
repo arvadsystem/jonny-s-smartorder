@@ -36,5 +36,6 @@ export const solicitudesCompraService = {
   uploadQuickCaptureInvoice: (id, factura) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/evidencias/factura`, 'POST', { factura }),
   deleteQuickCaptureEvidence: (id, evidenceId) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/evidencias/${encodeURIComponent(String(evidenceId))}`, 'DELETE'),
   discardQuickCapture: (id) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}`, 'DELETE'),
-  sendQuickCapture: (id) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/enviar`, 'PUT', {})
+  sendQuickCapture: (id) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/enviar`, 'PUT', {}),
+  rejectQuickCapture: (id, motivo_rechazo) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/rechazar`, 'PUT', { motivo_rechazo })
 };
