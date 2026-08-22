@@ -1816,6 +1816,16 @@
 .sol-comp-invoice-preview--error { border-color: #c94f4f; background: #fff5f5; }
 .sol-comp-invoice-preview--subiendo { border-color: #d59b2d; }
 .sol-comp-quick-send { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid #e5ddd8; }
+.sol-comp-provider-bulk { display: grid; gap: .8rem; margin: 1rem 0; padding: 1rem; border: 1px solid var(--c-border-soft); border-radius: 12px; background: var(--c-bg-soft); }
+.sol-comp-provider-bulk h4, .sol-comp-provider-bulk p { margin: 0; }
+.sol-comp-provider-bulk__controls { display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: end; gap: .75rem; }
+.sol-comp-provider-bulk__actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.sol-comp-provider-bulk__feedback { color: var(--c-info); font-weight: 700; }
+.sol-comp-provider-distribution { display: grid; gap: .45rem; }
+.sol-comp-provider-distribution > div { display: flex; flex-wrap: wrap; gap: .45rem; }
+.sol-comp-provider-distribution span { display: inline-flex; align-items: center; gap: .65rem; padding: .4rem .6rem; border: 1px solid var(--c-border-soft); border-radius: 999px; background: var(--c-surface); }
+.sol-comp-provider-distribution span.is-missing { border-color: #d59b2d; background: #fff8e8; }
+.sol-comp-provider-distribution em { font-style: normal; }
 
 .sol-comp-quick-capture .sol-comp-reception-panel {
   margin-top: 1rem;
@@ -2254,7 +2264,12 @@
   .sol-comp-header-actions > label { width: 100%; justify-content: center; }
   .sol-comp-quick-steps { grid-template-columns: 1fr; }
   .sol-comp-breadcrumb { overflow-wrap: anywhere; }
-  .sol-comp-modal { width: 100%; max-height: calc(100dvh - 1.3rem); padding: 1rem; }
+    .sol-comp-modal { width: 100%; max-height: calc(100dvh - 1.3rem); padding: 1rem; }
+    .sol-comp-provider-bulk__controls { grid-template-columns: 1fr; }
+    .sol-comp-provider-bulk__actions { flex-direction: column; }
+    .sol-comp-provider-bulk__actions .btn { width: 100%; }
+    .sol-comp-provider-distribution > div { display: grid; grid-template-columns: 1fr; }
+    .sol-comp-provider-distribution span { justify-content: space-between; width: 100%; }
 
   .sol-comp-filters {
     margin-inline: -0.25rem;

@@ -9,6 +9,7 @@ import {
   updateApprovalDraftLine,
   validateApprovalDraft
 } from '../utils/solicitudesCompraRevisionUtils';
+import { applyProviderToLines } from '../utils/solicitudesCompraProviderUtils';
 
 const EMPTY_PROVIDERS = { items: [], loading: false, error: '', loaded: false };
 
@@ -66,6 +67,8 @@ export default function useSolicitudCompraRevision({
   const updateLine = useCallback((id, patch) => {
     setLines((current) => updateApprovalDraftLine(current, id, patch));
   }, []);
+  const applyProviderToAll = useCallback((providerId) => setLines((current) => applyProviderToLines(current, providerId, 'all')), []);
+  const fillMissingProviders = useCallback((providerId) => setLines((current) => applyProviderToLines(current, providerId, 'missing')), []);
 
   const refreshInformation = useCallback(async () => {
     await Promise.all([reloadDetail?.(), reloadList?.()]);
@@ -126,6 +129,8 @@ export default function useSolicitudCompraRevision({
     approvalCommentError,
     accessDenied,
     updateLine,
+    applyProviderToAll,
+    fillMissingProviders,
     execute
   };
 }

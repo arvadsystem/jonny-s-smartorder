@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import useSolicitudCompraRevision from '../hooks/useSolicitudCompraRevision';
 import SolicitudCompraConfirmModal from './SolicitudCompraConfirmModal';
 import SolicitudCompraRevisionLinea from './SolicitudCompraRevisionLinea';
+import ProveedorBulkAssignment from './ProveedorBulkAssignment';
 import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
 export default function SolicitudCompraRevisionPanel({ solicitud, detalles, canApprove, canReject, reloadDetail, reloadList, openToast }) {
@@ -38,6 +39,8 @@ export default function SolicitudCompraRevisionPanel({ solicitud, detalles, canA
           <p>{contractErrors.join(' ')}</p>
         </div>
       ) : null}
+
+      {canApprove ? <ProveedorBulkAssignment providerOptions={providerOptions} lines={review.lines} onApplyAll={review.applyProviderToAll} onFillMissing={review.fillMissingProviders} disabled={review.controlsDisabled || review.providers.loading || Boolean(review.providers.error)} /> : null}
 
       <div className="sol-comp-review-lines">
         {review.lines.filter((line) => line.id_solicitud_detalle).map((line) => (

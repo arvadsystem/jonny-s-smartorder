@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { solicitudesCompraService } from '../../../../services/solicitudesCompraService';
 import { mapReceptionError } from '../utils/solicitudesCompraRecepcionUtils';
 import { createCatalogRequestCoordinator, createEmptyCatalogState, mapSolicitudError, parseRequestedQuantity, upsertDraftLine } from '../utils/solicitudesCompraUtils';
+import { applyProviderToLines } from '../utils/solicitudesCompraProviderUtils';
 
 const actionError = (error, action) => {
   if (error?.code === 'INVALID_STATE' || (error?.status === 409 && !error?.code)) return action === 'formalize'
@@ -101,6 +102,8 @@ export default function useCapturasCompraRapidaAdmin({ openToast }) {
   }, [detail]);
   const addLine = useCallback((line) => setLines((current) => upsertDraftLine(current, { ...line, id_proveedor: '' }).lines), []);
   const updateLine = useCallback((index, patch) => setLines((current) => current.map((line, currentIndex) => currentIndex === index ? { ...line, ...patch } : line)), []);
+  const applyProviderToAll = useCallback((providerId) => setLines((current) => applyProviderToLines(current, providerId, 'all')), []);
+  const fillMissingProviders = useCallback((providerId) => setLines((current) => applyProviderToLines(current, providerId, 'missing')), []);
   const removeLine = useCallback((index) => setLines((current) => current.filter((_, currentIndex) => currentIndex !== index)), []);
   const validLines = lines.length > 0 && lines.every((line) => parseRequestedQuantity(line.cantidad, line.tipo_item) && Number(line.id_proveedor) > 0);
   const formalize = useCallback(async () => {
@@ -118,5 +121,5 @@ export default function useCapturasCompraRapidaAdmin({ openToast }) {
     } finally { actionLock.current = false; setBusy(false); }
   }, [detail, lines, list.pagination?.page, loadList, openToast, refreshDetail, validLines]);
 
-  return { mode, setMode, filter, changeFilter, search, setSearch: changeSearch, submitSearch, list, loadList, detail, evidence, loadingDetail, error, rejectOpen, setRejectOpen, reason, setReason, busy, openDetail, reject, catalogState, loadCatalog, lines, providers, startFormalization, addLine, updateLine, removeLine, validLines, confirmOpen, setConfirmOpen, formalize };
+  return { mode, setMode, filter, changeFilter, search, setSearch: changeSearch, submitSearch, list, loadList, detail, evidence, loadingDetail, error, rejectOpen, setRejectOpen, reason, setReason, busy, openDetail, reject, catalogState, loadCatalog, lines, providers, startFormalization, addLine, updateLine, applyProviderToAll, fillMissingProviders, removeLine, validLines, confirmOpen, setConfirmOpen, formalize };
 }
