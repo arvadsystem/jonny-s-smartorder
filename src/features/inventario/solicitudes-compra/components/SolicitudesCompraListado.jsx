@@ -7,7 +7,7 @@ const FILTERS = [
   ['RECIBIDA', 'Recibidas'], ['RECHAZADA', 'Rechazadas'], ['CANCELADA', 'Canceladas']
 ];
 
-export default function SolicitudesCompraListado({ state, filter, onFilter, search, onSearch, onClearSearch, onPage, onDetail, onCreate, onRefresh, openToast, canCreate, canReview, canReject, canReceive }) {
+export default function SolicitudesCompraListado({ state, filter, onFilter, search, onSearch, onClearSearch, onPage, onDetail, onCreate, onQuickCapture, onRefresh, openToast, canCreate, canQuickCaptureCreate, canReview, canReject, canReceive }) {
   const page = Number(state.pagination?.page || 1);
   const pages = Math.max(1, Number(state.pagination?.total_pages || 1));
   return (
@@ -17,7 +17,7 @@ export default function SolicitudesCompraListado({ state, filter, onFilter, sear
           <span className="sol-comp-header__icon" aria-hidden="true"><i className="bi bi-clipboard2-check" /></span>
           <div><h2 id="sol-comp-title">Solicitudes de compra</h2><p>Solicita y da seguimiento al abastecimiento de inventario de tu sucursal.</p></div>
         </div>
-        {canCreate ? <button type="button" className="btn btn-primary sol-comp-primary-action" onClick={onCreate}><i className="bi bi-plus-circle" aria-hidden="true" /> Nueva solicitud</button> : null}
+        <div className="sol-comp-header-actions">{canCreate ? <button type="button" className="btn btn-primary sol-comp-primary-action" onClick={onCreate}><i className="bi bi-plus-circle" aria-hidden="true" /> Nueva solicitud</button> : null}{canQuickCaptureCreate ? <button type="button" className="btn btn-outline-primary" onClick={onQuickCapture}><i className="bi bi-camera" aria-hidden="true" /> Compra rápida</button> : null}</div>
       </header>
       <div className="sol-comp-list-search">
         <i className="bi bi-search" aria-hidden="true" />

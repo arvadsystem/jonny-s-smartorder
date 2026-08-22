@@ -1787,6 +1787,21 @@
   max-height: 96px;
 }
 
+.sol-comp-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.sol-comp-quick-capture .sol-comp-reception-panel {
+  margin-top: 1rem;
+}
+
+.sol-comp-quick-capture .sol-comp-invoice-preview {
+  min-width: 0;
+}
+
 .sol-comp-quick-reject__body {
   display: grid;
   gap: 0.65rem;

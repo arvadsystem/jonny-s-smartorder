@@ -15,6 +15,7 @@ export const buildSolicitudesCompraQuery = (path, options = {}, allowed = []) =>
 const CATALOG_FILTERS = ['id_almacen', 'tipo', 'buscar', 'solo_stock_bajo', 'page', 'limit'];
 export const LIST_FILTERS = ['estado', 'buscar', 'id_sucursal', 'id_almacen', 'fecha_desde', 'fecha_hasta', 'page', 'limit'];
 const PROVIDER_FILTERS = ['buscar', 'page', 'limit'];
+const QUICK_CAPTURE_FILTERS = ['page', 'limit'];
 
 export const solicitudesCompraService = {
   getCatalogo: (options) => apiFetch(buildSolicitudesCompraQuery('/solicitudes_compra/catalogo', options, CATALOG_FILTERS), 'GET'),
@@ -27,5 +28,13 @@ export const solicitudesCompraService = {
   recibirSolicitud: (id, payload) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/recibir`, 'POST', payload),
   subirFactura: (id, factura) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/evidencias/factura`, 'POST', { factura }),
   eliminarEvidencia: (id, idEvidencia) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/evidencias/${encodeURIComponent(String(idEvidencia))}`, 'DELETE'),
-  getEvidencias: (id) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/evidencias`, 'GET')
+  getEvidencias: (id) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}/evidencias`, 'GET'),
+  createQuickCapture: () => apiFetch('/solicitudes_compra/capturas-rapidas', 'POST', {}),
+  listQuickCaptures: (options) => apiFetch(buildSolicitudesCompraQuery('/solicitudes_compra/capturas-rapidas', options, QUICK_CAPTURE_FILTERS), 'GET'),
+  getQuickCapture: (id) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}`, 'GET'),
+  listQuickCaptureEvidence: (id) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/evidencias`, 'GET'),
+  uploadQuickCaptureInvoice: (id, factura) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/evidencias/factura`, 'POST', { factura }),
+  deleteQuickCaptureEvidence: (id, evidenceId) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/evidencias/${encodeURIComponent(String(evidenceId))}`, 'DELETE'),
+  discardQuickCapture: (id) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}`, 'DELETE'),
+  sendQuickCapture: (id) => apiFetch(`/solicitudes_compra/capturas-rapidas/${encodeURIComponent(String(id))}/enviar`, 'PUT', {})
 };
