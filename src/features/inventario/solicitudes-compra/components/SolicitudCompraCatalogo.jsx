@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppSelect from '../../../../components/common/AppSelect';
 import { parseRequestedQuantity } from '../utils/solicitudesCompraUtils';
 import { buildConversionPreview, normalizeConversionDecimal } from '../utils/solicitudesCompraConversionUtils';
+import { createCatalogSearchController } from '../utils/solicitudesCompraCatalogSearch';
 
 const STOCK_LABELS = { SIN_STOCK: 'Sin stock', STOCK_BAJO: 'Stock bajo', DISPONIBLE: 'Disponible' };
 const TYPE_OPTIONS = [{ value: '', label: 'Todos' }, { value: 'producto', label: 'Productos' }, { value: 'insumo', label: 'Insumos' }];
@@ -104,66 +105,42 @@ export default function SolicitudCompraCatalogo({ warehouseId, state, loadCatalo
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
   const [scope, setScope] = useState('all');
-  const debounceRef = useRef(null);
+  const [searchController] = useState(() => createCatalogSearchController({
+    getWarehouseId: () => warehouseId,
+    loadCatalog
+  }));
   const page = Number(state.pagination?.page || 1);
   const matchesWarehouse = state.requestedWarehouseId === String(warehouseId);
   const visibleItems = matchesWarehouse && !state.loading ? state.items : [];
   const hasUnavailableItems = visibleItems.some((item) => item.solicitable === false);
-  const catalogOptions = (nextPage = 1, overrides = {}) => {
-    const nextSearch = overrides.search ?? search;
-    const nextType = overrides.type ?? type;
-    const nextScope = overrides.scope ?? scope;
-    return {
-      id_almacen: warehouseId,
-      buscar: nextSearch.trim(),
-      tipo: nextType,
-      ...(nextScope === 'low' ? { solo_stock_bajo: 'true' } : {}),
-      page: nextPage
-    };
-  };
-  const cancelDebounce = () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = null;
-  };
-  const load = (nextPage = 1) => {
-    cancelDebounce();
-    return loadCatalog(catalogOptions(nextPage));
-  };
   const changeSearch = (value) => {
     setSearch(value);
-    cancelDebounce();
-    debounceRef.current = setTimeout(() => {
-      debounceRef.current = null;
-      void loadCatalog(catalogOptions(1, { search: value }));
-    }, 300);
+    searchController.changeSearch(value);
   };
   const changeScope = (nextScope) => {
-    cancelDebounce();
     setScope(nextScope);
-    void loadCatalog(catalogOptions(1, { scope: nextScope }));
+    void searchController.changeScope(nextScope);
   };
   const clearFilters = () => {
-    cancelDebounce();
     setSearch('');
     setType('');
     setScope('all');
-    void loadCatalog(catalogOptions(1, { search: '', type: '', scope: 'all' }));
+    void searchController.clear();
   };
   useEffect(() => {
+    searchController.setContext({ getWarehouseId: () => warehouseId, loadCatalog });
     if (warehouseId) void loadCatalog({ id_almacen: warehouseId, page: 1 });
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [loadCatalog, warehouseId]);
+    return () => searchController.dispose();
+  }, [loadCatalog, searchController, warehouseId]);
 
   return (
     <section className="sol-comp-catalog" aria-labelledby="catalog-title">
       <div className="sol-comp-panel-heading"><span aria-hidden="true"><i className="bi bi-grid-3x3-gap" /></span><div><h3 id="catalog-title">Catálogo del almacén</h3></div></div>
       <div className="sol-comp-catalog-filters">
         <div className="sol-comp-catalog-filters__primary">
-          <label className="sol-comp-search-field">Buscar<input type="search" placeholder="Nombre o descripción" value={search} onChange={(event) => changeSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void load(1); } if (event.key === 'Escape' && search) { event.preventDefault(); cancelDebounce(); setSearch(''); void loadCatalog(catalogOptions(1, { search: '' })); } }} /></label>
-          <AppSelect label="Tipo" value={type} options={TYPE_OPTIONS} onChange={(value) => { cancelDebounce(); setType(value); void loadCatalog(catalogOptions(1, { type: value })); }} />
-          <button type="button" className="btn btn-primary" onClick={() => load(1)}><i className="bi bi-search" aria-hidden="true" /> Buscar</button>
+          <label className="sol-comp-search-field">Buscar<input type="search" placeholder="Nombre o descripción" value={search} onChange={(event) => changeSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void searchController.submit(); } if (event.key === 'Escape') { event.preventDefault(); setSearch(''); void searchController.escape(); } }} /></label>
+          <AppSelect label="Tipo" value={type} options={TYPE_OPTIONS} onChange={(value) => { setType(value); void searchController.changeType(value); }} />
+          <button type="button" className="btn btn-primary" onClick={() => searchController.submit()}><i className="bi bi-search" aria-hidden="true" /> Buscar</button>
           <button type="button" className="btn btn-outline-secondary" onClick={clearFilters}><i className="bi bi-arrow-counterclockwise" aria-hidden="true" /> Limpiar filtros</button>
         </div>
         <div className="sol-comp-catalog-filters__secondary">
@@ -179,15 +156,15 @@ export default function SolicitudCompraCatalogo({ warehouseId, state, loadCatalo
       </div>
       <div aria-live="polite">
         {state.loading ? <div className="sol-comp-feedback"><span className="spinner-border spinner-border-sm" /> Buscando catálogo…</div> : null}
-        {state.error ? <div className="sol-comp-feedback sol-comp-feedback--error">{state.error} <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => load(page)}>Reintentar</button></div> : null}
+        {state.error ? <div className="sol-comp-feedback sol-comp-feedback--error">{state.error} <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => searchController.page(page)}>Reintentar</button></div> : null}
       </div>
       {hasUnavailableItems ? <div className="sol-comp-catalog-warning" role="status"><i className="bi bi-exclamation-triangle" aria-hidden="true" /> Algunos insumos no pueden solicitarse porque su unidad base está pendiente de configuración. Repórtalos al responsable de Inventario.</div> : null}
       <div className="sol-comp-catalog-grid">{visibleItems.map((item) => <CatalogItem key={`${item.tipo_item}-${item.id_item}`} item={item} onAdd={onAdd} />)}</div>
       {!state.loading && !state.error && matchesWarehouse && !visibleItems.length ? <div className="sol-comp-empty"><i className="bi bi-search" aria-hidden="true" /><h4>No encontramos artículos{search ? ` para “${search}”` : ''}</h4><p>Los filtros actuales no produjeron coincidencias.</p></div> : null}
       <nav className="sol-comp-pagination" aria-label="Paginación del catálogo">
-        <button type="button" className="btn btn-outline-secondary btn-sm" disabled={page <= 1} onClick={() => load(page - 1)}>Anterior</button>
+        <button type="button" className="btn btn-outline-secondary btn-sm" disabled={page <= 1} onClick={() => searchController.page(page - 1)}>Anterior</button>
         <span>Página {page} de {Math.max(1, Number(state.pagination?.total_pages || 1))}</span>
-        <button type="button" className="btn btn-outline-secondary btn-sm" disabled={page >= Number(state.pagination?.total_pages || 1)} onClick={() => load(page + 1)}>Siguiente</button>
+        <button type="button" className="btn btn-outline-secondary btn-sm" disabled={page >= Number(state.pagination?.total_pages || 1)} onClick={() => searchController.page(page + 1)}>Siguiente</button>
       </nav>
     </section>
   );

@@ -69,21 +69,21 @@ test('catalogo inicia completo y la primera carga no solicita solo stock bajo', 
 });
 
 test('alcance del catalogo usa opciones accesibles y solo reposicion envia true', async () => {
-  const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
+  const [catalog, search] = await Promise.all([read('../components/SolicitudCompraCatalogo.jsx'), read('./solicitudesCompraCatalogSearch.js')]);
   assert.match(catalog, /Todo el catálogo/);
   assert.match(catalog, /Necesitan reposición/);
   assert.match(catalog, /aria-pressed=\{scope === 'all'\}/);
   assert.match(catalog, /aria-pressed=\{scope === 'low'\}/);
-  assert.match(catalog, /nextScope === 'low' \? \{ solo_stock_bajo: 'true' \} : \{\}/);
+  assert.match(search, /filters\.scope === 'low' \? \{ solo_stock_bajo: 'true' \} : \{\}/);
 });
 
 test('tipo alcance busqueda y limpiar filtros regresan a pagina uno', async () => {
-  const catalog = await read('../components/SolicitudCompraCatalogo.jsx');
-  assert.match(catalog, /catalogOptions\(1, \{ type: value \}\)/);
-  assert.match(catalog, /catalogOptions\(1, \{ scope: nextScope \}\)/);
-  assert.match(catalog, /load\(1\)/);
+  const [catalog, search] = await Promise.all([read('../components/SolicitudCompraCatalogo.jsx'), read('./solicitudesCompraCatalogSearch.js')]);
+  assert.match(catalog, /searchController\.changeType\(value\)/);
+  assert.match(catalog, /searchController\.changeScope\(nextScope\)/);
+  assert.match(search, /submit: \(\) => request\(1\)/);
   assert.match(catalog, /setSearch\(''\);[\s\S]*setType\(''\);[\s\S]*setScope\('all'\)/);
-  assert.match(catalog, /catalogOptions\(1, \{ search: '', type: '', scope: 'all' \}\)/);
+  assert.match(search, /filters\.search = '';[\s\S]*filters\.type = '';[\s\S]*filters\.scope = 'all';[\s\S]*request\(1\)/);
 });
 
 test('cambio de almacen reinicia catalogo y borrador sin mostrar resultados previos', async () => {

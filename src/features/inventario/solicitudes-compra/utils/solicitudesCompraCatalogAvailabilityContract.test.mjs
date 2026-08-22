@@ -4,8 +4,10 @@ import { readFile } from 'node:fs/promises';
 
 const componentUrl = new URL('../components/SolicitudCompraCatalogo.jsx', import.meta.url);
 const cssUrl = new URL('../solicitudesCompra.css', import.meta.url);
+const searchUrl = new URL('./solicitudesCompraCatalogSearch.js', import.meta.url);
 const component = await readFile(componentUrl, 'utf8');
 const css = await readFile(cssUrl, 'utf8');
+const search = await readFile(searchUrl, 'utf8');
 
 test('card no solicitable permanece visible y comunica configuracion pendiente', () => {
   assert.match(component, /visibleItems\.map\(\(item\) => <CatalogItem/);
@@ -41,11 +43,11 @@ test('banner depende solo de invalidos en la pagina visible', () => {
 });
 
 test('busqueda debounce filtros y paginacion permanecen coordinados por backend', () => {
-  assert.match(component, /setTimeout\(\(\) => \{/);
-  assert.match(component, /\}, 300\)/);
-  assert.match(component, /tipo: nextType/);
-  assert.match(component, /solo_stock_bajo/);
-  assert.match(component, /load\(page - 1\)/);
-  assert.match(component, /load\(page \+ 1\)/);
+  assert.match(search, /delay = 300/);
+  assert.match(search, /pendingTimer = scheduleTimer/);
+  assert.match(search, /tipo: filters\.type/);
+  assert.match(search, /solo_stock_bajo/);
+  assert.match(component, /searchController\.page\(page - 1\)/);
+  assert.match(component, /searchController\.page\(page \+ 1\)/);
   assert.doesNotMatch(component, /state\.items\.filter\(/);
 });
