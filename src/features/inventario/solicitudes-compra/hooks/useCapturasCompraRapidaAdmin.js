@@ -32,6 +32,7 @@ export default function useCapturasCompraRapidaAdmin({ openToast }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const actionLock = useRef(false);
   const catalogRequest = useRef(createCatalogRequestCoordinator());
+  const searchDebounce = useRef(null);
 
   const loadList = useCallback(async ({ page = 1, estado = filter, buscar = searchRef.current.trim().replace(/\s+/g, ' ') } = {}) => {
     setList((current) => ({ ...current, loading: true, error: '' }));
@@ -41,6 +42,17 @@ export default function useCapturasCompraRapidaAdmin({ openToast }) {
     } catch (requestError) { setList((current) => ({ ...current, loading: false, error: mapReceptionError(requestError) })); }
   }, [filter]);
   useEffect(() => { void loadList({ page: 1 }); }, [loadList]);
+  useEffect(() => () => { if (searchDebounce.current) clearTimeout(searchDebounce.current); }, []);
+
+  const changeSearch = useCallback((value) => {
+    setSearch(value);
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => void loadList({ page: 1, estado: filter, buscar: value.trim().replace(/\s+/g, ' ') }), 300);
+  }, [filter, loadList]);
+  const submitSearch = useCallback((value = searchRef.current) => {
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    void loadList({ page: 1, estado: filter, buscar: value.trim().replace(/\s+/g, ' ') });
+  }, [filter, loadList]);
 
   const openDetail = useCallback(async (id) => {
     setLoadingDetail(true); setError('');
@@ -50,7 +62,7 @@ export default function useCapturasCompraRapidaAdmin({ openToast }) {
     } catch (requestError) { setList((current) => ({ ...current, error: mapReceptionError(requestError) })); }
     finally { setLoadingDetail(false); }
   }, []);
-  const changeFilter = useCallback((value) => { setFilter(value); }, []);
+  const changeFilter = useCallback((value) => { if (searchDebounce.current) clearTimeout(searchDebounce.current); setFilter(value); }, []);
   const refreshDetail = useCallback(async () => {
     if (!detail?.id_captura_compra_rapida) return null;
     const payload = await solicitudesCompraService.getQuickCapture(detail.id_captura_compra_rapida);
@@ -106,5 +118,5 @@ export default function useCapturasCompraRapidaAdmin({ openToast }) {
     } finally { actionLock.current = false; setBusy(false); }
   }, [detail, lines, list.pagination?.page, loadList, openToast, refreshDetail, validLines]);
 
-  return { mode, setMode, filter, changeFilter, search, setSearch, list, loadList, detail, evidence, loadingDetail, error, rejectOpen, setRejectOpen, reason, setReason, busy, openDetail, reject, catalogState, loadCatalog, lines, providers, startFormalization, addLine, updateLine, removeLine, validLines, confirmOpen, setConfirmOpen, formalize };
+  return { mode, setMode, filter, changeFilter, search, setSearch: changeSearch, submitSearch, list, loadList, detail, evidence, loadingDetail, error, rejectOpen, setRejectOpen, reason, setReason, busy, openDetail, reject, catalogState, loadCatalog, lines, providers, startFormalization, addLine, updateLine, removeLine, validLines, confirmOpen, setConfirmOpen, formalize };
 }

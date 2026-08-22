@@ -92,12 +92,13 @@ export default defineConfig(({ command, mode }) => {
   }
 
   return {
-    // Million en build por defecto. Para habilitarlo en dev:
-    // VITE_ENABLE_MILLION_DEV=true npm run dev
-    plugins:
-      command === 'build' || process.env.VITE_ENABLE_MILLION_DEV === 'true'
-        ? [million.vite({ auto: true }), react(), scrubBundledLocalhostFallbacks()]
-        : [react()],
+    // Million queda como opt-in hasta validar compatibilidad con React 19.
+    // ENABLE_MILLION_BUILD=true npm run build
+    plugins: [
+      ...(command === 'build' && process.env.ENABLE_MILLION_BUILD === 'true' ? [million.vite({ auto: true })] : []),
+      react(),
+      ...(command === 'build' ? [scrubBundledLocalhostFallbacks()] : [])
+    ],
     // Evita recargas completas al navegar por primera vez a rutas lazy
     // que traen dependencias pesadas no pre-optimizadas.
     optimizeDeps: {

@@ -1801,6 +1801,22 @@
   align-items: center;
 }
 
+.sol-comp-action-with-help { display: inline-flex; align-items: center; gap: .5rem; text-align: left; }
+.sol-comp-action-with-help span { display: grid; line-height: 1.05; }
+.sol-comp-action-with-help small { margin-top: .2rem; font-size: .68rem; font-weight: 500; opacity: .78; }
+.sol-comp-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-bottom: .7rem; color: #6d625d; font-size: .86rem; }
+.sol-comp-breadcrumb i { font-size: .68rem; }
+.sol-comp-quick-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; margin: 1rem 0; padding: 0; list-style: none; }
+.sol-comp-quick-steps li { display: flex; align-items: center; gap: .45rem; min-width: 0; padding: .65rem; border: 1px solid #ded7d2; border-radius: .75rem; color: #756b66; background: #fff; }
+.sol-comp-quick-steps b { display: grid; place-items: center; width: 1.65rem; height: 1.65rem; flex: 0 0 auto; border-radius: 50%; background: #eee8e4; }
+.sol-comp-quick-steps .is-active { border-color: #7b402b; color: #552718; box-shadow: 0 0 0 2px rgba(123, 64, 43, .1); }
+.sol-comp-quick-steps .is-active b, .sol-comp-quick-steps .is-complete b { color: #fff; background: #7b402b; }
+.sol-comp-upload-progress { display: grid; gap: .2rem; margin: .75rem 0; padding: .75rem; border-radius: .75rem; color: #552718; background: #f7efe9; }
+.sol-comp-upload-state { display: inline-flex; width: fit-content; margin-top: .25rem; padding: .15rem .4rem; border-radius: 999px; font-size: .68rem; font-weight: 700; color: #67402e; background: #f2e7df; }
+.sol-comp-invoice-preview--error { border-color: #c94f4f; background: #fff5f5; }
+.sol-comp-invoice-preview--subiendo { border-color: #d59b2d; }
+.sol-comp-quick-send { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid #e5ddd8; }
+
 .sol-comp-quick-capture .sol-comp-reception-panel {
   margin-top: 1rem;
 }
@@ -2232,6 +2248,13 @@
   .sol-comp-header > .btn {
     width: 100%;
   }
+
+  .sol-comp-header-actions { width: 100%; align-items: stretch; flex-direction: column; }
+  .sol-comp-header-actions .btn,
+  .sol-comp-header-actions > label { width: 100%; justify-content: center; }
+  .sol-comp-quick-steps { grid-template-columns: 1fr; }
+  .sol-comp-breadcrumb { overflow-wrap: anywhere; }
+  .sol-comp-modal { width: 100%; max-height: calc(100dvh - 1.3rem); padding: 1rem; }
 
   .sol-comp-filters {
     margin-inline: -0.25rem;

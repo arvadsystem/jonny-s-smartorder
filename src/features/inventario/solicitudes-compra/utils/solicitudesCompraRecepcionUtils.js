@@ -193,15 +193,19 @@ export const prevalidateInvoiceFiles = async (files) => {
   return selected;
 };
 
-export const uploadInvoiceFilesSequentially = async (files, uploadFile) => {
+export const uploadInvoiceFilesSequentially = async (files, uploadFile, onProgress = null) => {
   let uploaded = 0;
   const failures = [];
-  for (const file of Array.from(files || [])) {
+  const selected = Array.from(files || []);
+  for (const [index, file] of selected.entries()) {
+    onProgress?.({ phase: 'uploading', file, index, total: selected.length, completed: index });
     try {
       await uploadFile(file);
       uploaded += 1;
+      onProgress?.({ phase: 'saved', file, index, total: selected.length, completed: index + 1 });
     } catch (error) {
       failures.push({ file, error });
+      onProgress?.({ phase: 'error', file, error, index, total: selected.length, completed: index + 1 });
     }
   }
   return { uploaded, failures };
