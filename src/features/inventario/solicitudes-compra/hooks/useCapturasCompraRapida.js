@@ -33,6 +33,7 @@ export default function useCapturasCompraRapida({ openToast }) {
 
   const loadCapture = useCallback(async (id) => {
     setBusy('loading'); setError('');
+    setList((current) => ({ ...current, error: '' }));
     try {
       const [capturePayload, evidencePayload] = await Promise.all([
         solicitudesCompraService.getQuickCapture(id),
@@ -42,7 +43,10 @@ export default function useCapturasCompraRapida({ openToast }) {
       setDraft(next); draftRef.current = next;
       setEvidence(Array.isArray(evidencePayload?.evidencias) ? evidencePayload.evidencias : []);
       setMode('edit');
-    } catch (requestError) { setError(mapReceptionError(requestError)); }
+    } catch (requestError) {
+      const message = mapReceptionError(requestError);
+      setList((current) => ({ ...current, error: message }));
+    }
     finally { setBusy(''); }
   }, []);
 
@@ -79,17 +83,19 @@ export default function useCapturasCompraRapida({ openToast }) {
 
   const removeEvidence = useCallback(async (idEvidence) => {
     if (actionLock.current || !draftRef.current) return;
-    actionLock.current = true; setBusy('delete');
+    actionLock.current = true; setBusy('delete'); setError('');
     try {
       await solicitudesCompraService.deleteQuickCaptureEvidence(draftRef.current.id_captura_compra_rapida, idEvidence);
-      setEvidence((current) => current.filter((item) => item.id_evidencia !== idEvidence));
+      const refreshed = await solicitudesCompraService.listQuickCaptureEvidence(draftRef.current.id_captura_compra_rapida);
+      setEvidence(Array.isArray(refreshed?.evidencias) ? refreshed.evidencias : []);
+      await loadList();
     } catch (requestError) { setError(mapReceptionError(requestError)); }
     finally { actionLock.current = false; setBusy(''); }
-  }, []);
+  }, [loadList]);
 
   const send = useCallback(async () => {
     if (actionLock.current || !draftRef.current || evidence.length < 1) return;
-    actionLock.current = true; setBusy('send');
+    actionLock.current = true; setBusy('send'); setError('');
     try {
       const result = await solicitudesCompraService.sendQuickCapture(draftRef.current.id_captura_compra_rapida);
       const next = { ...draftRef.current, ...result?.captura };
@@ -102,7 +108,7 @@ export default function useCapturasCompraRapida({ openToast }) {
 
   const discard = useCallback(async () => {
     if (actionLock.current || !draftRef.current) return;
-    actionLock.current = true; setBusy('discard');
+    actionLock.current = true; setBusy('discard'); setError('');
     try {
       await solicitudesCompraService.discardQuickCapture(draftRef.current.id_captura_compra_rapida);
       setDraft(null); draftRef.current = null; setEvidence([]); setMode('list'); await loadList();

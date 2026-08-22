@@ -50,6 +50,50 @@ test('hook usa un solo create actionLock una llamada send y conserva borrador al
   assert.doesNotMatch(hook, /setMode\('list'\)[\s\S]{0,80}discardQuickCapture/);
 });
 
+test('fallo al abrir permanece en listado y publica el error en su canal visible', async () => {
+  const hook = await read('../hooks/useCapturasCompraRapida.js');
+  const loadCapture = hook.slice(hook.indexOf('const loadCapture'), hook.indexOf('const openNew'));
+  assert.match(loadCapture, /catch \(requestError\)[\s\S]*setList\(\(current\) => \(\{ \.\.\.current, error: message \}\)\)/);
+  assert.doesNotMatch(loadCapture.slice(loadCapture.indexOf('catch')), /setMode\('edit'\)/);
+});
+
+test('apertura exitosa limpia errores anteriores y entra a edit', async () => {
+  const hook = await read('../hooks/useCapturasCompraRapida.js');
+  const loadCapture = hook.slice(hook.indexOf('const loadCapture'), hook.indexOf('const openNew'));
+  assert.match(loadCapture, /setError\(''\)/);
+  assert.match(loadCapture, /setList\(\(current\) => \(\{ \.\.\.current, error: '' \}\)\)/);
+  assert.ok(loadCapture.indexOf("setMode('edit')") < loadCapture.indexOf('catch (requestError)'));
+});
+
+test('delete exitoso recarga evidencias canonicas y despues refresca el listado', async () => {
+  const hook = await read('../hooks/useCapturasCompraRapida.js');
+  const removeEvidence = hook.slice(hook.indexOf('const removeEvidence'), hook.indexOf('const send'));
+  assert.equal((removeEvidence.match(/deleteQuickCaptureEvidence\(/g) || []).length, 1);
+  assert.equal((removeEvidence.match(/listQuickCaptureEvidence\(/g) || []).length, 1);
+  assert.match(removeEvidence, /setEvidence\(Array\.isArray\(refreshed\?\.evidencias\) \? refreshed\.evidencias : \[\]\)/);
+  assert.ok(removeEvidence.indexOf('setEvidence(') < removeEvidence.indexOf('await loadList()'));
+  assert.doesNotMatch(removeEvidence, /\.filter\(/);
+});
+
+test('delete fallido no simula eliminacion ni actualiza el contador localmente', async () => {
+  const hook = await read('../hooks/useCapturasCompraRapida.js');
+  const removeEvidence = hook.slice(hook.indexOf('const removeEvidence'), hook.indexOf('const send'));
+  const catchBlock = removeEvidence.slice(removeEvidence.indexOf('catch (requestError)'), removeEvidence.indexOf('finally'));
+  assert.match(catchBlock, /setError\(mapReceptionError\(requestError\)\)/);
+  assert.doesNotMatch(catchBlock, /setEvidence|loadList/);
+});
+
+test('operaciones posteriores limpian errores stale sin alterar lazy create ni subida parcial', async () => {
+  const hook = await read('../hooks/useCapturasCompraRapida.js');
+  for (const operation of ['removeEvidence', 'send', 'discard']) {
+    const start = hook.indexOf(`const ${operation}`);
+    const next = hook.indexOf('\n  const ', start + 1);
+    assert.match(hook.slice(start, next < 0 ? undefined : next), /setError\(''\)/);
+  }
+  assert.ok(hook.indexOf('await prevalidateInvoiceFiles(files)') < hook.indexOf('await solicitudesCompraService.createQuickCapture()'));
+  assert.match(hook, /result\.failures\.length/);
+});
+
 test('pantalla soporta cámara selección múltiple previews estados y responsive sin observación', async () => {
   const [component, css] = await Promise.all([read('../components/CapturasCompraRapidaOperativa.jsx'), read('../solicitudesCompra.css')]);
   assert.match(component, /capture="environment"/);
