@@ -1,3 +1,5 @@
+import { canRenderProvider } from './solicitudesCompraProviderVisibility.js';
+
 export const MAX_RECEPTION_OBSERVATION_LENGTH = 1000;
 export const MAX_INVOICE_SIZE = 6 * 1024 * 1024;
 export const MAX_INVOICE_EVIDENCES = 10;
@@ -57,7 +59,7 @@ export const createReceptionDraft = (details) => (Array.isArray(details) ? detai
   factor_conversion_snapshot: String(detail?.factor_conversion_snapshot ?? '1'),
   cantidad_aprobada: detail?.cantidad_aprobada,
   cantidad_base_aprobada: detail?.cantidad_base_aprobada,
-  proveedor: detail?.proveedor || null,
+  ...(canRenderProvider(detail) ? { proveedor: detail.proveedor ?? null } : {}),
   unidad_base: detail?.unidad_base || (String(detail?.tipo_item).toUpperCase() === 'PRODUCTO' ? 'Unidades' : ''),
   stock_actual: detail?.stock_actual,
   stock_minimo: detail?.stock_minimo,
@@ -107,9 +109,6 @@ export const validateReceptionDraft = (lines) => {
     const baseApproved = decimalToScaled6(line?.cantidad_base_aprobada);
     if (baseApproved === null || baseApproved <= 0n) {
       integrityErrors.push('La cantidad base aprobada no es válida.');
-    }
-    if (!positiveInteger(line?.proveedor?.id_proveedor)) {
-      integrityErrors.push('La línea no tiene un proveedor asignado.');
     }
     if (integrityErrors.length) lineErrors.integridad = integrityErrors.join(' ');
     if (Object.keys(lineErrors).length) errors[key] = lineErrors;

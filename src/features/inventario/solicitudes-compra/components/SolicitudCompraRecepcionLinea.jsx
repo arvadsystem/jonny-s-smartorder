@@ -1,5 +1,6 @@
 import { compareDecimalQuantities } from '../utils/solicitudesCompraRecepcionUtils';
 import { buildConversionPreview, formatConversionQuantity, isBaseOnlyLine, resolvePresentationLabel, subtractConversionDecimal } from '../utils/solicitudesCompraConversionUtils';
+import { canRenderProvider } from '../utils/solicitudesCompraProviderVisibility';
 
 const value = (raw) => raw === null || raw === undefined || raw === '' ? '—' : formatConversionQuantity(raw);
 
@@ -31,7 +32,7 @@ export default function SolicitudCompraRecepcionLinea({ line, errors, disabled, 
         <div className="sol-comp-quantities">
           <span>Aprobado <b>{approvedPreview.valid ? `${approvedPreview.quantity} ${baseOnly ? approvedPreview.baseUnit : approvedPreview.presentationLabel}` : value(line.cantidad_aprobada)}</b></span>
           <span>Equivalencia aprobada <b>{approvedPreview.valid ? `${approvedPreview.baseQuantity} ${approvedPreview.baseUnit}` : value(line.cantidad_base_aprobada)}</b></span>
-          <span>Proveedor <b>{line.proveedor?.nombre_proveedor || 'Sin asignar'}</b></span>
+          {canRenderProvider(line) ? <span>Proveedor <b>{line.proveedor?.nombre_proveedor || 'Sin asignar'}</b></span> : null}
           <span>Stock <b>{value(line.stock_actual)}</b></span>
           <span>Mínimo <b>{value(line.stock_minimo)}</b></span>
         </div>

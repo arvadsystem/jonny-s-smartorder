@@ -112,13 +112,24 @@ test('observacion respeta maximo de mil caracteres', () => {
   assert.match(getReceptionObservationError('a'.repeat(1001), false), /1,000/);
 });
 
-test('integridad bloquea falta de cantidad aprobada, base o proveedor', () => {
+test('integridad bloquea falta de cantidad aprobada o base sin exigir proveedor al operativo', () => {
   const missingApproved = validateReceptionDraft(createReceptionDraft([detail({ cantidad_aprobada: null })]));
   const missingBase = validateReceptionDraft(createReceptionDraft([detail({ cantidad_base_aprobada: null })]));
   const missingProvider = validateReceptionDraft(createReceptionDraft([detail({ proveedor: null })]));
   assert.equal(missingApproved.valid, false);
   assert.equal(missingBase.valid, false);
-  assert.equal(missingProvider.valid, false);
+  assert.equal(missingProvider.valid, true);
+});
+
+test('borrador de recepcion conserva presencia o ausencia autorizada de proveedor', () => {
+  const [admin] = createReceptionDraft([detail({ proveedor: null })]);
+  const operativeDetail = detail();
+  delete operativeDetail.proveedor;
+  const [operative] = createReceptionDraft([operativeDetail]);
+  assert.equal(Object.hasOwn(admin, 'proveedor'), true);
+  assert.equal(admin.proveedor, null);
+  assert.equal(Object.hasOwn(operative, 'proveedor'), false);
+  assert.equal(validateReceptionDraft([operative]).valid, true);
 });
 
 test('integridad bloquea IDs faltantes y duplicados sin fabricarlos', () => {

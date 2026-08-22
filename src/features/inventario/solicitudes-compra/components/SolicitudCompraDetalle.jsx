@@ -2,6 +2,7 @@ import SolicitudCompraEstado from './SolicitudCompraEstado';
 import SolicitudCompraRevisionPanel from './SolicitudCompraRevisionPanel';
 import SolicitudCompraRecepcionPanel from './SolicitudCompraRecepcionPanel';
 import SolicitudCompraEvidencias from './SolicitudCompraEvidencias';
+import { canRenderProvider } from '../utils/solicitudesCompraProviderVisibility';
 import { formatDateTime } from '../utils/solicitudesCompraUtils';
 import { formatConversionQuantity, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
@@ -88,7 +89,7 @@ export default function SolicitudCompraDetalle({ state, onBack, onRetry, reloadD
               <span><i className="bi bi-boxes" aria-hidden="true" /><small>Stock actual</small><b>{value(line.stock_actual)}</b></span>
               <span><i className="bi bi-speedometer2" aria-hidden="true" /><small>Stock mínimo</small><b>{value(line.stock_minimo)}</b></span>
               <span className={`sol-comp-line-stock sol-comp-line-stock--${stockKey.toLowerCase() || 'unknown'}`}><i className="bi bi-activity" aria-hidden="true" /><small>Estado de stock</small><b>{STOCK_LABELS[stockKey] || line.estado_stock || '—'}</b></span>
-              <span><i className="bi bi-truck" aria-hidden="true" /><small>Proveedor</small><b>{line.proveedor?.nombre_proveedor || 'Sin asignar'}</b></span>
+              {canRenderProvider(line) ? <span><i className="bi bi-truck" aria-hidden="true" /><small>Proveedor</small><b>{line.proveedor?.nombre_proveedor || 'Sin asignar'}</b></span> : null}
             </div>
           </article>
         );
