@@ -75,14 +75,14 @@ export default function SolicitudCompraDetalle({ state, onBack, onRetry, reloadD
         const stockKey = String(line.estado_stock || '').toUpperCase();
         return (
           <article key={line.id_solicitud_detalle ?? 'invalid-contract-detail'}>
-            <div className="sol-comp-card-top"><div className="sol-comp-line-title"><span aria-hidden="true"><i className={`bi ${line.tipo_item === 'PRODUCTO' ? 'bi-box-seam' : 'bi-basket'}`} /></span><strong>{line.nombre || '—'}</strong></div><span className="sol-comp-type-pill">{line.tipo_item === 'PRODUCTO' ? 'Producto' : 'Insumo'}</span></div>
+            <div className="sol-comp-card-top"><div className="sol-comp-line-title"><span aria-hidden="true"><i className={`bi ${line.tipo_item === 'PRODUCTO' ? 'bi-box-seam' : 'bi-basket'}`} /></span><strong>{line.nombre || '—'}</strong></div><span className="sol-comp-type-pill">{line.tipo_item === 'PRODUCTO' ? 'Producto' : 'Insumo'}</span></div><span className="sol-comp-origin-badge">{line.origen_linea === 'ADMINISTRACION' ? 'Agregado por Administración' : line.origen_linea === 'CAPTURA_RAPIDA' ? 'Captura rápida' : 'Solicitado por sucursal'}</span>
             <div className="sol-comp-line-meta">
               <span><small>Categoría</small><b>{line.categoria || '—'}</b></span>
               <span><small>Presentación</small><b>{line.presentacion_snapshot || '—'}</b></span>
               <span><small>Unidad base</small><b>{line.unidad_base || (line.tipo_item === 'PRODUCTO' ? 'Unidades' : '—')}</b></span>
             </div>
             <div className="sol-comp-quantity-groups">
-              <QuantityStage label="Solicitado" quantity={line.cantidad_solicitada} baseQuantity={line.cantidad_base_solicitada} line={line} />
+              <QuantityStage label={line.origen_linea === 'ADMINISTRACION' ? 'Cantidad agregada' : 'Solicitado'} quantity={line.cantidad_solicitada} baseQuantity={line.cantidad_base_solicitada} line={line} />
               <QuantityStage label="Aprobado" quantity={line.cantidad_aprobada} baseQuantity={line.cantidad_base_aprobada} line={line} />
               <QuantityStage label="Recibido" quantity={line.cantidad_recibida} baseQuantity={line.cantidad_base_recibida} line={line} received />
             </div>

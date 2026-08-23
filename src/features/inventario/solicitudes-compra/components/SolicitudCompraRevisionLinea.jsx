@@ -4,9 +4,10 @@ import { buildConversionPreview, formatConversionQuantity, isBaseOnlyLine, resol
 const display = (value) => value === null || value === undefined || value === '' ? '—' : formatConversionQuantity(value);
 
 export default function SolicitudCompraRevisionLinea({ line, errors = {}, providerOptions, providersLoading, disabled, editable }) {
-  const inputId = `approved-quantity-${line.id_solicitud_detalle}`;
+  const inputId = `approved-quantity-${String(line._line_key || line.id_solicitud_detalle).replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   const quantityErrorId = `${inputId}-error`;
   const isProduct = line.tipo_item === 'PRODUCTO';
+  const administrative = !line.id_solicitud_detalle && line.origen_linea === 'ADMINISTRACION';
   const stockKey = String(line.estado_stock || '').toUpperCase();
   const stockLabel = { SIN_STOCK: 'Sin stock', STOCK_BAJO: 'Stock bajo', DISPONIBLE: 'Disponible' }[stockKey] || line.estado_stock || '—';
   const baseOnly = isBaseOnlyLine(line);
@@ -20,10 +21,10 @@ export default function SolicitudCompraRevisionLinea({ line, errors = {}, provid
   return (
     <article className="sol-comp-review-line">
       <div className="sol-comp-review-info">
-        <div className="sol-comp-card-top"><strong>{line.nombre}</strong><span className="sol-comp-type-pill">{isProduct ? 'Producto' : 'Insumo'}</span></div>
+        <div className="sol-comp-card-top"><strong>{line.nombre}</strong><span className="sol-comp-type-pill">{isProduct ? 'Producto' : 'Insumo'}</span></div><span className="sol-comp-origin-badge">{administrative ? 'Agregado por Administración' : line.origen_linea === 'CAPTURA_RAPIDA' ? 'Captura rápida' : 'Solicitado por sucursal'}</span>
         <p><span>{line.categoria || 'Sin categoría'}</span><span>{line.presentacion_snapshot || line.unidad_base || 'Unidad'}</span></p>
         <div className="sol-comp-quantities">
-          <span>Solicitada <b>{display(line.cantidad_solicitada)}</b></span>
+          <span>{administrative ? 'Cantidad agregada' : 'Solicitada'} <b>{display(line.cantidad_solicitada)}</b></span>
           <span>Base solicitada <b>{display(line.cantidad_base_solicitada)} {line.unidad_base || ''}</b></span>
           <span>Stock <b>{display(line.stock_actual)}</b></span>
           <span>Mínimo <b>{display(line.stock_minimo)}</b></span>
@@ -62,6 +63,7 @@ export default function SolicitudCompraRevisionLinea({ line, errors = {}, provid
               emptyText="No hay proveedores disponibles."
             />
           </div>
+          {administrative ? <button type="button" className="btn btn-outline-danger btn-sm sol-comp-review-remove" disabled={disabled} onClick={line.onRemove}>Quitar</button> : null}
         </>
       ) : null}
     </article>

@@ -3,13 +3,16 @@ import { solicitudesCompraService } from '../../../../services/solicitudesCompra
 import {
   buildApprovalPayload,
   buildRejectionPayload,
+  createAdministrativeApprovalLine,
   createApprovalDraft,
+  administrativeLineKey,
   getRevisionCommentError,
   mapRevisionError,
   updateApprovalDraftLine,
   validateApprovalDraft
 } from '../utils/solicitudesCompraRevisionUtils';
 import { applyProviderToLines } from '../utils/solicitudesCompraProviderUtils';
+import { createCatalogRequestCoordinator, createEmptyCatalogState, mapSolicitudError } from '../utils/solicitudesCompraUtils';
 
 const EMPTY_PROVIDERS = { items: [], loading: false, error: '', loaded: false };
 
@@ -31,7 +34,10 @@ export default function useSolicitudCompraRevision({
   const [confirmation, setConfirmation] = useState(null);
   const [busyAction, setBusyAction] = useState('');
   const [accessDenied, setAccessDenied] = useState(false);
+  const [catalogState, setCatalogState] = useState(() => createEmptyCatalogState());
+  const [catalogFeedback, setCatalogFeedback] = useState('');
   const providerRequest = useRef(0);
+  const catalogRequest = useRef(createCatalogRequestCoordinator());
   const actionLock = useRef(false);
 
   const loadProviders = useCallback(async () => {
@@ -69,6 +75,28 @@ export default function useSolicitudCompraRevision({
   }, []);
   const applyProviderToAll = useCallback((providerId) => setLines((current) => applyProviderToLines(current, providerId, 'all')), []);
   const fillMissingProviders = useCallback((providerId) => setLines((current) => applyProviderToLines(current, providerId, 'missing')), []);
+  const loadCatalog = useCallback(async (options) => {
+    const warehouseId = String(solicitud?.almacen?.id_almacen || '');
+    const token = catalogRequest.current.begin(warehouseId);
+    setCatalogState(createEmptyCatalogState(warehouseId, true));
+    try {
+      const payload = await solicitudesCompraService.getCatalogo({ ...options, id_almacen: warehouseId, limit: 12 });
+      if (!catalogRequest.current.isCurrent(token, warehouseId)) return;
+      setCatalogState({ items: payload?.items || [], pagination: payload?.pagination || {}, loading: false, error: '', requestedWarehouseId: warehouseId });
+    } catch (error) {
+      if (catalogRequest.current.isCurrent(token, warehouseId)) setCatalogState({ ...createEmptyCatalogState(warehouseId), error: mapSolicitudError(error) });
+    }
+  }, [solicitud?.almacen?.id_almacen]);
+  const addAdministrativeLine = useCallback((line) => {
+    const candidate = createAdministrativeApprovalLine(line);
+    setLines((current) => {
+      const duplicate = current.some((existing) => administrativeLineKey(existing) === administrativeLineKey(candidate));
+      if (duplicate) { setCatalogFeedback('Este artículo ya está en la solicitud. Ajusta su cantidad aprobada en la línea existente.'); return current; }
+      setCatalogFeedback('Artículo agregado a la revisión. Se guardará al aprobar la solicitud.');
+      return [...current, candidate];
+    });
+  }, []);
+  const removeAdministrativeLine = useCallback((lineKey) => setLines((current) => current.filter((line) => line.id_solicitud_detalle || line._line_key !== lineKey)), []);
 
   const refreshInformation = useCallback(async () => {
     await Promise.all([reloadDetail?.(), reloadList?.()]);
@@ -129,6 +157,11 @@ export default function useSolicitudCompraRevision({
     approvalCommentError,
     accessDenied,
     updateLine,
+    catalogState,
+    catalogFeedback,
+    loadCatalog,
+    addAdministrativeLine,
+    removeAdministrativeLine,
     applyProviderToAll,
     fillMissingProviders,
     execute

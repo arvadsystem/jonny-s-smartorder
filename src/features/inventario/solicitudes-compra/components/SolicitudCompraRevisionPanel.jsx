@@ -3,6 +3,7 @@ import useSolicitudCompraRevision from '../hooks/useSolicitudCompraRevision';
 import SolicitudCompraConfirmModal from './SolicitudCompraConfirmModal';
 import SolicitudCompraRevisionLinea from './SolicitudCompraRevisionLinea';
 import ProveedorBulkAssignment from './ProveedorBulkAssignment';
+import SolicitudCompraCatalogo from './SolicitudCompraCatalogo';
 import { buildConversionPreview, isBaseOnlyLine, resolvePresentationLabel } from '../utils/solicitudesCompraConversionUtils';
 
 export default function SolicitudCompraRevisionPanel({ solicitud, detalles, canApprove, canReject, reloadDetail, reloadList, openToast }) {
@@ -40,14 +41,16 @@ export default function SolicitudCompraRevisionPanel({ solicitud, detalles, canA
         </div>
       ) : null}
 
+      {canApprove ? <section className="sol-comp-review-catalog" aria-labelledby="review-catalog-title"><div><h4 id="review-catalog-title">Agregar productos o insumos</h4><p>Los artículos se agregarán al almacén fijo de la solicitud únicamente cuando confirmes la aprobación.</p></div><SolicitudCompraCatalogo warehouseId={solicitud?.almacen?.id_almacen} state={review.catalogState} loadCatalog={review.loadCatalog} onAdd={review.addAdministrativeLine} quantityLabel="Cantidad a agregar" addLabel="Agregar a solicitud" previewLabel="Cantidad que se aprobará" />{review.catalogFeedback ? <p className="sol-comp-feedback" aria-live="polite">{review.catalogFeedback}</p> : null}</section> : null}
+
       {canApprove ? <ProveedorBulkAssignment providerOptions={providerOptions} lines={review.lines} onApplyAll={review.applyProviderToAll} onFillMissing={review.fillMissingProviders} disabled={review.controlsDisabled || review.providers.loading || Boolean(review.providers.error)} /> : null}
 
       <div className="sol-comp-review-lines">
-        {review.lines.filter((line) => line.id_solicitud_detalle).map((line) => (
+        {review.lines.map((line) => (
           <SolicitudCompraRevisionLinea
-            key={line.id_solicitud_detalle}
-            line={{ ...line, onChange: (patch) => review.updateLine(line.id_solicitud_detalle, patch) }}
-            errors={review.validation.errors[String(line.id_solicitud_detalle)]}
+            key={line._line_key || line.id_solicitud_detalle}
+            line={{ ...line, onChange: (patch) => review.updateLine(line._line_key || line.id_solicitud_detalle, patch), onRemove: () => review.removeAdministrativeLine(line._line_key) }}
+            errors={review.validation.errors[String(line.id_solicitud_detalle || line._line_key)]}
             providerOptions={providerOptions}
             providersLoading={review.providers.loading}
             disabled={review.controlsDisabled}
@@ -114,10 +117,11 @@ export default function SolicitudCompraRevisionPanel({ solicitud, detalles, canA
               baseOnly: isBaseOnlyLine(line)
             });
             return (
-              <article className="sol-comp-confirm-row" key={line.id_solicitud_detalle}>
+              <article className="sol-comp-confirm-row" key={line._line_key || line.id_solicitud_detalle}>
                 <strong>{line.nombre}</strong>
                 <span>{preview.valid ? `${preview.quantity} ${preview.baseOnly ? preview.baseUnit : preview.presentationLabel}` : 'Cantidad pendiente'}</span>
                 {preview.valid && !preview.baseOnly ? <small>Cantidad base: {preview.baseQuantity} {preview.baseUnit}</small> : null}
+                <small>{line.origen_linea === 'ADMINISTRACION' ? 'Agregado por Administración' : 'Solicitado por sucursal'}</small>
                 <small>Proveedor: {providerOptions.find((option) => option.value === String(line.id_proveedor))?.label || 'Sin seleccionar'}</small>
               </article>
             );

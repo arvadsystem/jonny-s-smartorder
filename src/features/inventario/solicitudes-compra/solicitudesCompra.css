@@ -1826,6 +1826,10 @@
 .sol-comp-provider-distribution span { display: inline-flex; align-items: center; gap: .65rem; padding: .4rem .6rem; border: 1px solid var(--c-border-soft); border-radius: 999px; background: var(--c-surface); }
 .sol-comp-provider-distribution span.is-missing { border-color: #d59b2d; background: #fff8e8; }
 .sol-comp-provider-distribution em { font-style: normal; }
+.sol-comp-review-catalog { display: grid; gap: .8rem; margin: 1rem 0; padding: 1rem; border: 1px solid var(--c-border-soft); border-radius: 12px; background: var(--c-surface); }
+.sol-comp-review-catalog h4, .sol-comp-review-catalog p { margin: 0; }
+.sol-comp-origin-badge { display: inline-flex; width: fit-content; margin-top: .4rem; padding: .2rem .5rem; border-radius: 999px; color: var(--c-info); background: rgba(45, 107, 102, .09); font-size: .72rem; font-weight: 700; }
+.sol-comp-review-remove { grid-column: 3; justify-self: end; }
 
 .sol-comp-quick-capture .sol-comp-reception-panel {
   margin-top: 1rem;
@@ -2270,6 +2274,7 @@
     .sol-comp-provider-bulk__actions .btn { width: 100%; }
     .sol-comp-provider-distribution > div { display: grid; grid-template-columns: 1fr; }
     .sol-comp-provider-distribution span { justify-content: space-between; width: 100%; }
+    .sol-comp-review-remove { grid-column: auto; width: 100%; }
 
   .sol-comp-filters {
     margin-inline: -0.25rem;

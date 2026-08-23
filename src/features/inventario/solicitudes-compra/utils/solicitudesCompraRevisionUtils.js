@@ -30,6 +30,10 @@ export const createApprovalDraft = (details) => (Array.isArray(details) ? detail
   const parsedInitial = parseApprovedQuantity(initialQuantity, type);
   return {
   id_solicitud_detalle: positiveInteger(detail?.id_solicitud_detalle),
+  _line_key: `persisted-${positiveInteger(detail?.id_solicitud_detalle)}`,
+  origen_linea: detail?.origen_linea || 'SUCURSAL',
+  id_item: positiveInteger(detail?.id_item),
+  id_presentacion_insumo: positiveInteger(detail?.id_presentacion_insumo),
   tipo_item: type,
   nombre: detail?.nombre || '',
   categoria: detail?.categoria || '',
@@ -47,12 +51,32 @@ export const createApprovalDraft = (details) => (Array.isArray(details) ? detail
 });
 
 export const updateApprovalDraftLine = (lines, idDetalle, patch) => {
-  const id = positiveInteger(idDetalle);
-  if (!id) return Array.isArray(lines) ? lines : [];
+  const key = String(idDetalle ?? '');
+  if (!key) return Array.isArray(lines) ? lines : [];
   return (Array.isArray(lines) ? lines : []).map((line) => (
-    line.id_solicitud_detalle === id ? { ...line, ...patch, id_solicitud_detalle: id } : line
+    String(line._line_key || line.id_solicitud_detalle) === key || String(line.id_solicitud_detalle) === key ? { ...line, ...patch } : line
   ));
 };
+
+export const administrativeLineKey = (line) => `${String(line?.tipo_item || '').toUpperCase()}:${positiveInteger(line?.id_item) || 0}:${positiveInteger(line?.id_presentacion_insumo) || 'base'}`;
+
+export const createAdministrativeApprovalLine = (line) => ({
+  id_solicitud_detalle: null,
+  _line_key: `admin-${administrativeLineKey(line)}`,
+  origen_linea: 'ADMINISTRACION',
+  tipo_item: String(line?.tipo_item || '').toUpperCase(),
+  id_item: positiveInteger(line?.id_item),
+  id_presentacion_insumo: positiveInteger(line?.id_presentacion_insumo),
+  nombre: line?.nombre || '',
+  categoria: line?.categoria || '',
+  presentacion_snapshot: line?.presentacion || line?.nombre_presentacion_visual || line?.unidad_base_visual || 'Unidad',
+  factor_conversion_snapshot: String(line?.factor_conversion_visual ?? '1'),
+  unidad_base: line?.unidad_base_visual || (String(line?.tipo_item).toUpperCase() === 'PRODUCTO' ? 'Unidades' : ''),
+  cantidad_solicitada: line?.cantidad,
+  cantidad_base_solicitada: null,
+  cantidad_aprobada: String(line?.cantidad ?? ''),
+  id_proveedor: ''
+});
 
 export const validateApprovalDraft = (lines) => {
   const rows = Array.isArray(lines) ? lines : [];
@@ -63,17 +87,16 @@ export const validateApprovalDraft = (lines) => {
 
   rows.forEach((line) => {
     const id = positiveInteger(line?.id_solicitud_detalle);
-    if (!id) {
-      general.push(`La línea ${line?.nombre || 'sin nombre'} no tiene un id_solicitud_detalle válido.`);
-      return;
-    }
-    const key = String(id);
+    const administrative = !id && line?.origen_linea === 'ADMINISTRACION';
+    const key = String(id || line?._line_key || 'invalid');
     const lineErrors = {};
-    if (seen.has(id)) {
+    if (!id && !administrative) general.push(`La línea ${line?.nombre || 'sin nombre'} no tiene un id_solicitud_detalle válido.`);
+    if (administrative && (!['PRODUCTO', 'INSUMO'].includes(String(line?.tipo_item).toUpperCase()) || !positiveInteger(line?.id_item))) general.push(`La línea administrativa ${line?.nombre || 'sin nombre'} no conserva un artículo válido.`);
+    if (seen.has(key)) {
       lineErrors.id = 'El identificador de detalle está duplicado.';
-      general.push(`El id_solicitud_detalle ${id} está duplicado.`);
+      general.push(`La línea ${line?.nombre || key} está duplicada.`);
     }
-    seen.add(id);
+    seen.add(key);
     if (parseApprovedQuantity(line?.cantidad_aprobada, line?.tipo_item) === null) {
       lineErrors.cantidad = String(line?.tipo_item).toUpperCase() === 'PRODUCTO'
         ? 'Ingresa una cantidad entera positiva.'
@@ -93,8 +116,14 @@ export const buildApprovalPayload = ({ comentario, detalles }) => {
   if (normalizedComment && normalizedComment.length > MAX_COMMENT_LENGTH) throw new Error('El comentario no puede exceder 1,000 caracteres.');
   return {
     comentario_revision: normalizedComment,
-    detalles: detalles.map((line) => ({
+    detalles: detalles.map((line) => positiveInteger(line.id_solicitud_detalle) ? ({
       id_solicitud_detalle: positiveInteger(line.id_solicitud_detalle),
+      cantidad_aprobada: parseApprovedQuantity(line.cantidad_aprobada, line.tipo_item),
+      id_proveedor: positiveInteger(line.id_proveedor)
+    }) : ({
+      tipo_item: String(line.tipo_item).toLowerCase(),
+      id_item: positiveInteger(line.id_item),
+      ...(positiveInteger(line.id_presentacion_insumo) ? { id_presentacion_insumo: positiveInteger(line.id_presentacion_insumo) } : {}),
       cantidad_aprobada: parseApprovedQuantity(line.cantidad_aprobada, line.tipo_item),
       id_proveedor: positiveInteger(line.id_proveedor)
     }))
