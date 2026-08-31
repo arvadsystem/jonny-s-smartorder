@@ -37,6 +37,30 @@ test('snapshot conserva mismo UUID y payload a través de sessionStorage', () =>
   assert.equal(storage.getItem(OC_PENDING_STORAGE_KEY), null);
 });
 
+test('crea snapshot JSON-safe aunque structuredClone no exista', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'structuredClone');
+  try {
+    Object.defineProperty(globalThis, 'structuredClone', { configurable: true, value: undefined });
+    const source = { id_almacen: 11, observacion: 'Tablet', detalles: [{ tipo_item: 'insumo', id_item: 8, id_presentacion_insumo: 3, cantidad: '1.25' }] };
+    const pending = createPendingOcSubmission(source, 1000);
+    source.detalles[0].cantidad = '99';
+    assert.equal(pending.payload.detalles[0].cantidad, '1.25');
+    assert.equal(Object.isFrozen(pending.payload.detalles[0]), true);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'structuredClone', descriptor);
+    else delete globalThis.structuredClone;
+  }
+});
+
+test('sessionStorage bloqueado es best-effort y no invalida pending en memoria', () => {
+  const pending = createPendingOcSubmission({ id_almacen: 11, detalles: [{ tipo_item: 'producto', id_item: 1, cantidad: 1 }] }, 1000);
+  const blocked = { setItem: () => { throw new Error('quota'); }, getItem: () => { throw new Error('denied'); }, removeItem: () => { throw new Error('denied'); } };
+  assert.equal(savePendingOcSubmission(pending, blocked), false);
+  assert.equal(pending.payload.client_request_id, pending.client_request_id);
+  assert.equal(loadPendingOcSubmission(blocked, 2000), null);
+  assert.equal(clearPendingOcSubmission(blocked), false);
+});
+
 test('pending mayor de 24 horas se elimina', () => {
   const storage = makeStorage();
   const pending = createPendingOcSubmission({ id_almacen: 11, detalles: [] }, 1000);
@@ -65,6 +89,21 @@ test('polling limitado termina found=false', async () => {
   assert.equal(calls, 2);
 });
 
+test('polling propaga AbortSignal y cancelacion en vuelo no genera falso error', async () => {
+  const controller = new AbortController();
+  let receivedSignal;
+  const resultPromise = pollOcReconciliation({ clientRequestId: 'uuid-a', signal: controller.signal, delays: [0],
+    reconcile: async (_id, options) => {
+      receivedSignal = options.signal;
+      return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject({ code: 'REQUEST_ABORTED' }), { once: true }));
+    } });
+  await Promise.resolve();
+  controller.abort();
+  const result = await resultPromise;
+  assert.equal(receivedSignal, controller.signal);
+  assert.deepEqual(result, { found: false, cancelled: true });
+});
+
 test('contrato frontend mantiene timeout global 15000 y create focal 60000', async () => {
   const [api, service, hook, component] = await Promise.all([
     readFile(new URL('../../../../services/api.js', import.meta.url), 'utf8'),
@@ -75,7 +114,9 @@ test('contrato frontend mantiene timeout global 15000 y create focal 60000', asy
   assert.match(api, /DEFAULT_REQUEST_TIMEOUT_MS = 15000/);
   assert.match(service, /crearSolicitud:[\s\S]*timeoutMs: 60000/);
   assert.match(service, /envios\/\$\{encodeURIComponent/);
+  assert.match(service, /reconciliarEnvio:[\s\S]*apiFetch\([\s\S]*'GET', null, \{ signal \}\)/);
   assert.match(hook, /RECONCILING/);
+  assert.match(hook, /submitLock\.current = true;\s*let pending = null;\s*try \{[\s\S]*finally \{ submitLock\.current = false; \}/);
   assert.doesNotMatch(hook, /NO SE PUDO ENVIAR[\s\S]{0,200}isAmbiguousCreateError/);
   assert.match(component, /aria-busy=\{locked\}/);
   assert.match(component, /Verificando envío/);

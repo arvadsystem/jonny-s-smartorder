@@ -143,11 +143,12 @@ export default function useSolicitudesCompra({ canView, openToast }) {
   const submit = useCallback(async (payload) => {
     if (submitLock.current) return null;
     submitLock.current = true;
-    const pending = pendingSubmission.current || createPendingOcSubmission(payload);
-    pendingSubmission.current = pending;
-    savePendingOcSubmission(pending);
-    setCreatePhase('SENDING');
+    let pending = null;
     try {
+      pending = pendingSubmission.current || createPendingOcSubmission(payload);
+      pendingSubmission.current = pending;
+      savePendingOcSubmission(pending);
+      setCreatePhase('SENDING');
       const result = await solicitudesCompraService.crearSolicitud(pending.payload);
       clearPendingOcSubmission(); pendingSubmission.current = null; setCreatePhase('IDLE');
       openToast('SOLICITUD ENVIADA', 'La solicitud fue enviada a Administración.', 'success');
@@ -164,6 +165,7 @@ export default function useSolicitudesCompra({ canView, openToast }) {
         reconciliationController.current = new AbortController();
         const reconciled = await pollOcReconciliation({ clientRequestId: pending.client_request_id,
           reconcile: solicitudesCompraService.reconciliarEnvio, signal: reconciliationController.current.signal });
+        if (reconciled?.cancelled) return reconciled;
         if (reconciled?.found) {
           clearPendingOcSubmission(); pendingSubmission.current = null; setCreatePhase('IDLE');
           openToast('SOLICITUD CONFIRMADA', `La solicitud #${reconciled.solicitud.id_solicitud_compra} ya había sido recibida por Administración. No se creó un duplicado.`, 'success');

@@ -14,26 +14,45 @@ export const createUuidV4 = (cryptoApi = globalThis.crypto) => {
 
 export const createPendingOcSubmission = (payload, now = Date.now()) => {
   const clientRequestId = createUuidV4();
-  const snapshot = structuredClone(payload);
-  const immutablePayload = Object.freeze({ ...snapshot,
-    detalles: Object.freeze((snapshot.detalles || []).map((line) => Object.freeze({ ...line }))),
+  const immutablePayload = Object.freeze({
+    id_almacen: payload?.id_almacen,
+    ...(payload?.observacion !== undefined ? { observacion: payload.observacion } : {}),
+    detalles: Object.freeze((payload?.detalles || []).map((line) => Object.freeze({
+      ...(line.tipo_item !== undefined ? { tipo_item: line.tipo_item } : {}),
+      ...(line.id_item !== undefined ? { id_item: line.id_item } : {}),
+      ...(line.id_presentacion_insumo !== undefined ? { id_presentacion_insumo: line.id_presentacion_insumo } : {}),
+      ...(line.cantidad !== undefined ? { cantidad: line.cantidad } : {})
+    }))),
     client_request_id: clientRequestId });
   return Object.freeze({ version: 1, client_request_id: clientRequestId, payload: immutablePayload, created_at: now });
 };
 
-export const savePendingOcSubmission = (pending, storage = globalThis.sessionStorage) => {
-  storage?.setItem(OC_PENDING_STORAGE_KEY, JSON.stringify(pending));
+export const savePendingOcSubmission = (pending, storage) => {
+  try {
+    const target = storage ?? globalThis.sessionStorage;
+    if (!target?.setItem) return false;
+    target.setItem(OC_PENDING_STORAGE_KEY, JSON.stringify(pending));
+    return true;
+  } catch { return false; }
 };
 
-export const clearPendingOcSubmission = (storage = globalThis.sessionStorage) => storage?.removeItem(OC_PENDING_STORAGE_KEY);
-
-export const loadPendingOcSubmission = (storage = globalThis.sessionStorage, now = Date.now()) => {
+export const clearPendingOcSubmission = (storage) => {
   try {
-    const parsed = JSON.parse(storage?.getItem(OC_PENDING_STORAGE_KEY) || 'null');
+    const target = storage ?? globalThis.sessionStorage;
+    if (!target?.removeItem) return false;
+    target.removeItem(OC_PENDING_STORAGE_KEY);
+    return true;
+  } catch { return false; }
+};
+
+export const loadPendingOcSubmission = (storage, now = Date.now()) => {
+  try {
+    const target = storage ?? globalThis.sessionStorage;
+    const parsed = JSON.parse(target?.getItem(OC_PENDING_STORAGE_KEY) || 'null');
     const valid = parsed?.version === 1 && typeof parsed.client_request_id === 'string'
       && parsed.payload?.client_request_id === parsed.client_request_id
       && Number.isFinite(parsed.created_at) && now - parsed.created_at <= OC_PENDING_MAX_AGE_MS && now >= parsed.created_at;
-    if (!valid) { clearPendingOcSubmission(storage); return null; }
+    if (!valid) { clearPendingOcSubmission(target); return null; }
     return parsed;
   } catch { clearPendingOcSubmission(storage); return null; }
 };
@@ -47,9 +66,11 @@ export const pollOcReconciliation = async ({ clientRequestId, reconcile, signal,
     if (delay > 0) await wait(delay);
     if (signal?.aborted) return { found: false, cancelled: true };
     try {
-      const result = await reconcile(clientRequestId);
+      const result = await reconcile(clientRequestId, { signal });
+      if (signal?.aborted) return { found: false, cancelled: true };
       if (result?.found) return result;
     } catch (error) {
+      if (signal?.aborted && error?.code === 'REQUEST_ABORTED') return { found: false, cancelled: true };
       if (!isAmbiguousCreateError(error)) throw error;
     }
   }
