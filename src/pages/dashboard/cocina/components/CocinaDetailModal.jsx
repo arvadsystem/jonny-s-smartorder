@@ -2,7 +2,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   formatCurrency,
   formatDateTimeLabel,
-  formatServiceLabel,
+  formatKdsDeliveryModeLabel,
+  formatKdsOriginLabel,
   formatTimerLabel,
   groupKitchenItems
 } from '../utils/cocinaHelpers';
@@ -63,9 +64,12 @@ export default function CocinaDetailModal({ open, pedido, now, onClose }) {
                   </div>
                 </div>
                 <div className="kds-meta-card">
-                  <div className="kds-meta-card__label">Tipo de servicio</div>
+                  <div className="kds-meta-card__label">Origen y modalidad</div>
                   <div className="kds-meta-card__value">
-                    {formatServiceLabel(pedido.tipo_servicio)}
+                    {formatKdsOriginLabel(pedido.origen_pedido_kds)}
+                    {pedido.origen_pedido_kds === 'DELIVERY' && pedido.modalidad_entrega_kds === 'DELIVERY'
+                      ? ''
+                      : ` · ${formatKdsDeliveryModeLabel(pedido.modalidad_entrega_kds)}`}
                   </div>
                 </div>
                 <div className="kds-meta-card">

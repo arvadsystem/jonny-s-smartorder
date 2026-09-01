@@ -247,6 +247,20 @@ export const formatServiceLabel = (value) => {
   return 'Local';
 };
 
+export const formatKdsOriginLabel = (value) => ({
+  LOCAL: 'Local',
+  DELIVERY: 'Delivery',
+  WEB: 'Web',
+  NO_DEFINIDO: 'Origen no definido'
+}[normalizeUpper(value)] || 'Origen no definido');
+
+export const formatKdsDeliveryModeLabel = (value) => ({
+  COMER_AQUI: 'Comer aquí',
+  PARA_LLEVAR: 'Para llevar',
+  DELIVERY: 'Delivery',
+  NO_DEFINIDA: 'Modalidad no definida'
+}[normalizeUpper(value)] || 'Modalidad no definida');
+
 const normalizeUpper = (value) =>
   String(value || '')
     .trim()
@@ -288,6 +302,13 @@ export const normalizeKitchenOrder = (row) => {
           : 'PREPARAR'
       };
     });
+  const origin = normalizeUpper(row?.origen_pedido_kds);
+  const legacyService = normalizeUpper(row?.tipo_servicio);
+  const deliveryMode = normalizeUpper(row?.modalidad_entrega_kds) || ({
+    LOCAL: 'COMER_AQUI',
+    PARA_LLEVAR: 'PARA_LLEVAR',
+    DELIVERY: 'DELIVERY'
+  }[legacyService] || 'NO_DEFINIDA');
 
   return {
     ...row,
@@ -304,7 +325,9 @@ export const normalizeKitchenOrder = (row) => {
     cliente_nombre: String(row?.cliente_nombre ?? 'Consumidor final'),
     estado_codigo: estadoCodigo,
     columna_kds: columnaKds,
-    tipo_servicio: String(row?.tipo_servicio ?? 'LOCAL'),
+    origen_pedido_kds: ['LOCAL', 'DELIVERY', 'WEB', 'NO_DEFINIDO'].includes(origin) ? origin : 'NO_DEFINIDO',
+    modalidad_entrega_kds: ['COMER_AQUI', 'PARA_LLEVAR', 'DELIVERY', 'NO_DEFINIDA'].includes(deliveryMode) ? deliveryMode : 'NO_DEFINIDA',
+    tipo_servicio: legacyService || 'NO_DEFINIDO',
     descripcion_pedido: row?.descripcion_pedido || null,
     descripcion_envio: row?.descripcion_envio || null,
     kds_started_at: row?.kds_started_at || null,
@@ -405,6 +428,10 @@ export const matchesKitchenOrder = (order, search) => {
     order?.cliente_nombre,
     order?.nombre_sucursal,
     order?.tipo_servicio,
+    order?.origen_pedido_kds,
+    formatKdsOriginLabel(order?.origen_pedido_kds),
+    order?.modalidad_entrega_kds,
+    formatKdsDeliveryModeLabel(order?.modalidad_entrega_kds),
     order?.descripcion_pedido,
     ...(Array.isArray(order?.items)
       ? order.items.flatMap((item) => [
