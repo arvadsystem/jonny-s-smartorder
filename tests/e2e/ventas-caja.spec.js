@@ -19,6 +19,13 @@ const ensureLocalOnly = (baseURL) => {
   }
 };
 
+const ensureQaOrLocal = (baseURL) => {
+  const url = new URL(baseURL);
+  if (!QA_HOST_PATTERN.test(url.hostname) && !LOCAL_E2E_HOSTS.has(url.hostname)) {
+    throw new Error(`E2E seguro de Caja bloqueado: host no permitido ${url.hostname}.`);
+  }
+};
+
 const rectanglesIntersect = (first, second, tolerance = GEOMETRY_TOLERANCE_PX) => {
   const overlapWidth = Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x);
   const overlapHeight = Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y);
@@ -71,13 +78,153 @@ const getEnvText = (name) => String(process.env[name] || '').trim();
 const catalogByKind = {
   PRODUCTO: 'Productos',
   COMBO: 'Combos',
-  RECETA: 'Recetas'
+  RECETA: 'Recetas',
+  DESCUENTOS: 'Descuentos'
 };
 
 const catalogSearchPlaceholderByKind = {
   PRODUCTO: /Buscar productos/i,
   COMBO: /Buscar combos/i,
-  RECETA: /Buscar recetas/i
+  RECETA: /Buscar recetas/i,
+  DESCUENTOS: /Buscar items con descuento/i
+};
+
+const E2E_CATEGORY_ID = 5;
+const E2E_PRODUCTS = Object.freeze([
+  {
+    id_producto: 990048,
+    id_categoria_producto: E2E_CATEGORY_ID,
+    nombre_producto: 'E2E Producto Stock 48',
+    descripcion_producto: 'Catalogo determinista Fase 2',
+    precio: 10,
+    cantidad: 48,
+    estado: true
+  },
+  {
+    id_producto: 990000,
+    id_categoria_producto: E2E_CATEGORY_ID,
+    nombre_producto: 'E2E Producto Stock 0',
+    descripcion_producto: 'Catalogo determinista Fase 2 con descuento',
+    precio: 20,
+    cantidad: 0,
+    estado: true
+  },
+  {
+    id_producto: 990005,
+    id_categoria_producto: E2E_CATEGORY_ID,
+    nombre_producto: 'E2E Producto Stock -5',
+    descripcion_producto: 'Catalogo determinista Fase 2',
+    precio: 30,
+    cantidad: -5,
+    estado: true
+  }
+]);
+
+const E2E_CATEGORIES = Object.freeze([
+  {
+    id_categoria_producto: E2E_CATEGORY_ID,
+    nombre_categoria: 'E2E Fase 2',
+    estado: true
+  }
+]);
+
+const E2E_DISCOUNTS = Object.freeze([
+  {
+    id_descuento_catalogo: 990001,
+    nombre_descuento: 'E2E Descuento Stock 0',
+    nombre_tipo_descuento: 'PORCENTAJE',
+    valor_descuento: 10,
+    alcance: 'PRODUCTO',
+    productos: [990000],
+    estado: true
+  }
+]);
+
+const E2E_DISCOUNT_TYPES = Object.freeze([
+  {
+    id_tipo_descuento: 990001,
+    nombre_tipo_descuento: 'PORCENTAJE',
+    estado: true
+  }
+]);
+
+const installDeterministicStockCatalog = async (page) => {
+  const mutationAttempts = [];
+
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const method = request.method().toUpperCase();
+    const url = new URL(request.url());
+    const requestOrigin = await request.headerValue('origin');
+
+    if (method === 'OPTIONS' && url.hostname === 'api-qa.jonnyshn.com') {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          'access-control-allow-origin': requestOrigin || 'https://qa.jonnyshn.com',
+          'access-control-allow-credentials': 'true',
+          'access-control-allow-methods': 'GET, HEAD, OPTIONS',
+          'access-control-allow-headers': await request.headerValue('access-control-request-headers') || 'content-type'
+        }
+      });
+      return;
+    }
+
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      mutationAttempts.push({ method, pathname: url.pathname });
+      await route.abort('blockedbyclient');
+      return;
+    }
+
+    const jsonByPath = new Map([
+      ['/ventas/catalogos/categorias', E2E_CATEGORIES],
+      ['/ventas/catalogos/productos', E2E_PRODUCTS],
+      ['/ventas/catalogos/descuentos', E2E_DISCOUNTS],
+      ['/ventas/catalogos/tipos-descuento', E2E_DISCOUNT_TYPES]
+    ]);
+    const match = [...jsonByPath.entries()].find(([pathname]) => url.pathname.endsWith(pathname));
+    if (match) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(match[1])
+      });
+      return;
+    }
+
+    if (url.hostname === 'api-qa.jonnyshn.com') {
+      const response = await page.request.get(request.url());
+      await route.fulfill({
+        status: response.status(),
+        headers: {
+          ...response.headers(),
+          'access-control-allow-origin': requestOrigin || 'https://qa.jonnyshn.com',
+          'access-control-allow-credentials': 'true'
+        },
+        body: await response.body()
+      });
+      return;
+    }
+
+    await route.continue();
+  });
+
+  return mutationAttempts;
+};
+
+const catalogCardByName = (page, name) =>
+  page.locator('[data-testid="ventas-catalog-card"][data-catalog-kind="PRODUCTO"]')
+    .filter({ has: page.locator('.vcp-card__name', { hasText: name }) });
+
+const cartLineByName = (page, name) =>
+  page.locator('[data-testid="ventas-cart-item"][data-cart-kind="PRODUCTO"]')
+    .filter({ hasText: name });
+
+const confirmBulkQuantity = async (page, quantity) => {
+  const confirmModal = page.getByRole('alertdialog', { name: /Confirmar cantidad/i });
+  await expect(confirmModal).toBeVisible();
+  await confirmModal.getByRole('button', { name: new RegExp(`Aplicar ${quantity} ordenes`, 'i') }).click();
+  await expect(confirmModal).toBeHidden();
 };
 
 const openCaja = async (page) => {
@@ -292,6 +439,78 @@ const createPendingOrder = async (page) => {
   await modal.getByTestId('ventas-crear-pedido-pendiente').click();
   await page.waitForLoadState('networkidle').catch(() => null);
 };
+
+test.describe('Caja: deficit de stock con catalogo determinista', () => {
+  test.beforeAll(async ({ baseURL }) => {
+    ensureQaOrLocal(baseURL);
+  });
+
+  test('permite stock 48, 0 y -5, conserva descuentos y respeta el limite 999', async ({ page }) => {
+    const mutationAttempts = await installDeterministicStockCatalog(page);
+    await page.goto('/auth/login');
+    await page.evaluate(() => {
+      window.localStorage.setItem('smartorder_auth_session_hint', '1');
+    });
+    await openCaja(page);
+    await selectCatalog(page, 'PRODUCTO');
+
+    const stock48Card = catalogCardByName(page, 'E2E Producto Stock 48');
+    const stock0Card = catalogCardByName(page, 'E2E Producto Stock 0');
+    const negativeStockCard = catalogCardByName(page, 'E2E Producto Stock -5');
+    await expect(stock48Card).toBeVisible();
+    await expect(stock0Card).toBeVisible();
+    await expect(negativeStockCard).toBeVisible();
+    await expect(stock0Card.getByTestId('ventas-catalog-add')).toBeEnabled();
+
+    await stock48Card.getByTestId('ventas-catalog-add').click();
+    const stock48Line = cartLineByName(page, 'E2E Producto Stock 48');
+    const stock48Quantity = stock48Line.getByRole('textbox', { name: /Cantidad de E2E Producto Stock 48/i });
+    await expect(stock48Line).toBeVisible();
+
+    await stock48Quantity.fill('48');
+    await stock48Quantity.press('Enter');
+    await confirmBulkQuantity(page, 48);
+    const incrementStock48 = stock48Line.getByRole('button', { name: /Aumentar cantidad de E2E Producto Stock 48/i });
+    await expect(incrementStock48).toBeEnabled();
+    await incrementStock48.click();
+    await expect(stock48Quantity).toHaveValue('49');
+
+    await stock0Card.getByTestId('ventas-catalog-add').click();
+    await expect(cartLineByName(page, 'E2E Producto Stock 0')).toBeVisible();
+    await negativeStockCard.getByTestId('ventas-catalog-add').click();
+    await expect(cartLineByName(page, 'E2E Producto Stock -5')).toBeVisible();
+
+    await stock48Quantity.fill('1');
+    await stock48Quantity.press('Enter');
+    await expect(stock48Quantity).toHaveValue('1');
+    await stock48Quantity.fill('49');
+    await stock48Quantity.press('Enter');
+    await confirmBulkQuantity(page, 49);
+    await expect(stock48Quantity).toHaveValue('49');
+
+    await selectCatalog(page, 'DESCUENTOS');
+    await expect(catalogCardByName(page, 'E2E Producto Stock 0')).toBeVisible();
+
+    const stock48LineAfterCatalogChange = cartLineByName(page, 'E2E Producto Stock 48');
+    const technicalLimitInput = stock48LineAfterCatalogChange.getByRole('textbox', {
+      name: /Cantidad de E2E Producto Stock 48/i
+    });
+    await technicalLimitInput.fill('999');
+    await technicalLimitInput.press('Enter');
+    await confirmBulkQuantity(page, 999);
+    await expect(technicalLimitInput).toHaveValue('999');
+    await expect(stock48LineAfterCatalogChange.getByRole('button', {
+      name: /Aumentar cantidad de E2E Producto Stock 48/i
+    })).toBeDisabled();
+
+    await technicalLimitInput.fill('1000');
+    await technicalLimitInput.press('Enter');
+    await expect(technicalLimitInput).toHaveValue('999');
+    await expect(page.locator('.ventas-create-modal__error')).toContainText(/entero entre 1 y 999/i);
+
+    expect(mutationAttempts, 'El escenario E2E no debe intentar peticiones mutantes.').toEqual([]);
+  });
+});
 
 test.describe.serial('Caja: combos y recetas independientes', () => {
   test.beforeAll(async ({ baseURL }) => {
