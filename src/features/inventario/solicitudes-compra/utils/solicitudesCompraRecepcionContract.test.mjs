@@ -154,7 +154,7 @@ test('revision administrativa y creacion operativa permanecen conectadas', async
   const creation = await read('../hooks/useSolicitudesCompra.js');
   assert.match(detail, /SolicitudCompraRevisionPanel/);
   assert.match(detail, /=== 'PENDIENTE' && \(canApprove \|\| canReject\)/);
-  assert.match(creation, /crearSolicitud\(payload\)/);
+  assert.match(creation, /crearSolicitud\((?:payload|pending\.payload)\)/);
   assert.match(creation, /submitLock\.current/);
 });
 

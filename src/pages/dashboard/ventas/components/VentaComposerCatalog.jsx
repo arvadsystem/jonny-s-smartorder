@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FaImage } from 'react-icons/fa';
 import AppSelect from '../../../../components/common/AppSelect';
+import { isSaleBlockedByStock } from '../../../../modules/ventas/utils/ventasStockPolicy';
 import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
 import { CATALOG_TABS } from '../hooks/useVentaComposer';
 
@@ -14,7 +15,7 @@ const buildDiscountBadgeLabel = (discount) => {
 };
 
 const isExplicitlyOutOfStock = (row, isProducto, isExtra = false) => {
-  if (isProducto) return Number(row?.cantidad ?? row?.stock_disponible ?? 0) <= 0;
+  if (isProducto) return isSaleBlockedByStock(row?.cantidad ?? row?.stock_disponible, 1);
   if (isExtra) {
     const unavailableCode = String(row?.codigo_no_disponible || '').trim().toUpperCase();
     return row?.disponible === false && unavailableCode !== 'EXTRA_STOCK_INSUFICIENTE';

@@ -19,7 +19,8 @@ const QUICK_CAPTURE_FILTERS = ['estado', 'buscar', 'page', 'limit'];
 
 export const solicitudesCompraService = {
   getCatalogo: (options) => apiFetch(buildSolicitudesCompraQuery('/solicitudes_compra/catalogo', options, CATALOG_FILTERS), 'GET'),
-  crearSolicitud: (payload) => apiFetch('/solicitudes_compra', 'POST', payload),
+  crearSolicitud: (payload) => apiFetch('/solicitudes_compra', 'POST', payload, { timeoutMs: 60000 }),
+  reconciliarEnvio: (clientRequestId, { signal } = {}) => apiFetch(`/solicitudes_compra/envios/${encodeURIComponent(String(clientRequestId))}`, 'GET', null, { signal }),
   getSolicitudes: (options) => apiFetch(buildSolicitudesCompraQuery('/solicitudes_compra', options, LIST_FILTERS), 'GET'),
   getSolicitudById: (id) => apiFetch(`/solicitudes_compra/${encodeURIComponent(String(id))}`, 'GET'),
   getProveedores: (options) => apiFetch(buildSolicitudesCompraQuery('/solicitudes_compra/proveedores', options, PROVIDER_FILTERS), 'GET'),

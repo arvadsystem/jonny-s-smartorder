@@ -1,14 +1,16 @@
 import {
   buildKitchenCountdown,
-  formatServiceLabel,
+  formatKdsDeliveryModeLabel,
+  formatKdsOriginLabel,
   getOrderAction,
   groupKitchenItems
 } from '../utils/cocinaHelpers';
 
-const SERVICE_CLASSES = {
+const ORIGIN_CLASSES = {
   DELIVERY: 'is-service',
-  PARA_LLEVAR: 'is-service',
-  LOCAL: 'is-service'
+  LOCAL: 'is-service',
+  WEB: 'is-public-menu',
+  NO_DEFINIDO: 'is-service'
 };
 
 
@@ -159,9 +161,9 @@ export default function CocinaOrderCard({
   const isDensePendingCard = !isScreenMode && isPendingColumn && allItems.length > 3;
 
   const showAdvanceBtn = canAdvance || isSuperAdmin;
-  const tipoPedidoLabel = String(pedido?.tipo_servicio || '').trim()
-    ? formatServiceLabel(pedido.tipo_servicio)
-    : 'Pedido';
+  const originLabel = formatKdsOriginLabel(pedido?.origen_pedido_kds);
+  const deliveryModeLabel = formatKdsDeliveryModeLabel(pedido?.modalidad_entrega_kds);
+  const showDeliveryMode = !(pedido?.origen_pedido_kds === 'DELIVERY' && pedido?.modalidad_entrega_kds === 'DELIVERY');
 
   const handleCardClick = () => {
     if (!canOpenDetail) return;
@@ -176,11 +178,10 @@ export default function CocinaOrderCard({
     }
   };
 
-  const isPublicMenu = String(pedido?.descripcion_pedido || '').toLowerCase().includes('[public-menu]');
   const inventoryAlertsTotal = Number(pedido?.inventario_alertas_total ?? 0) || 0;
   const inventoryAlertsPending = Number(pedido?.inventario_alertas_pendientes ?? 0) || 0;
   const hasInventoryAlerts = inventoryAlertsTotal > 0;
-  const hasStatusBadges = isExpiring || isPublicMenu || hasInventoryAlerts;
+  const hasStatusBadges = isExpiring || hasInventoryAlerts;
   const renderItem = (item) => {
     const groupedMods = buildItemModGroups(item).sort((a, b) => {
       const rank = { salsa: 0, complemento: 1, nota: 2, mod: 3 };
@@ -232,9 +233,10 @@ export default function CocinaOrderCard({
                 <span>{pedido.cliente_nombre || 'Consumidor final'}</span>
               </div>
             ) : null}
-            <span className={`kds-chip kds-card__head-type ${SERVICE_CLASSES[pedido.tipo_servicio] || 'is-service'}`}>
-              {tipoPedidoLabel}
+            <span className={`kds-chip kds-card__head-type ${ORIGIN_CLASSES[pedido.origen_pedido_kds] || 'is-service'}`}>
+              {originLabel}
             </span>
+            {showDeliveryMode ? <span className="kds-chip is-service">{deliveryModeLabel}</span> : null}
           </div>
           <div className="kds-card__head-meta">
             <div className={`kds-card__timer ${timerClass}`} aria-label="Tiempo de espera">
@@ -252,11 +254,6 @@ export default function CocinaOrderCard({
             {isExpiring && (
               <span className="kds-chip is-expiring">
                 <i className="bi bi-exclamation-triangle-fill" /> {countdown.isDelayed ? 'Retrasado' : 'Alerta'}
-              </span>
-            )}
-            {isPublicMenu && (
-              <span className="kds-chip is-public-menu">
-                <i className="bi bi-globe" /> Online
               </span>
             )}
             {hasInventoryAlerts && (

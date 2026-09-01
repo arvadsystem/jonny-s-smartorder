@@ -32,7 +32,7 @@ export default function SolicitudesCompraTab({ openToast }) {
   if (!canView) return <SinPermiso permiso={VIEW_PERMISSIONS.join(' o ')} detalle="No tienes acceso para consultar solicitudes de compra." />;
   if (flow.view === 'nueva') {
     if (!canCreate) return <SinPermiso permiso={CREATE_PERMISSIONS.join(' o ')} detalle="No tienes permiso para crear solicitudes." />;
-    return <NuevaSolicitudCompra warehouses={flow.warehouses} warehousesLoading={flow.warehousesLoading} catalogState={flow.catalogState} loadCatalog={flow.loadCatalog} submit={flow.submit} onBack={() => flow.setView('listado')} openToast={openToast} />;
+    return <NuevaSolicitudCompra warehouses={flow.warehouses} warehousesLoading={flow.warehousesLoading} catalogState={flow.catalogState} loadCatalog={flow.loadCatalog} submit={flow.submit} createPhase={flow.createPhase} invalidatePending={flow.invalidatePendingCreate} retryPending={flow.retryPendingCreate} onBack={() => flow.setView('listado')} openToast={openToast} />;
   }
   if (flow.view === 'captura-rapida') {
     if (!canQuickCaptureCreate || !canQuickCaptureView) return <SinPermiso permiso={PERMISSIONS.INVENTARIO_OC_CAPTURA_RAPIDA_CREAR} detalle="No tienes permiso para operar capturas rápidas." />;
