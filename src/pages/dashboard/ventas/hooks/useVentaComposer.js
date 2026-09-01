@@ -4,6 +4,7 @@ import { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/consta
 import {
   buildCartKey,
   canAddStandaloneExtraToCart,
+  canIncreaseVentaLineQuantity,
   createCartLineId,
   filterBySearch,
   findLineIndex,
@@ -935,13 +936,6 @@ export const useVentaComposer = ({
     );
   const resultsLabel = getResultsLabel(state.activeCatalog, currentCatalogRows.length);
 
-  const getCurrentQuantityInCartByKind = (kind, entityId, cart) =>
-    (Array.isArray(cart) ? cart : []).reduce((acc, line) => {
-      if (String(line.kind || '').toUpperCase() !== String(kind || '').toUpperCase()) return acc;
-      if (Number(line.entityId ?? line.id_producto ?? line.id_extra ?? 0) !== Number(entityId)) return acc;
-      return acc + Number(line.cantidad ?? 0);
-    }, 0);
-
   const requiresComplementSelection = (kind, row) => {
     if (kind === 'PRODUCTO' || kind === 'ITEM') return false;
     const min = Number(row?.minimo_complementos ?? 0) || 0;
@@ -984,24 +978,6 @@ export const useVentaComposer = ({
     setState((current) => {
       const nextCart = [...current.cart];
 
-      if (kind === 'PRODUCTO') {
-        const stockDisponible = Number(row.cantidad ?? 0);
-        if (stockDisponible <= 0) {
-          return {
-            ...current,
-            submitError: `${row.nombre_producto || 'Producto'} agotado.`
-          };
-        }
-
-        const alreadyInCart = getCurrentQuantityInCartByKind('PRODUCTO', row.id_producto, nextCart);
-        if (alreadyInCart >= stockDisponible) {
-          return {
-            ...current,
-            submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
-          };
-        }
-      }
-
       if (kind === 'ITEM') {
         if (!canAddStandaloneExtraToCart(row)) {
           return {
@@ -1015,10 +991,10 @@ export const useVentaComposer = ({
       if (index >= 0) {
         const currentLine = nextCart[index];
         const nextQty = Number(currentLine.cantidad ?? 0) + 1;
-        if (kind === 'PRODUCTO' && nextQty > Number(currentLine.stock_disponible ?? 0)) {
+        if (!canIncreaseVentaLineQuantity(currentLine)) {
           return {
             ...current,
-            submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
+            submitError: `Limite maximo de cantidad alcanzado para ${catalogLine.nombre_item || 'item'}.`
           };
         }
         const autoDiscount = canApplyDiscount && !currentLine.id_descuento_catalogo_linea
@@ -1177,17 +1153,6 @@ export const useVentaComposer = ({
         .map((line) => {
           if (line.cartKey !== cartKey) return line;
           const candidate = updater(line);
-
-          if (candidate.kind === 'PRODUCTO') {
-            const requested = Number(candidate.cantidad ?? 0);
-            const maxStock = Number(candidate.stock_disponible ?? 0);
-            if (requested > maxStock) {
-              return {
-                ...candidate,
-                cantidad: maxStock
-              };
-            }
-          }
 
           const adjustedExtras = normalizeExtras(candidate.extras);
           const isCustomLine = isCustomizableVentaLineKind(candidate.kind);

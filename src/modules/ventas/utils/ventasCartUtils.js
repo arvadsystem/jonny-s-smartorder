@@ -13,8 +13,11 @@ export const isBlockingStandaloneExtraUnavailable = (entry) =>
 export const canAddStandaloneExtraToCart = (entry) =>
   !isBlockingStandaloneExtraUnavailable(entry);
 
-export const canIncreaseStandaloneExtraQuantity = (line) =>
+export const canIncreaseVentaLineQuantity = (line) =>
   Number(line?.cantidad ?? 0) < VENTA_LINE_MAX_QUANTITY;
+
+export const canIncreaseStandaloneExtraQuantity = (line) =>
+  canIncreaseVentaLineQuantity(line);
 
 export const parseVentaLineQuantity = (value) => {
   if (typeof value === 'number') {

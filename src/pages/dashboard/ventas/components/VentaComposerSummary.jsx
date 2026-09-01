@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   VENTA_BULK_QUANTITY_CONFIRM_THRESHOLD,
-  VENTA_LINE_MAX_QUANTITY,
   buildVentaQuantityCommitResult,
   canIncreaseStandaloneExtraQuantity,
+  canIncreaseVentaLineQuantity,
   clampVentaLineQuantity,
   normalizeExtras
 } from '../../../../modules/ventas/utils/ventasCartUtils';
@@ -152,12 +152,9 @@ export default function VentaComposerSummary({
               const isRecipe = String(line.kind || '').toUpperCase() === 'RECETA';
               const isQuantityManaged = isSimpleProduct || isStandaloneExtra || isRecipe;
               const standaloneExtraMax = Number(line.available_units ?? 0);
-              const canIncrease =
-                isSimpleProduct
-                  ? Number(line.cantidad ?? 0) < Math.min(VENTA_LINE_MAX_QUANTITY, Number(line.stock_disponible ?? 0))
-                  : isStandaloneExtra
-                    ? canIncreaseStandaloneExtraQuantity(line)
-                    : Number(line.cantidad ?? 0) < VENTA_LINE_MAX_QUANTITY;
+              const canIncrease = isStandaloneExtra
+                ? canIncreaseStandaloneExtraQuantity(line)
+                : canIncreaseVentaLineQuantity(line);
               const hasKitchenNote = String(line.observacion || '').trim().length > 0;
               const noteExpanded = Boolean(expandedNotes[line.cartKey]);
               const complementIssue = typeof composer.getLineComplementSelectionIssue === 'function'

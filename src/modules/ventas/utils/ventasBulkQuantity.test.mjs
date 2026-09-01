@@ -6,6 +6,7 @@ import {
   buildVentaQuantityCommitResult,
   canAddStandaloneExtraToCart,
   canIncreaseStandaloneExtraQuantity,
+  canIncreaseVentaLineQuantity,
   getLineExtrasSubtotal,
   mergeEquivalentVentaLines,
   parseVentaLineQuantity
@@ -83,6 +84,19 @@ describe('ventas bulk recipe quantity utilities', () => {
     assert.equal(canAddStandaloneExtraToCart(extra), true);
     assert.equal(canIncreaseStandaloneExtraQuantity({ kind: 'ITEM', cantidad: 10, available_units: 10 }), true);
     assert.equal(canIncreaseStandaloneExtraQuantity({ kind: 'ITEM', cantidad: 999, available_units: 10 }), false);
+  });
+
+  it('permite aumentar productos en deficit hasta el limite general por linea', () => {
+    for (const line of [
+      { kind: 'PRODUCTO', cantidad: 1, stock_disponible: 48 },
+      { kind: 'PRODUCTO', cantidad: 48, stock_disponible: 48 },
+      { kind: 'PRODUCTO', cantidad: 49, stock_disponible: 48 },
+      { kind: 'PRODUCTO', cantidad: 1, stock_disponible: 0 },
+      { kind: 'PRODUCTO', cantidad: 1, stock_disponible: -5 }
+    ]) {
+      assert.equal(canIncreaseVentaLineQuantity(line), true, JSON.stringify(line));
+    }
+    assert.equal(canIncreaseVentaLineQuantity({ kind: 'PRODUCTO', cantidad: 999, stock_disponible: 5 }), false);
   });
 
   it('bloquea extra independiente sin asignacion de sucursal', () => {

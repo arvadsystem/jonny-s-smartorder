@@ -62,5 +62,7 @@ describe('politica de stock de Ventas', () => {
   it('no oculta valores de inventario invalidos como un deficit', () => {
     assert.throws(() => getProjectedStock(undefined, 1), TypeError);
     assert.throws(() => getProjectedStock(5, Number.NaN), TypeError);
+    assert.equal(isSaleBlockedByStock(undefined, 1), false);
+    assert.equal(isSaleBlockedByStock('valor inesperado', 1), false);
   });
 });
