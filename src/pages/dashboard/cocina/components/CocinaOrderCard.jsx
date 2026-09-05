@@ -227,12 +227,10 @@ export default function CocinaOrderCard({
         <div className="kds-card__head">
           <div className="kds-card__head-main">
             <span className="kds-card__ticket">{pedido.numero_ticket}</span>
-            {!isScreenMode ? (
-              <div className="kds-card__head-client">
-                <i className="bi bi-person" aria-hidden="true" />
-                <span>{pedido.cliente_nombre || 'Consumidor final'}</span>
-              </div>
-            ) : null}
+            <div className="kds-card__head-client">
+              <i className="bi bi-person" aria-hidden="true" />
+              <span>{pedido.cliente_nombre || 'Consumidor final'}</span>
+            </div>
             <span className={`kds-chip kds-card__head-type ${ORIGIN_CLASSES[pedido.origen_pedido_kds] || 'is-service'}`}>
               {originLabel}
             </span>
