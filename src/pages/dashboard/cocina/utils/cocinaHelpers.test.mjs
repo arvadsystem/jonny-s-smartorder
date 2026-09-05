@@ -55,6 +55,24 @@ test('CocinaOrderCard usa origen estructurado y no duplica badge Online', async 
   assert.doesNotMatch(source, /tipo_servicio \|\| 'LOCAL'/);
 });
 
+test('CocinaOrderCard muestra cliente también en screen mode y conserva fallback y controles', async () => {
+  const source = await readFile(new URL('../components/CocinaOrderCard.jsx', import.meta.url), 'utf8');
+  const clientBlock = source.match(/<div className="kds-card__head-client">[\s\S]*?<\/div>/)?.[0] || '';
+  assert.match(clientBlock, /pedido\.cliente_nombre \|\| 'Consumidor final'/);
+  assert.doesNotMatch(source, /!isScreenMode\s*\?\s*\([\s\S]*?kds-card__head-client/);
+  assert.match(source, /isLargeScreenOrder = isScreenMode/);
+  assert.match(source, /isDensePendingCard = !isScreenMode/);
+  assert.match(source, /showAdvanceBtn &&/);
+  assert.match(source, /pedido\.origen_pedido_kds/);
+  assert.match(source, /pedido\?\.modalidad_entrega_kds/);
+});
+
+test('estilo de cliente mantiene una línea con ellipsis en tablet y TV', async () => {
+  const css = await readFile(new URL('../styles/cocina.css', import.meta.url), 'utf8');
+  assert.match(css, /\.kds-card__head-client\s*\{[\s\S]*?max-width:\s*100%/);
+  assert.match(css, /\.kds-card__head-client span\s*\{[\s\S]*?overflow:\s*hidden[\s\S]*?text-overflow:\s*ellipsis[\s\S]*?white-space:\s*nowrap/);
+});
+
 test('CocinaPage reutiliza CocinaBoard y CocinaOrderCard como árbol único', async () => {
   const page = await readFile(new URL('../CocinaPage.jsx', import.meta.url), 'utf8');
   const board = await readFile(new URL('../components/CocinaBoard.jsx', import.meta.url), 'utf8');
