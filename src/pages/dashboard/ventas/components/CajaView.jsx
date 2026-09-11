@@ -485,7 +485,9 @@ export default function CajaView({
     canApplyDiscount,
     sucursales,
     isSuperAdmin,
-    defaultSucursalId: isSuperAdmin ? defaultSucursalId : lockedSucursalId,
+    defaultSucursalId: isSuperAdmin
+      ? toPositiveId(cajaBootstrapData?.id_sucursal || defaultSucursalId)
+      : lockedSucursalId,
     allowSucursalAutoSelection: !catalogLoadingStates.bootstrapLoading,
     catalogsEnabled: hasCajaSession,
     onDepartmentDemand: ({ idSucursal, idTipoDepartamento }) => onRecipesDepartmentDemand?.({
@@ -990,7 +992,9 @@ export default function CajaView({
 
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
     const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
-    if (selectedSucursalId && bootstrapSucursalId === selectedSucursalId) return undefined;
+    if (bootstrapSucursalId && (!selectedSucursalId || bootstrapSucursalId === selectedSucursalId)) {
+      return undefined;
+    }
     cajaAsignacionRequestRef.current += 1;
     setCajaAsignacion(null);
     setCajaSesionActiva(null);

@@ -711,16 +711,6 @@ export const useVentaComposer = ({
       const sessionSelection = String(defaultSucursalId || '').trim();
       const currentSelection = String(current.selectedSucursal || '').trim();
       const persistedSelection = readPersistedCajaSucursal(cajaSucursalStorageKey);
-      if (currentSelection && !validIds.has(currentSelection)) {
-        clearPersistedCajaSucursal(cajaSucursalStorageKey);
-        return {
-          ...current,
-          selectedSucursal: '',
-          activeCatalog: DEFAULT_CATALOG_KEY,
-          activeCategory: resolveDefaultDepartmentId(tiposDepartamento),
-          search: ''
-        };
-      }
       if (persistedSelection && !validIds.has(persistedSelection)) {
         clearPersistedCajaSucursal(cajaSucursalStorageKey);
       }

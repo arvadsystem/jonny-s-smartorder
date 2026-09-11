@@ -1205,7 +1205,7 @@ export default function VentasPage() {
           isSuperAdmin={isSuperAdmin}
           userId={authenticatedUserId}
           authLoading={authLoading}
-          defaultSucursalId={!isSuperAdmin && Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
+          defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
           productos={productos}
           categorias={categorias}
           tiposDepartamento={tiposDepartamento}
