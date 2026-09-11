@@ -337,7 +337,7 @@ export default function CajaView({
   const catalogSucursalRequestRef = useRef('');
   const catalogSucursalRequestIdRef = useRef(0);
   const bootstrapSesionCaja = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
-  const hasCajaSession = Boolean(cajaSesionActiva?.id_sesion_caja || bootstrapSesionCaja?.id_sesion_caja);
+  const financialCajaContextRef = useRef(null);
   const lockedSucursalId = toPositiveId(cajaSesionActiva?.id_sucursal || cajaAsignacion?.id_sucursal || defaultSucursalId);
 
   useEffect(() => {
@@ -494,7 +494,10 @@ export default function CajaView({
       id_sucursal: idSucursal,
       id_tipo_departamento: idTipoDepartamento
     }),
-    onSubmit,
+    onSubmit: (payload, options) => {
+      assertValidCajaSession(payload);
+      return onSubmit(payload, options);
+    },
     suppressSubmitErrorToast: true,
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal,
     onReset: () => {
@@ -515,6 +518,30 @@ export default function CajaView({
     userId: authenticatedUserId
   });
   composerRef.current = composer;
+  const effectiveCajaSession = cajaSesionActiva || bootstrapSesionCaja;
+  const selectedFinancialSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+  const hasValidCajaSession = Boolean(
+    toPositiveId(effectiveCajaSession?.id_sesion_caja)
+    && selectedFinancialSucursalId
+    && toPositiveId(effectiveCajaSession?.id_sucursal) === selectedFinancialSucursalId
+  );
+  financialCajaContextRef.current = {
+    hasValidCajaSession,
+    sucursalId: selectedFinancialSucursalId,
+    sessionId: toPositiveId(effectiveCajaSession?.id_sesion_caja)
+  };
+  const assertValidCajaSession = (payload = {}) => {
+    // Consultar el render actual también en callbacks que continúan tras un await.
+    const context = financialCajaContextRef.current;
+    if (
+      context?.hasValidCajaSession
+      && (!payload.id_sucursal || toPositiveId(payload.id_sucursal) === context.sucursalId)
+      && (!payload.id_sesion_caja || toPositiveId(payload.id_sesion_caja) === context.sessionId)
+    ) return;
+    const error = new Error('Selecciona una caja activa de la sucursal seleccionada antes de continuar con la operación.');
+    error.code = 'SESSION_SCOPE_MISMATCH';
+    throw error;
+  };
   const pedidoOperationUserId = String(authenticatedUserId || '').trim();
   const pedidoOperationSucursalId = String(
     toPositiveId(composer.selectedSucursalId || composer.selectedSucursal || cajaBootstrapData?.id_sucursal) || ''
@@ -1361,6 +1388,7 @@ export default function CajaView({
   };
 
   const handleCreatePedidoPendiente = async (payload) => {
+    assertValidCajaSession(payload);
     if (creatingPedidoPendienteRef.current) {
       const error = new Error('El pedido pendiente ya se está creando.');
       error.code = 'VENTA_PENDING_SUBMIT_IN_PROGRESS';
@@ -1394,7 +1422,10 @@ export default function CajaView({
           return revalidatePedidoPendienteContext(currentPayload);
         },
         prepareOperation: ventasService.preparePedidoPendienteOperation,
-        submitOperation: onCreatePedidoPendiente,
+        submitOperation: (currentPayload, options) => {
+          assertValidCajaSession(currentPayload);
+          return onCreatePedidoPendiente(currentPayload, options);
+        },
         onPrepared: (operation) => {
           pedidoPendienteOperationRef.current = operation;
           setPedidoPendienteOperation(operation);
@@ -1591,6 +1622,7 @@ export default function CajaView({
   }, [canVerifyOrphanPedidoPendiente, visiblePedidoPendienteOperation?.operationId]);
 
   const handleRegistrarPagoPedido = async (idPedido, payload) => {
+    assertValidCajaSession(payload);
     if (registrandoPagoPedidoRef.current) {
       const error = new Error('El pago ya se está registrando.');
       error.code = 'VENTA_PAYMENT_SUBMIT_IN_PROGRESS';
@@ -1756,7 +1788,7 @@ export default function CajaView({
   const showCajaDetails = statusExpanded && !cajaStatus.loading;
   const ventaTotalPreview = composer.total + (Number(deliveryCostPreview) > 0 ? Number(deliveryCostPreview) : 0);
   const requireCajaSessionForFinancialOperation = () => {
-    if (hasCajaSession) return true;
+    if (hasValidCajaSession) return true;
     onNotify?.(
       'CAJA REQUERIDA',
       'Selecciona una caja activa antes de continuar con la operación.',
@@ -1999,7 +2031,7 @@ export default function CajaView({
             saving={saving}
             deliveryCost={deliveryCostPreview}
             pendingPaymentsSummary={pendientesSummary}
-            financialOperationsEnabled={hasCajaSession}
+            financialOperationsEnabled={hasValidCajaSession}
             onOpenFinalize={openFinalizeModal}
             onOpenRegistrarPago={openRegistrarPagoModal}
             variant="side"
@@ -2044,7 +2076,7 @@ export default function CajaView({
               saving={saving}
               deliveryCost={deliveryCostPreview}
               pendingPaymentsSummary={pendientesSummary}
-              financialOperationsEnabled={hasCajaSession}
+              financialOperationsEnabled={hasValidCajaSession}
               onOpenFinalize={openFinalizeModal}
               onOpenRegistrarPago={openRegistrarPagoModal}
               variant="sheet"
