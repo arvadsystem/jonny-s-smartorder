@@ -1135,7 +1135,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     const catalogAbortControllers = cajaCatalogAbortRef.current;
     const loadActiveTab = async () => {
       if (String(activeTab || '').toLowerCase() === 'caja') {
-        let idSucursal = parsePositiveId(initialSucursalId);
+        const idSucursal = isSuperAdmin ? null : parsePositiveId(initialSucursalId);
         await loadCajaBootstrap(idSucursal ? { id_sucursal: idSucursal } : {});
         return;
       }
