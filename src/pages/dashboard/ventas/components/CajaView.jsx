@@ -665,6 +665,10 @@ export default function CajaView({
     if (!isSuperAdmin) return;
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
     if (!selectedSucursalId) return;
+    const selectedSucursalIsAvailable = sucursales.some(
+      (row) => toPositiveId(row?.id_sucursal) === selectedSucursalId
+    );
+    if (!selectedSucursalIsAvailable) return;
 
     const key = `usuario:${cajaUserKey}:sucursal:${selectedSucursalId}`;
     if (catalogSucursalRequestRef.current === key) return;
@@ -678,7 +682,8 @@ export default function CajaView({
     composer.selectedSucursalId,
     cajaUserKey,
     isSuperAdmin,
-    onCatalogSucursalChange
+    onCatalogSucursalChange,
+    sucursales
   ]);
 
   useEffect(() => {
