@@ -685,8 +685,8 @@ export default function CajaView({
     const selectedSucursalId = resolvedCajaSucursalId;
     if (!selectedSucursalId) return;
     if (composer.activeCatalog === 'RECETAS') {
-      const bootstrapDepartmentId = toPositiveId(cajaBootstrapData?.departamento_activo?.id_tipo_departamento);
-      if (composer.activeCategory === 'all' && bootstrapDepartmentId) return;
+      if (catalogLoadingStates.bootstrapLoading) return;
+      // El loader comprueba la caché por usuario, sucursal y departamento.
       void onRecipesDepartmentDemand?.({
         id_sucursal: selectedSucursalId,
         id_tipo_departamento: composer.activeCategory === 'all' ? null : toPositiveId(composer.activeCategory)
@@ -696,7 +696,8 @@ export default function CajaView({
     void onCatalogDemand?.(composer.activeCatalog, { id_sucursal: selectedSucursalId });
   }, [
     resolvedCajaSucursalId,
-    cajaBootstrapData?.departamento_activo?.id_tipo_departamento,
+    cajaBootstrapData,
+    catalogLoadingStates.bootstrapLoading,
     composer.activeCatalog,
     composer.activeCategory,
     onCatalogDemand,

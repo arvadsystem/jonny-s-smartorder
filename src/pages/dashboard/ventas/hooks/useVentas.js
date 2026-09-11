@@ -458,7 +458,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     const activeDepartmentId = parsePositiveId(data.departamento_activo?.id_tipo_departamento);
     const recipeScopeKey = `${buildCajaUserScopeKey(cajaUserKey, responseSucursalId)}:departamento:${activeDepartmentId || 'ALL'}`;
     const recipeEntry = {
-      status: data.sesion_caja ? 'success' : 'idle',
+      status: normalizedTiposDepartamento.length > 0 && normalizedRecetas.length > 0 ? 'success' : 'idle',
       rows: normalizedRecetas,
       error: null
     };
@@ -479,7 +479,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     }));
     setCatalogStatuses((current) => ({
       ...current,
-      recetas: data.sesion_caja ? 'success' : 'idle'
+      recetas: recipeEntry.status
     }));
     return { recetas: normalizedRecetas, tiposDepartamento: normalizedTiposDepartamento, data, meta };
   }, [cajaUserKey, initialSucursalId, isSuperAdmin]);
@@ -624,7 +624,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     activeRecipeScopeRef.current = scopeKey;
     setRecipeCatalogState((current) => ({ ...current, activeKey: scopeKey }));
     const cached = recipeCatalogCacheRef.current.get(scopeKey);
-    if (!force && cached?.status === 'success') {
+    if (!force && cached?.status === 'success' && tiposDepartamento.length > 0) {
       setRecetas(cached.rows || []);
       setCatalogStatuses((current) => ({ ...current, recetas: 'success' }));
       setCatalogErrors((current) => ({ ...current, recetas: undefined }));
