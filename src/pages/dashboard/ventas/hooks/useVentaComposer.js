@@ -702,6 +702,29 @@ export const useVentaComposer = ({
   );
 
   useEffect(() => {
+    if (mutationBlocked || !Array.isArray(tiposDepartamento) || tiposDepartamento.length === 0) return;
+    setState((current) => {
+      if (current.activeCatalog !== 'RECETAS') return current;
+      const currentDepartment = String(current.activeCategory || 'all');
+      const validDepartmentIds = new Set(
+        tiposDepartamento.map((row) => String(row.id_tipo_departamento))
+      );
+      const defaultDepartment = resolveDefaultDepartmentId(tiposDepartamento);
+      const shouldResolveConfiguredDefault = currentDepartment === DEFAULT_DEPARTMENT_ID
+        && defaultDepartment !== 'all'
+        && currentDepartment !== defaultDepartment;
+      if (
+        currentDepartment === 'all'
+        || (validDepartmentIds.has(currentDepartment) && !shouldResolveConfiguredDefault)
+      ) return current;
+      return {
+        ...current,
+        activeCategory: defaultDepartment
+      };
+    });
+  }, [mutationBlocked, tiposDepartamento]);
+
+  useEffect(() => {
     if (mutationBlocked) return;
     if (!isSuperAdmin) return;
     if (!allowSucursalAutoSelection) return;

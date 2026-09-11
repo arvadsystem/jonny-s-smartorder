@@ -451,7 +451,9 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       .map(normalizeRecetaRecord)
       .filter((receta) => receta.estado)
       .sort(compareRecipeNamesNaturally);
-    setTiposDepartamento(normalizedTiposDepartamento);
+    if (normalizedTiposDepartamento.length > 0) {
+      setTiposDepartamento(normalizedTiposDepartamento);
+    }
     setRecetas(normalizedRecetas);
     const activeDepartmentId = parsePositiveId(data.departamento_activo?.id_tipo_departamento);
     const recipeScopeKey = `${buildCajaUserScopeKey(cajaUserKey, responseSucursalId)}:departamento:${activeDepartmentId || 'ALL'}`;
@@ -661,14 +663,26 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       }
     }));
 
-    const promise = ventasService.getRecetasCatalog(
-      {
-        id_sucursal: idSucursal,
-        ...(idTipoDepartamento ? { id_tipo_departamento: idTipoDepartamento } : {})
-      },
-      { signal: controller.signal }
-    ).then((response) => {
+    const shouldLoadTiposDepartamento = tiposDepartamento.length === 0;
+    const promise = Promise.all([
+      ventasService.getRecetasCatalog(
+        {
+          id_sucursal: idSucursal,
+          ...(idTipoDepartamento ? { id_tipo_departamento: idTipoDepartamento } : {})
+        },
+        { signal: controller.signal }
+      ),
+      shouldLoadTiposDepartamento
+        ? ventasService.getTipoDepartamentos({ signal: controller.signal })
+        : Promise.resolve(null)
+    ]).then(([response, tiposDepartamentoResponse]) => {
       if (controller.signal.aborted || !isCurrentRequest()) return null;
+      if (Array.isArray(tiposDepartamentoResponse)) {
+        setTiposDepartamento(tiposDepartamentoResponse.map((row) => ({
+          id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
+          nombre_tipo_departamento: String(row?.nombre_departamento ?? row?.nombre_tipo_departamento ?? '')
+        })).filter((row) => row.id_tipo_departamento && row.nombre_tipo_departamento));
+      }
       const rows = (Array.isArray(response) ? response : [])
         .map(normalizeRecetaRecord)
         .filter((receta) => receta.estado)
@@ -731,7 +745,7 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       sucursalId: idSucursal
     });
     return promise;
-  }, [cajaUserKey]);
+  }, [cajaUserKey, tiposDepartamento]);
 
   const loadCajaCatalog = useCallback(async (catalogKeyRaw, { id_sucursal: idSucursalRaw, force = false } = {}) => {
     const catalogKey = String(catalogKeyRaw || '').trim().toUpperCase();
