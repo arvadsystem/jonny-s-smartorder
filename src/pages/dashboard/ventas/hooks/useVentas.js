@@ -484,7 +484,11 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     return { recetas: normalizedRecetas, tiposDepartamento: normalizedTiposDepartamento, data, meta };
   }, [cajaUserKey, initialSucursalId, isSuperAdmin]);
 
-  const loadCajaBootstrap = useCallback(async ({ id_sucursal: idSucursalRaw, force = false } = {}) => {
+  const loadCajaBootstrap = useCallback(async ({
+    id_sucursal: idSucursalRaw,
+    force = false,
+    discoveryOnly = false
+  } = {}) => {
     const idSucursal = parsePositiveId(idSucursalRaw);
     if (activeCajaSucursalRef.current && activeCajaSucursalRef.current !== idSucursal) {
       cajaBootstrapAbortRef.current?.abort();
@@ -556,7 +560,20 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
       }
     ).then((response) => {
       if (!isCurrentBootstrapRequest()) return null;
-      const data = response?.data || {};
+      const responseData = response?.data || {};
+      const data = discoveryOnly
+        ? {
+            ...responseData,
+            id_sucursal: null,
+            sucursal: null,
+            caja_activa: null,
+            sesion_caja: null,
+            requiere_seleccion_sucursal: true,
+            departamentos: [],
+            departamento_activo: null,
+            recetas: []
+          }
+        : responseData;
       const result = hydrateCajaBootstrapData(data, { requestedSucursalId: idSucursal, meta: response?.meta || {} });
       if (!result) return null;
       cajaCatalogLoadedRef.current.add(cacheKey);
@@ -1136,7 +1153,13 @@ export const useVentas = ({ activeTab = '', initialSucursalId = null, isSuperAdm
     const loadActiveTab = async () => {
       if (String(activeTab || '').toLowerCase() === 'caja') {
         const idSucursal = isSuperAdmin ? null : parsePositiveId(initialSucursalId);
-        await loadCajaBootstrap(idSucursal ? { id_sucursal: idSucursal } : {});
+        await loadCajaBootstrap(
+          isSuperAdmin
+            ? { discoveryOnly: true }
+            : idSucursal
+              ? { id_sucursal: idSucursal }
+              : {}
+        );
         return;
       }
 
