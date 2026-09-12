@@ -122,6 +122,24 @@ test('integridad bloquea falta de cantidad aprobada o base sin exigir proveedor 
   assert.equal(missingProvider.valid, true);
 });
 
+test('integridad mantiene cantidad aprobada y base aprobada estrictamente mayores que cero', () => {
+  const zeroApproved = validateReceptionDraft(createReceptionDraft([detail({ cantidad_aprobada: 0, cantidad_base_aprobada: 3 })]));
+  const zeroBase = validateReceptionDraft(createReceptionDraft([detail({ cantidad_aprobada: 3, cantidad_base_aprobada: 0 })]));
+  assert.equal(zeroApproved.valid, false);
+  assert.match(zeroApproved.errors['15'].integridad, /cantidad aprobada/i);
+  assert.equal(zeroBase.valid, false);
+  assert.match(zeroBase.errors['15'].integridad, /cantidad base aprobada/i);
+});
+
+test('errores de cantidad recibida comunican que cero es valido', () => {
+  const productError = validateReceptionDraft(createReceptionDraft([detail({ cantidad_recibida: '-1' })]));
+  const supplyError = validateReceptionDraft(createReceptionDraft([detail({
+    tipo_item: 'INSUMO', cantidad_aprobada: '1', cantidad_base_aprobada: '1', cantidad_recibida: '-0.5'
+  })]));
+  assert.equal(productError.errors['15'].cantidad, 'Ingresa una cantidad entera igual o mayor que 0.');
+  assert.equal(supplyError.errors['15'].cantidad, 'Ingresa una cantidad igual o mayor que 0 con hasta seis decimales.');
+});
+
 test('borrador de recepcion conserva presencia o ausencia autorizada de proveedor', () => {
   const [admin] = createReceptionDraft([detail({ proveedor: null })]);
   const operativeDetail = detail();
