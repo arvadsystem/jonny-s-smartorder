@@ -3,7 +3,8 @@ import { solicitudesCompraService } from '../../../../services/solicitudesCompra
 import {
   buildInvoiceUploadPayload, buildReceptionPayload, createReceptionDraft, getReceptionDifferences,
   getReceptionObservationError, mapReceptionError, prevalidateInvoiceFiles, readFileAsDataUrl,
-  refreshReceptionEvidenceState, updateReceptionDraftLine, uploadInvoiceFilesSequentially,
+  receiveWithReconciliation, refreshReceptionEvidenceState, updateReceptionDraftLine, uploadInvoiceFilesSequentially,
+  uploadInvoiceWithReconciliation,
   validateInvoiceBatch, validateReceptionDraft
 } from '../utils/solicitudesCompraRecepcionUtils';
 
@@ -23,6 +24,8 @@ export default function useSolicitudCompraRecepcion({ solicitud, detalles, canRe
   const [accessDenied, setAccessDenied] = useState(false);
   const requestSequence = useRef(0);
   const receiveLock = useRef(false);
+  const receptionRequestId = useRef(null);
+  const uploadRequestIds = useRef(new WeakMap());
 
   const loadEvidence = useCallback(async () => {
     if (!idSolicitud) return;
@@ -69,7 +72,26 @@ export default function useSolicitudCompraRecepcion({ solicitud, detalles, canRe
     try {
       result = await uploadInvoiceFilesSequentially(selected, async (file) => {
           const dataUrl = await readFileAsDataUrl(file);
-          await solicitudesCompraService.subirFactura(idSolicitud, buildInvoiceUploadPayload(file, dataUrl));
+          let uploadRequestId = uploadRequestIds.current.get(file);
+          if (!uploadRequestId) {
+            uploadRequestId = crypto.randomUUID();
+            uploadRequestIds.current.set(file, uploadRequestId);
+          }
+          const factura = buildInvoiceUploadPayload(file, dataUrl);
+          const uploadResult = await uploadInvoiceWithReconciliation({
+            idSolicitud, factura, uploadRequestId,
+            uploadRequest: solicitudesCompraService.subirFactura,
+            reconcile: solicitudesCompraService.reconciliarFactura,
+            onTimeout: () => openToast('CONFIRMANDO CARGA', 'Confirmando resultado de la factura…', 'info')
+          });
+          if (!uploadResult.confirmed) {
+            const retry = await uploadInvoiceWithReconciliation({
+              idSolicitud, factura, uploadRequestId,
+              uploadRequest: solicitudesCompraService.subirFactura,
+              reconcile: solicitudesCompraService.reconciliarFactura
+            });
+            if (!retry.confirmed) throw Object.assign(new Error('La carga todavía no fue confirmada. Intenta nuevamente.'), { code: 'REQUEST_TIMEOUT' });
+          }
       });
     } finally {
       await refreshReceptionEvidenceState({ loadEvidence, reloadDetail, reloadList });
@@ -109,16 +131,33 @@ export default function useSolicitudCompraRecepcion({ solicitud, detalles, canRe
   }, [evidence.items, evidenceBusy, idSolicitud, loadEvidence, openToast, reloadDetail, reloadList]);
 
   const refreshInformation = useCallback(async () => { await Promise.all([reloadDetail?.(), reloadList?.()]); }, [reloadDetail, reloadList]);
-  const startConfirmation = useCallback(() => { if (!receiveDisabled && !receiveLock.current) setConfirmation(true); }, [receiveDisabled]);
+  const startConfirmation = useCallback(() => {
+    if (receiveDisabled || receiveLock.current) return;
+    if (!receptionRequestId.current) receptionRequestId.current = crypto.randomUUID();
+    setConfirmation(true);
+  }, [receiveDisabled]);
   const executeReception = useCallback(async () => {
     if (receiveLock.current || receiveDisabled || !approved || !canReceive) return;
     receiveLock.current = true; setBusy(true);
     try {
-      await solicitudesCompraService.recibirSolicitud(idSolicitud, buildReceptionPayload({ observacion: observation, detalles: lines }));
+      if (!receptionRequestId.current) receptionRequestId.current = crypto.randomUUID();
+      const payload = buildReceptionPayload({ observacion: observation, detalles: lines, receptionRequestId: receptionRequestId.current });
+      const result = await receiveWithReconciliation({
+        idSolicitud, payload,
+        receive: solicitudesCompraService.recibirSolicitud,
+        reconcile: solicitudesCompraService.reconciliarRecepcion,
+        onTimeout: () => openToast('CONFIRMANDO RECEPCIÓN', 'Confirmando resultado de la recepción…', 'info')
+      });
+      if (!result.confirmed) {
+        openToast('RECEPCIÓN PENDIENTE', 'El servidor todavía no confirma la recepción. Puedes reintentar con el mismo identificador.', 'warning');
+        return;
+      }
       openToast('RECEPCIÓN REGISTRADA', 'La recepción fue registrada y aplicada al inventario.', 'success');
+      receptionRequestId.current = null;
       setLines([]); setObservation(''); setConfirmation(false); await refreshInformation();
     } catch (error) {
       openToast('NO SE PUDO RECIBIR', mapReceptionError(error), 'danger');
+      if (String(error?.code || '').toUpperCase() !== 'REQUEST_TIMEOUT') receptionRequestId.current = null;
       if (error?.status === 409) { setConfirmation(false); await Promise.all([loadEvidence(), refreshInformation()]); }
       if (error?.status === 403) { setAccessDenied(true); setConfirmation(false); }
     } finally { receiveLock.current = false; setBusy(false); }
