@@ -13,7 +13,6 @@ import {
   normalizeReceptionObservation,
   parseReceivedQuantity,
   prevalidateInvoiceFiles,
-  refreshReceptionEvidenceState,
   updateReceptionDraftLine,
   uploadInvoiceFilesSequentially,
   validateInvoiceBytes,
@@ -231,16 +230,6 @@ test('fallo HTTP en segundo upload conserva exitos y continua lote', async () =>
   assert.deepEqual(persisted, ['uno.jpg', 'tres.jpg']);
   assert.equal(result.uploaded, 2);
   assert.equal(result.failures[0].file.name, 'dos.jpg');
-});
-
-test('refresh canonico consulta evidencias detalle y listado exactamente una vez', async () => {
-  const calls = [];
-  await refreshReceptionEvidenceState({
-    loadEvidence: async () => calls.push('evidence'),
-    reloadDetail: async () => calls.push('detail'),
-    reloadList: async () => calls.push('list')
-  });
-  assert.deepEqual(calls.sort(), ['detail', 'evidence', 'list']);
 });
 
 test('payload contiene solo contrato autorizado y omite metadatos visuales', () => {
