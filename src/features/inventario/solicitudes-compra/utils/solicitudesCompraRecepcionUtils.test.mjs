@@ -62,9 +62,10 @@ test('actualizacion usa exclusivamente el id real del detalle', () => {
   assert.equal(updated[1].cantidad_recibida, '4');
 });
 
-test('producto acepta entero equivalente y rechaza fracciones reales', () => {
+test('producto acepta cero y entero equivalente y rechaza fracciones reales', () => {
+  assert.equal(parseReceivedQuantity('0', 'PRODUCTO'), 0);
   assert.equal(parseReceivedQuantity('2.000000', 'PRODUCTO'), 2);
-  for (const value of ['2.000001', '2.5', '0.000000', '-1.000000', '1e0', '+1', '01.000000', '2.0000000']) {
+  for (const value of ['2.000001', '2.5', '-1.000000', '1e0', '+1', '01.000000', '2.0000000']) {
     assert.equal(parseReceivedQuantity(value, 'PRODUCTO'), null);
   }
 });
@@ -78,10 +79,10 @@ test('borrador normaliza producto escalado sin generar error de integridad', () 
   assert.equal(validateReceptionDraft(draft).valid, true);
 });
 
-test('insumo acepta seis decimales como texto y rechaza siete, cero y negativos', () => {
+test('insumo acepta cero y seis decimales como texto y rechaza siete y negativos', () => {
   assert.equal(parseReceivedQuantity('2.123456', 'INSUMO'), '2.123456');
   assert.equal(parseReceivedQuantity('2.1234567', 'INSUMO'), null);
-  assert.equal(parseReceivedQuantity('0', 'INSUMO'), null);
+  assert.equal(parseReceivedQuantity('0', 'INSUMO'), '0');
   assert.equal(parseReceivedQuantity('-0.5', 'INSUMO'), null);
 });
 
@@ -228,9 +229,10 @@ test('payload contiene solo contrato autorizado y omite metadatos visuales', () 
   const detalles = createReceptionDraft([detail()]);
   const payload = buildReceptionPayload({
     observacion: '  Todo   completo ',
-    detalles
+    detalles,
+    receptionRequestId: '11111111-1111-4111-8111-111111111111'
   });
-  assert.deepEqual(Object.keys(payload).sort(), ['detalles', 'observacion_recepcion']);
+  assert.deepEqual(Object.keys(payload).sort(), ['detalles', 'observacion_recepcion', 'reception_request_id']);
   assert.deepEqual(Object.keys(payload.detalles[0]).sort(), ['cantidad_recibida', 'id_solicitud_detalle']);
   assert.equal(payload.observacion_recepcion, 'Todo completo');
   assert.equal('cantidad_base_recibida' in payload.detalles[0], false);
@@ -241,7 +243,8 @@ test('payload contiene solo contrato autorizado y omite metadatos visuales', () 
 test('payload sin diferencias permite observacion nula', () => {
   const payload = buildReceptionPayload({
     observacion: '',
-    detalles: createReceptionDraft([detail()])
+    detalles: createReceptionDraft([detail()]),
+    receptionRequestId: '11111111-1111-4111-8111-111111111111'
   });
   assert.equal(payload.observacion_recepcion, null);
 });
@@ -249,7 +252,8 @@ test('payload sin diferencias permite observacion nula', () => {
 test('payload con diferencia rechaza observacion vacia', () => {
   assert.throws(() => buildReceptionPayload({
     observacion: '  ',
-    detalles: createReceptionDraft([detail({ cantidad_recibida: 2 })])
+    detalles: createReceptionDraft([detail({ cantidad_recibida: 2 })]),
+    receptionRequestId: '11111111-1111-4111-8111-111111111111'
   }), /diferencias/);
 });
 
