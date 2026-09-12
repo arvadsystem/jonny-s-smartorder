@@ -3,7 +3,7 @@ import { solicitudesCompraService } from '../../../../services/solicitudesCompra
 import {
   buildInvoiceUploadPayload, buildReceptionPayload, createReceptionDraft, getReceptionDifferences,
   getReceptionObservationError, mapReceptionError, prevalidateInvoiceFiles, readFileAsDataUrl,
-  receiveWithReconciliation, refreshReceptionEvidenceState, updateReceptionDraftLine, uploadInvoiceFilesSequentially,
+  receiveWithReconciliation, updateReceptionDraftLine, uploadInvoiceFilesSequentially,
   uploadInvoiceWithReconciliation,
   validateInvoiceBatch, validateReceptionDraft
 } from '../utils/solicitudesCompraRecepcionUtils';
@@ -94,13 +94,13 @@ export default function useSolicitudCompraRecepcion({ solicitud, detalles, canRe
           }
       });
     } finally {
-      await refreshReceptionEvidenceState({ loadEvidence, reloadDetail, reloadList });
+      await loadEvidence();
       setEvidenceBusy(false);
     }
     const failureMessages = result.failures.map(({ file, error }) => `${file.name}: ${mapReceptionError(error)}`);
     if (failureMessages.length) openToast('CARGA PARCIAL', `${result.uploaded} imagen(es) guardadas. ${failureMessages.length} no se pudieron guardar. ${failureMessages.join(' ')}`, 'warning');
     else openToast('FACTURAS GUARDADAS', `${result.uploaded} imagen(es) de factura guardadas.`, 'success');
-  }, [evidence.items.length, evidenceBusy, idSolicitud, loadEvidence, openToast, reloadDetail, reloadList]);
+  }, [evidence.items.length, evidenceBusy, idSolicitud, loadEvidence, openToast]);
 
   const removeEvidence = useCallback(async (idEvidencia) => {
     if (receiveLock.current || evidenceBusy) return;
@@ -110,10 +110,10 @@ export default function useSolicitudCompraRecepcion({ solicitud, detalles, canRe
       openToast('IMAGEN ELIMINADA', 'La imagen de factura fue eliminada.', 'success');
     } catch (error) { openToast('NO SE PUDO ELIMINAR', mapReceptionError(error), 'danger'); }
     finally {
-      await refreshReceptionEvidenceState({ loadEvidence, reloadDetail, reloadList });
+      await loadEvidence();
       setEvidenceBusy(false);
     }
-  }, [evidenceBusy, idSolicitud, loadEvidence, openToast, reloadDetail, reloadList]);
+  }, [evidenceBusy, idSolicitud, loadEvidence, openToast]);
 
   const removeAllEvidence = useCallback(async () => {
     if (receiveLock.current || evidenceBusy) return;
@@ -124,11 +124,11 @@ export default function useSolicitudCompraRecepcion({ solicitud, detalles, canRe
         try { await solicitudesCompraService.eliminarEvidencia(idSolicitud, item.id_evidencia); } catch { failed += 1; }
       }
     } finally {
-      await refreshReceptionEvidenceState({ loadEvidence, reloadDetail, reloadList });
+      await loadEvidence();
       setEvidenceBusy(false); setRemoveAllConfirmation(false);
     }
     openToast(failed ? 'ELIMINACIÓN PARCIAL' : 'IMÁGENES ELIMINADAS', failed ? `${failed} imagen(es) no se pudieron eliminar.` : 'Todas las imágenes de factura fueron eliminadas.', failed ? 'warning' : 'success');
-  }, [evidence.items, evidenceBusy, idSolicitud, loadEvidence, openToast, reloadDetail, reloadList]);
+  }, [evidence.items, evidenceBusy, idSolicitud, loadEvidence, openToast]);
 
   const refreshInformation = useCallback(async () => { await Promise.all([reloadDetail?.(), reloadList?.()]); }, [reloadDetail, reloadList]);
   const startConfirmation = useCallback(() => {

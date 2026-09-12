@@ -213,10 +213,6 @@ export const uploadInvoiceFilesSequentially = async (files, uploadFile, onProgre
   return { uploaded, failures };
 };
 
-export const refreshReceptionEvidenceState = async ({ loadEvidence, reloadDetail, reloadList }) => {
-  await Promise.allSettled([loadEvidence(), reloadDetail?.(), reloadList?.()]);
-};
-
 export const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
   if (!file) {
     reject(new Error('No hay una fotografía para leer.'));
