@@ -32,7 +32,7 @@ export const normalizeConversionDecimal = (value, options = {}) => {
 };
 
 export const multiplyConversionDecimal = (quantity, factor) => {
-  const left = parseDecimal(quantity);
+  const left = parseDecimal(quantity, { allowZero: true });
   const right = parseDecimal(factor);
   if (!left || !right) return null;
   const product = left.digits * right.digits;
@@ -91,7 +91,7 @@ export const buildConversionPreview = ({
   factor = '1',
   baseOnly = false
 }) => {
-  const normalizedQuantity = normalizeConversionDecimal(quantity);
+  const normalizedQuantity = normalizeConversionDecimal(quantity, { allowZero: true });
   const normalizedFactor = normalizeConversionDecimal(factor);
   const resolvedPresentation = String(presentationLabel || baseUnit || 'Unidad').trim();
   const resolvedBaseUnit = String(baseUnit || 'Unidad base').trim();

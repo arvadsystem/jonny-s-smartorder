@@ -22,8 +22,8 @@ const decimalToScaled6 = (value) => {
 export const parseReceivedQuantity = (value, type) => {
   const text = String(value ?? '').trim();
   const isProduct = String(type || '').toUpperCase() === 'PRODUCTO';
-  const pattern = isProduct ? /^(?:[1-9]\d*)(?:\.0{1,6})?$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
-  if (!pattern.test(text) || BigInt(text.replace('.', '')) === 0n) return null;
+  const pattern = isProduct ? /^(?:0|[1-9]\d*)(?:\.0{1,6})?$/ : /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
+  if (!pattern.test(text)) return null;
   if (isProduct) {
     const integer = Number(text.split('.')[0]);
     return Number.isSafeInteger(integer) ? integer : null;
@@ -239,19 +239,59 @@ export const buildInvoiceUploadPayload = (file, dataUrl) => ({
   data_url: String(dataUrl || '')
 });
 
-export const buildReceptionPayload = ({ observacion, detalles }) => {
+export const buildReceptionPayload = ({ observacion, detalles, receptionRequestId }) => {
   const validation = validateReceptionDraft(detalles);
   if (!validation.valid) throw new Error('El borrador de recepción contiene datos inválidos.');
   const differences = hasReceptionDifferences(detalles);
   const observationError = getReceptionObservationError(observacion, differences);
   if (observationError) throw new Error(observationError);
   return {
+    reception_request_id: String(receptionRequestId || ''),
     observacion_recepcion: normalizeReceptionObservation(observacion),
     detalles: detalles.map((line) => ({
       id_solicitud_detalle: positiveInteger(line.id_solicitud_detalle),
       cantidad_recibida: parseReceivedQuantity(line.cantidad_recibida, line.tipo_item)
     }))
   };
+};
+
+export const isRequestTimeout = (error) => String(error?.code || error?.data?.code || '').toUpperCase() === 'REQUEST_TIMEOUT'
+  || Number(error?.status) === 408;
+
+export const receiveWithReconciliation = async ({ idSolicitud, payload, receive, reconcile, onTimeout }) => {
+  try {
+    return { confirmed: true, response: await receive(idSolicitud, payload), reconciled: false };
+  } catch (error) {
+    if (!isRequestTimeout(error)) throw error;
+    onTimeout?.();
+    try {
+      const response = await reconcile(payload.reception_request_id);
+      return { confirmed: Boolean(response?.confirmed || response?.solicitud), response, reconciled: true };
+    } catch (reconcileError) {
+      if (Number(reconcileError?.status) === 404 || String(reconcileError?.code || '').toUpperCase() === 'NOT_CONFIRMED') {
+        return { confirmed: false, timedOut: true, receptionRequestId: payload.reception_request_id };
+      }
+      throw reconcileError;
+    }
+  }
+};
+
+export const uploadInvoiceWithReconciliation = async ({ idSolicitud, factura, uploadRequestId, uploadRequest, reconcile, onTimeout }) => {
+  try {
+    return { confirmed: true, response: await uploadRequest(idSolicitud, factura, uploadRequestId), reconciled: false };
+  } catch (error) {
+    if (!isRequestTimeout(error)) throw error;
+    onTimeout?.();
+    try {
+      const response = await reconcile(idSolicitud, uploadRequestId);
+      return { confirmed: Boolean(response?.confirmed || response?.evidencia), response, reconciled: true };
+    } catch (reconcileError) {
+      if (Number(reconcileError?.status) === 404 || String(reconcileError?.code || '').toUpperCase() === 'NOT_CONFIRMED') {
+        return { confirmed: false, timedOut: true, uploadRequestId };
+      }
+      throw reconcileError;
+    }
+  }
 };
 
 export const formatFileSize = (bytes) => {
