@@ -78,7 +78,7 @@ test('hook bloquea doble envio, carga secuencial y conserva borrador en error or
   assert.match(source, /prevalidateInvoiceFiles\(selected\)/);
   assert.match(source, /uploadInvoiceFilesSequentially\(selected/);
   assert.match(source, /uploadRequest: solicitudesCompraService\.subirFactura/);
-  assert.match(source, /finally \{[\s\S]*refreshReceptionEvidenceState/);
+  assert.match(source, /finally \{\s*await loadEvidence\(\)/);
   const catchBlock = source.slice(source.indexOf('} catch (error)'));
   const ordinary = catchBlock.slice(0, catchBlock.indexOf('} finally'));
   assert.doesNotMatch(ordinary.split("if (error?.status === 409)")[0], /setLines\(\[\]\)|setObservation\(''\)|setInvoice\(EMPTY_INVOICE\)/);
@@ -98,13 +98,18 @@ test('recepcion nueva no conserva blob local ni envia factura en payload final',
   assert.match(source, /buildReceptionPayload\(\{ observacion: observation, detalles: lines, receptionRequestId:/);
 });
 
-test('upload delete individual y quitar todas refrescan estado canonico una vez por operacion', async () => {
+test('upload y eliminaciones refrescan solo evidencias y preservan el borrador local', async () => {
   const source = await read('../hooks/useSolicitudCompraRecepcion.js');
-  assert.match(source, /selectInvoices[\s\S]*finally \{[\s\S]*refreshReceptionEvidenceState\(\{ loadEvidence, reloadDetail, reloadList \}\)/);
-  assert.match(source, /removeEvidence[\s\S]*finally \{[\s\S]*refreshReceptionEvidenceState\(\{ loadEvidence, reloadDetail, reloadList \}\)/);
-  const removeAll = source.slice(source.indexOf('const removeAllEvidence'), source.indexOf('const refreshInformation'));
-  assert.equal((removeAll.match(/refreshReceptionEvidenceState/g) || []).length, 1);
-  assert.doesNotMatch(removeAll.match(/for \(const item[\s\S]*?\n\s*\}/)?.[0] || '', /refreshReceptionEvidenceState|reloadDetail|reloadList/);
+  const sections = [
+    source.slice(source.indexOf('const selectInvoices'), source.indexOf('const removeEvidence')),
+    source.slice(source.indexOf('const removeEvidence'), source.indexOf('const removeAllEvidence')),
+    source.slice(source.indexOf('const removeAllEvidence'), source.indexOf('const refreshInformation'))
+  ];
+  for (const section of sections) {
+    assert.equal((section.match(/await loadEvidence\(\)/g) || []).length, 1);
+    assert.doesNotMatch(section, /reloadDetail|reloadList|refreshInformation|setLines|setObservation|setConfirmation|receptionRequestId\.current\s*=/);
+  }
+  assert.match(source.slice(source.indexOf('const executeReception')), /RECEPCIÓN REGISTRADA[\s\S]*await refreshInformation\(\)/);
 });
 
 test('evidencias cargan solo bajo demanda y permiten renovar y cerrar', async () => {
