@@ -100,10 +100,12 @@ export const validateReceptionDraft = (lines) => {
     const integrityErrors = [];
     if (parseReceivedQuantity(line?.cantidad_recibida, line?.tipo_item) === null) {
       lineErrors.cantidad = String(line?.tipo_item).toUpperCase() === 'PRODUCTO'
-        ? 'Ingresa una cantidad entera positiva.'
-        : 'Ingresa una cantidad positiva con hasta seis decimales.';
+        ? 'Ingresa una cantidad entera igual o mayor que 0.'
+        : 'Ingresa una cantidad igual o mayor que 0 con hasta seis decimales.';
     }
-    if (parseReceivedQuantity(line?.cantidad_aprobada, line?.tipo_item) === null) {
+    const approved = parseReceivedQuantity(line?.cantidad_aprobada, line?.tipo_item);
+    const approvedScaled = decimalToScaled6(approved);
+    if (approved === null || approvedScaled === null || approvedScaled <= 0n) {
       integrityErrors.push('La cantidad aprobada no es válida.');
     }
     const baseApproved = decimalToScaled6(line?.cantidad_base_aprobada);
