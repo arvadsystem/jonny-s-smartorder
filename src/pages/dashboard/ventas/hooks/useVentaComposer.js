@@ -101,6 +101,7 @@ const normalizeFilterText = (value) =>
     .toUpperCase();
 
 const resolveDefaultDepartmentId = (tiposDepartamento = []) => {
+  if (!Array.isArray(tiposDepartamento) || tiposDepartamento.length === 0) return DEFAULT_DEPARTMENT_ID;
   const defaultDepartment = (Array.isArray(tiposDepartamento) ? tiposDepartamento : []).find(
     (tipo) => normalizeFilterText(tipo?.nombre_tipo_departamento) === DEFAULT_DEPARTMENT_NAME
   );
@@ -111,6 +112,7 @@ const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = 
   activeCatalog: DEFAULT_CATALOG_KEY,
   search: '',
   activeCategory: DEFAULT_DEPARTMENT_ID,
+  activeCategoryManuallySelected: false,
   selectedSucursal: isSuperAdmin ? '' : String(defaultSucursalId || ''),
   selectedClient: 'cf',
   clientPickerOpen: false,
@@ -702,6 +704,28 @@ export const useVentaComposer = ({
   );
 
   useEffect(() => {
+    if (mutationBlocked || !Array.isArray(tiposDepartamento) || tiposDepartamento.length === 0) return;
+    setState((current) => {
+      if (current.activeCatalog !== 'RECETAS') return current;
+      const currentDepartment = String(current.activeCategory || 'all');
+      const validDepartmentIds = new Set(
+        tiposDepartamento.map((row) => String(row.id_tipo_departamento))
+      );
+      const defaultDepartment = resolveDefaultDepartmentId(tiposDepartamento);
+      if (
+        current.activeCategoryManuallySelected
+        && (currentDepartment === 'all' || validDepartmentIds.has(currentDepartment))
+      ) return current;
+      if (currentDepartment === defaultDepartment) return current;
+      return {
+        ...current,
+        activeCategory: defaultDepartment,
+        activeCategoryManuallySelected: false
+      };
+    });
+  }, [mutationBlocked, tiposDepartamento, state.activeCatalog, state.activeCategory, state.activeCategoryManuallySelected]);
+
+  useEffect(() => {
     if (mutationBlocked) return;
     if (!isSuperAdmin) return;
     if (!allowSucursalAutoSelection) return;
@@ -711,16 +735,6 @@ export const useVentaComposer = ({
       const sessionSelection = String(defaultSucursalId || '').trim();
       const currentSelection = String(current.selectedSucursal || '').trim();
       const persistedSelection = readPersistedCajaSucursal(cajaSucursalStorageKey);
-      if (currentSelection && !validIds.has(currentSelection)) {
-        clearPersistedCajaSucursal(cajaSucursalStorageKey);
-        return {
-          ...current,
-          selectedSucursal: '',
-          activeCatalog: DEFAULT_CATALOG_KEY,
-          activeCategory: resolveDefaultDepartmentId(tiposDepartamento),
-          search: ''
-        };
-      }
       if (persistedSelection && !validIds.has(persistedSelection)) {
         clearPersistedCajaSucursal(cajaSucursalStorageKey);
       }
@@ -737,6 +751,7 @@ export const useVentaComposer = ({
         selectedSucursal: nextSelection,
         activeCatalog: DEFAULT_CATALOG_KEY,
         activeCategory: resolveDefaultDepartmentId(tiposDepartamento),
+        activeCategoryManuallySelected: false,
         search: ''
       };
     });
@@ -1501,6 +1516,10 @@ export const useVentaComposer = ({
           ...current,
           activeCatalog: nextKey,
           search: '',
+          activeCategoryManuallySelected: ['PRODUCTOS', 'EXTRAS'].includes(nextKey)
+            || ['PRODUCTOS', 'EXTRAS'].includes(current.activeCatalog)
+            ? false
+            : current.activeCategoryManuallySelected,
           activeCategory: ['PRODUCTOS', 'EXTRAS'].includes(nextKey)
             ? 'all'
             : (['PRODUCTOS', 'EXTRAS'].includes(current.activeCatalog)
@@ -1511,7 +1530,7 @@ export const useVentaComposer = ({
     setSearch: (value) => setPartialState({ search: value }),
     setActiveCategory: (value) => {
       const nextDepartment = String(value || 'all');
-      setPartialState({ activeCategory: nextDepartment });
+      setPartialState({ activeCategory: nextDepartment, activeCategoryManuallySelected: true });
       if (state.activeCatalog === 'RECETAS' && selectedSucursalId) {
         void onDepartmentDemand?.({
           idSucursal: selectedSucursalId,
@@ -1536,6 +1555,7 @@ export const useVentaComposer = ({
           selectedSucursal: nextSucursal,
           activeCatalog: changed ? DEFAULT_CATALOG_KEY : current.activeCatalog,
           activeCategory: changed ? resolveDefaultDepartmentId(tiposDepartamento) : current.activeCategory,
+          activeCategoryManuallySelected: changed ? false : current.activeCategoryManuallySelected,
           search: changed ? '' : current.search,
           temporarySessionId: '',
           selectedDiscountId: '',

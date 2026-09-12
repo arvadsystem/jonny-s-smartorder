@@ -77,7 +77,7 @@ test('hook bloquea doble envio, carga secuencial y conserva borrador en error or
   assert.match(source, /if \(receiveLock\.current \|\| receiveDisabled/);
   assert.match(source, /prevalidateInvoiceFiles\(selected\)/);
   assert.match(source, /uploadInvoiceFilesSequentially\(selected/);
-  assert.match(source, /subirFactura\(idSolicitud/);
+  assert.match(source, /uploadRequest: solicitudesCompraService\.subirFactura/);
   assert.match(source, /finally \{[\s\S]*refreshReceptionEvidenceState/);
   const catchBlock = source.slice(source.indexOf('} catch (error)'));
   const ordinary = catchBlock.slice(0, catchBlock.indexOf('} finally'));
@@ -95,7 +95,7 @@ test('exito y 409 actualizan evidencia, detalle y listado', async () => {
 test('recepcion nueva no conserva blob local ni envia factura en payload final', async () => {
   const source = await read('../hooks/useSolicitudCompraRecepcion.js');
   assert.doesNotMatch(source, /URL\.createObjectURL|URL\.revokeObjectURL|factura:/);
-  assert.match(source, /buildReceptionPayload\(\{ observacion: observation, detalles: lines \}\)/);
+  assert.match(source, /buildReceptionPayload\(\{ observacion: observation, detalles: lines, receptionRequestId:/);
 });
 
 test('upload delete individual y quitar todas refrescan estado canonico una vez por operacion', async () => {

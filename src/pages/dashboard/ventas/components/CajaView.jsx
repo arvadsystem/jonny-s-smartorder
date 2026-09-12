@@ -337,7 +337,7 @@ export default function CajaView({
   const catalogSucursalRequestRef = useRef('');
   const catalogSucursalRequestIdRef = useRef(0);
   const bootstrapSesionCaja = normalizeCajaSession(cajaBootstrapData?.sesion_caja);
-  const hasCajaSession = Boolean(cajaSesionActiva?.id_sesion_caja || bootstrapSesionCaja?.id_sesion_caja);
+  const financialCajaContextRef = useRef(null);
   const lockedSucursalId = toPositiveId(cajaSesionActiva?.id_sucursal || cajaAsignacion?.id_sucursal || defaultSucursalId);
 
   useEffect(() => {
@@ -485,14 +485,19 @@ export default function CajaView({
     canApplyDiscount,
     sucursales,
     isSuperAdmin,
-    defaultSucursalId: isSuperAdmin ? defaultSucursalId : lockedSucursalId,
+    defaultSucursalId: isSuperAdmin
+      ? toPositiveId(cajaBootstrapData?.id_sucursal || defaultSucursalId)
+      : lockedSucursalId,
     allowSucursalAutoSelection: !catalogLoadingStates.bootstrapLoading,
-    catalogsEnabled: hasCajaSession,
+    catalogsEnabled: true,
     onDepartmentDemand: ({ idSucursal, idTipoDepartamento }) => onRecipesDepartmentDemand?.({
       id_sucursal: idSucursal,
       id_tipo_departamento: idTipoDepartamento
     }),
-    onSubmit,
+    onSubmit: (payload, options) => {
+      assertValidCajaSession(payload);
+      return onSubmit(payload, options);
+    },
     suppressSubmitErrorToast: true,
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal,
     onReset: () => {
@@ -513,6 +518,30 @@ export default function CajaView({
     userId: authenticatedUserId
   });
   composerRef.current = composer;
+  const effectiveCajaSession = cajaSesionActiva || bootstrapSesionCaja;
+  const selectedFinancialSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+  const hasValidCajaSession = Boolean(
+    toPositiveId(effectiveCajaSession?.id_sesion_caja)
+    && selectedFinancialSucursalId
+    && toPositiveId(effectiveCajaSession?.id_sucursal) === selectedFinancialSucursalId
+  );
+  financialCajaContextRef.current = {
+    hasValidCajaSession,
+    sucursalId: selectedFinancialSucursalId,
+    sessionId: toPositiveId(effectiveCajaSession?.id_sesion_caja)
+  };
+  const assertValidCajaSession = (payload = {}) => {
+    // Consultar el render actual también en callbacks que continúan tras un await.
+    const context = financialCajaContextRef.current;
+    if (
+      context?.hasValidCajaSession
+      && (!payload.id_sucursal || toPositiveId(payload.id_sucursal) === context.sucursalId)
+      && (!payload.id_sesion_caja || toPositiveId(payload.id_sesion_caja) === context.sessionId)
+    ) return;
+    const error = new Error('Selecciona una caja activa de la sucursal seleccionada antes de continuar con la operación.');
+    error.code = 'SESSION_SCOPE_MISMATCH';
+    throw error;
+  };
   const pedidoOperationUserId = String(authenticatedUserId || '').trim();
   const pedidoOperationSucursalId = String(
     toPositiveId(composer.selectedSucursalId || composer.selectedSucursal || cajaBootstrapData?.id_sucursal) || ''
@@ -601,9 +630,7 @@ export default function CajaView({
   const activeCatalogStatus = composer.activeCatalog === 'PRODUCTOS'
     ? catalogStatuses.productos || 'idle'
     : composer.activeCatalog === 'EXTRAS'
-        ? !hasCajaSession
-          ? 'idle'
-          : composer.currentCatalogStatus || 'idle'
+        ? composer.currentCatalogStatus || 'idle'
       : composer.activeCatalog === 'DESCUENTOS'
         ? catalogStatuses.descuentos || 'idle'
         : catalogStatuses.recetas || 'idle';
@@ -638,6 +665,10 @@ export default function CajaView({
     if (!isSuperAdmin) return;
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
     if (!selectedSucursalId) return;
+    const selectedSucursalIsAvailable = sucursales.some(
+      (row) => toPositiveId(row?.id_sucursal) === selectedSucursalId
+    );
+    if (!selectedSucursalIsAvailable) return;
 
     const key = `usuario:${cajaUserKey}:sucursal:${selectedSucursalId}`;
     if (catalogSucursalRequestRef.current === key) return;
@@ -651,15 +682,16 @@ export default function CajaView({
     composer.selectedSucursalId,
     cajaUserKey,
     isSuperAdmin,
-    onCatalogSucursalChange
+    onCatalogSucursalChange,
+    sucursales
   ]);
 
   useEffect(() => {
     const selectedSucursalId = resolvedCajaSucursalId;
-    if (!selectedSucursalId || !hasCajaSession) return;
+    if (!selectedSucursalId) return;
     if (composer.activeCatalog === 'RECETAS') {
-      const bootstrapDepartmentId = toPositiveId(cajaBootstrapData?.departamento_activo?.id_tipo_departamento);
-      if (composer.activeCategory === 'all' && bootstrapDepartmentId) return;
+      if (catalogLoadingStates.bootstrapLoading) return;
+      // El loader comprueba la caché por usuario, sucursal y departamento.
       void onRecipesDepartmentDemand?.({
         id_sucursal: selectedSucursalId,
         id_tipo_departamento: composer.activeCategory === 'all' ? null : toPositiveId(composer.activeCategory)
@@ -668,9 +700,9 @@ export default function CajaView({
     }
     void onCatalogDemand?.(composer.activeCatalog, { id_sucursal: selectedSucursalId });
   }, [
-    hasCajaSession,
     resolvedCajaSucursalId,
-    cajaBootstrapData?.departamento_activo?.id_tipo_departamento,
+    cajaBootstrapData,
+    catalogLoadingStates.bootstrapLoading,
     composer.activeCatalog,
     composer.activeCategory,
     onCatalogDemand,
@@ -990,7 +1022,9 @@ export default function CajaView({
 
     const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
     const bootstrapSucursalId = toPositiveId(cajaBootstrapData?.id_sucursal);
-    if (selectedSucursalId && bootstrapSucursalId === selectedSucursalId) return undefined;
+    if (bootstrapSucursalId && (!selectedSucursalId || bootstrapSucursalId === selectedSucursalId)) {
+      return undefined;
+    }
     cajaAsignacionRequestRef.current += 1;
     setCajaAsignacion(null);
     setCajaSesionActiva(null);
@@ -1360,6 +1394,7 @@ export default function CajaView({
   };
 
   const handleCreatePedidoPendiente = async (payload) => {
+    assertValidCajaSession(payload);
     if (creatingPedidoPendienteRef.current) {
       const error = new Error('El pedido pendiente ya se está creando.');
       error.code = 'VENTA_PENDING_SUBMIT_IN_PROGRESS';
@@ -1393,7 +1428,10 @@ export default function CajaView({
           return revalidatePedidoPendienteContext(currentPayload);
         },
         prepareOperation: ventasService.preparePedidoPendienteOperation,
-        submitOperation: onCreatePedidoPendiente,
+        submitOperation: (currentPayload, options) => {
+          assertValidCajaSession(currentPayload);
+          return onCreatePedidoPendiente(currentPayload, options);
+        },
         onPrepared: (operation) => {
           pedidoPendienteOperationRef.current = operation;
           setPedidoPendienteOperation(operation);
@@ -1590,6 +1628,7 @@ export default function CajaView({
   }, [canVerifyOrphanPedidoPendiente, visiblePedidoPendienteOperation?.operationId]);
 
   const handleRegistrarPagoPedido = async (idPedido, payload) => {
+    assertValidCajaSession(payload);
     if (registrandoPagoPedidoRef.current) {
       const error = new Error('El pago ya se está registrando.');
       error.code = 'VENTA_PAYMENT_SUBMIT_IN_PROGRESS';
@@ -1754,14 +1793,32 @@ export default function CajaView({
       : 'No hay sesión de caja activa';
   const showCajaDetails = statusExpanded && !cajaStatus.loading;
   const ventaTotalPreview = composer.total + (Number(deliveryCostPreview) > 0 ? Number(deliveryCostPreview) : 0);
+  const requireCajaSessionForFinancialOperation = () => {
+    if (hasValidCajaSession) return true;
+    onNotify?.(
+      'CAJA REQUERIDA',
+      'Selecciona una caja activa antes de continuar con la operación.',
+      'warning'
+    );
+    return false;
+  };
   const openFinalizeModal = () => {
+    if (!requireCajaSessionForFinancialOperation()) return;
     if (!composer.validateBaseSale()) return;
     setCartSheetOpen(false);
     setFinalizarOpen(true);
   };
   const openRegistrarPagoModal = () => {
+    if (!requireCajaSessionForFinancialOperation()) return;
     setCartSheetOpen(false);
     setRegistrarPagoOpen(true);
+  };
+  const handleFinancialSubmit = (event) => {
+    if (!requireCajaSessionForFinancialOperation()) {
+      event.preventDefault();
+      return;
+    }
+    composer.handleSubmit(event);
   };
 
   useEffect(() => {
@@ -1965,7 +2022,7 @@ export default function CajaView({
             )}
           </div>
         </section>
-        <form className="ventas-create-modal__body ventas-caja__body ventas-caja-layout" onSubmit={composer.handleSubmit}>
+        <form className="ventas-create-modal__body ventas-caja__body ventas-caja-layout" onSubmit={handleFinancialSubmit}>
           <VentaComposerCatalog
             composer={composer}
             catalogLoading={activeCatalogLoading}
@@ -1980,6 +2037,7 @@ export default function CajaView({
             saving={saving}
             deliveryCost={deliveryCostPreview}
             pendingPaymentsSummary={pendientesSummary}
+            financialOperationsEnabled={hasValidCajaSession}
             onOpenFinalize={openFinalizeModal}
             onOpenRegistrarPago={openRegistrarPagoModal}
             variant="side"
@@ -2024,6 +2082,7 @@ export default function CajaView({
               saving={saving}
               deliveryCost={deliveryCostPreview}
               pendingPaymentsSummary={pendientesSummary}
+              financialOperationsEnabled={hasValidCajaSession}
               onOpenFinalize={openFinalizeModal}
               onOpenRegistrarPago={openRegistrarPagoModal}
               variant="sheet"

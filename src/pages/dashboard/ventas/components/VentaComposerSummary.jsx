@@ -29,6 +29,7 @@ export default function VentaComposerSummary({
   saving,
   deliveryCost = 0,
   pendingPaymentsSummary,
+  financialOperationsEnabled = true,
   onOpenFinalize,
   onOpenRegistrarPago,
   variant = 'side',
@@ -384,7 +385,7 @@ export default function VentaComposerSummary({
           <strong>Pagos pendientes</strong>
           <span>{pendingLabel}</span>
         </div>
-        <button type="button" onClick={onOpenRegistrarPago}>
+        <button type="button" onClick={onOpenRegistrarPago} disabled={!financialOperationsEnabled}>
           <i className="bi bi-cash-coin" /> Cobrar
         </button>
       </section>
@@ -427,13 +428,15 @@ export default function VentaComposerSummary({
           type="button"
           className="ventas-create-modal__submit"
           data-testid="ventas-cart-continuar"
-          disabled={!composer.canContinue || saving}
+          disabled={!composer.canContinue || saving || !financialOperationsEnabled}
           onClick={handleContinue}
         >
           {saving ? (
             <>
               <span className="spinner-border spinner-border-sm" aria-hidden="true" /> Guardando...
             </>
+          ) : !financialOperationsEnabled ? (
+            'Selecciona una caja activa'
           ) : composer.cart.length === 0 ? (
             'Agrega items para continuar'
           ) : (
