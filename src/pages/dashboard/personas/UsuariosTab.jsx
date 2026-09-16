@@ -238,6 +238,7 @@ export default function UsuariosTab({ openToast }) {
   });
   const [photoErrorModal, setPhotoErrorModal] = useState({ show: false, message: '' });
   const [createCredentialsResult, setCreateCredentialsResult] = useState(null);
+  const [resetCredentialsResult, setResetCredentialsResult] = useState(null);
   const closePhotoErrorModal = useCallback(() => setPhotoErrorModal({ show: false, message: '' }), []);
   const openPhotoErrorModal = useCallback((message) => {
     setPhotoErrorModal({
@@ -583,6 +584,7 @@ export default function UsuariosTab({ openToast }) {
     if (!canResetPassword) return;
     if (!editId || drawerMode !== 'edit' || resetPasswordLoading || actionLoading) return;
     setResetPasswordLoading(true);
+    setResetCredentialsResult(null);
 
     try {
       const response = await personaService.resetPasswordUsuarioV2(editId);
@@ -594,9 +596,17 @@ export default function UsuariosTab({ openToast }) {
           ? `Contrasena temporal regenerada y enviada a ${destinationEmail}.`
           : 'Contrasena temporal regenerada y enviada al correo registrado.')
         : 'Contrasena temporal regenerada, pero no se pudo enviar por correo.';
-      safeToast('OK', resetMessage);
+      safeToast(emailSent ? 'OK' : 'ATENCION', resetMessage, emailSent ? 'success' : 'warning');
       if (!emailSent) {
-        safeToast('INFO', 'Verifica el correo del usuario o intenta regenerar la contrasena temporal nuevamente.', 'info');
+        const temporaryPassword = normalizeText(response?.temp_password);
+        if (temporaryPassword) {
+          setResetCredentialsResult({
+            nombre_usuario: normalizeText(response?.nombre_usuario),
+            temp_password: temporaryPassword,
+          });
+        } else {
+          safeToast('ERROR', 'El correo fallo y no fue posible recuperar la credencial temporal.', 'danger');
+        }
       }
     } catch (error) {
       safeToast('ERROR', error?.message || 'No se pudo resetear la contraseña temporal', 'danger');
@@ -613,6 +623,7 @@ export default function UsuariosTab({ openToast }) {
     setEditId(usuario?.id_usuario ?? null);
     setErrors({});
     setCreateCredentialsResult(null);
+    setResetCredentialsResult(null);
     setShowModal(true);
   };
 
@@ -940,7 +951,7 @@ export default function UsuariosTab({ openToast }) {
         }}
         onSubmit={guardar}
         onResetPassword={resetearPasswordTemporal}
-        onClose={() => { setShowModal(false); resetFormState(); }}
+        onClose={() => { setShowModal(false); setResetCredentialsResult(null); resetFormState(); }}
         createCredentialsResult={createCredentialsResult}
         actionLoading={actionLoading}
         resetPasswordLoading={resetPasswordLoading}
@@ -1045,6 +1056,77 @@ export default function UsuariosTab({ openToast }) {
             <div className="inv-pro-confirm-footer">
               <button type="button" className="btn inv-pro-btn-cancel" onClick={closePhotoErrorModal}>
                 Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetCredentialsResult && canResetPassword && (
+        <div
+          className="inv-pro-confirm-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-password-fallback-title"
+          onClick={() => setResetCredentialsResult(null)}
+        >
+          <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="inv-pro-confirm-head">
+              <div className="inv-pro-confirm-head-icon">
+                <i className="bi bi-envelope-exclamation-fill" />
+              </div>
+              <div>
+                <div id="reset-password-fallback-title" className="inv-pro-confirm-title">
+                  CORREO NO ENVIADO
+                </div>
+                <div className="inv-pro-confirm-sub">
+                  Copia esta credencial ahora; no podra volver a consultarse.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="inv-pro-confirm-close"
+                onClick={() => setResetCredentialsResult(null)}
+                aria-label="Cerrar"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+            <div className="inv-pro-confirm-body">
+              <div className="inv-pro-confirm-question">
+                La contrasena fue restablecida y las sesiones anteriores fueron cerradas, pero el correo fallo.
+              </div>
+              <div className="inv-pro-confirm-name" style={{ alignItems: 'flex-start' }}>
+                <i className="bi bi-person-badge" />
+                <span>
+                  Usuario: <strong>{resetCredentialsResult.nombre_usuario || 'Usuario seleccionado'}</strong>
+                  <br />
+                  Contrasena temporal: <code>{resetCredentialsResult.temp_password}</code>
+                </span>
+              </div>
+            </div>
+            <div className="inv-pro-confirm-footer">
+              <button
+                type="button"
+                className="btn inv-pro-btn-cancel"
+                onClick={() => setResetCredentialsResult(null)}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                className="btn inv-pro-btn-danger"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(resetCredentialsResult.temp_password);
+                    safeToast('COPIADA', 'Contrasena temporal copiada al portapapeles.');
+                  } catch {
+                    safeToast('ERROR', 'No se pudo copiar. Selecciona la credencial manualmente.', 'danger');
+                  }
+                }}
+              >
+                <i className="bi bi-copy" />
+                <span>Copiar contrasena</span>
               </button>
             </div>
           </div>

@@ -61,9 +61,8 @@ const buildSuccessfulPasswordUserPatch = (payload = {}) => {
 
   return {
     must_change_password: false,
-    password_warning_58d: false,
     password_age_days: 0,
-    password_days_to_expire: 60,
+    password_recommend_change: false,
     fecha_cambio_clave: fechaCambioClave,
     perfil: {
       ...(payload?.perfil && typeof payload.perfil === "object" ? payload.perfil : {}),
